@@ -1,0 +1,9 @@
+[package]
+name = "tsdb"
+version = "0.1.0"
+authors = ["Tglman <tglman@tglman.com>"]
+edition = "2018"
+
+[dependencies]
+persy = { git = "https://gitlab.com/tglman/persy.git"}
+

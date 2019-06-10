@@ -1,0 +1,14 @@
+[package]
+name = "tsdb-derive"
+version = "0.1.0"
+authors = ["Tglman <tglman@tglman.com>"]
+edition = "2018"
+
+[dependencies]
+syn = "0.15"
+quote = "0.6"
+proc-macro2 = "0.4"
+
+[lib]
+proc-macro = true
+
