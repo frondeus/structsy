@@ -6,4 +6,5 @@ edition = "2018"
 
 [dependencies]
 persy = { git = "https://gitlab.com/tglman/persy.git"}
+byteorder="1.3"
 
