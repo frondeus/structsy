@@ -69,7 +69,7 @@ pub trait TWrite: Write {
         self.write_all(b)?;
         Ok(())
     }
-    /*
+
     fn write_ref<T>(&mut self, val: Ref<T>) -> TRes<()> {
         self.write_string(&format!("{}", val.raw_id))
     }
@@ -109,7 +109,6 @@ pub trait TWrite: Write {
         }
         Ok(())
     }
-    */
 }
 
 impl<W: Write + ?Sized> TWrite for W {}
