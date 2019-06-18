@@ -1,61 +1,61 @@
-use crate::{Ref, TRes};
+use crate::{Persistent, Ref, TRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 
 pub trait TWrite: Write {
-    fn write_u8(&mut self, val: u8) -> TRes<()> {
-        WriteBytesExt::write_u8(self, val)?;
+    fn write_u8(&mut self, val: &u8) -> TRes<()> {
+        WriteBytesExt::write_u8(self, *val)?;
         Ok(())
     }
-    fn write_u16(&mut self, val: u16) -> TRes<()> {
-        WriteBytesExt::write_u16::<BigEndian>(self, val)?;
+    fn write_u16(&mut self, val: &u16) -> TRes<()> {
+        WriteBytesExt::write_u16::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_u32(&mut self, val: u32) -> TRes<()> {
-        WriteBytesExt::write_u32::<BigEndian>(self, val)?;
+    fn write_u32(&mut self, val: &u32) -> TRes<()> {
+        WriteBytesExt::write_u32::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_u64(&mut self, val: u64) -> TRes<()> {
-        WriteBytesExt::write_u64::<BigEndian>(self, val)?;
+    fn write_u64(&mut self, val: &u64) -> TRes<()> {
+        WriteBytesExt::write_u64::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_u128(&mut self, val: u128) -> TRes<()> {
-        WriteBytesExt::write_u128::<BigEndian>(self, val)?;
+    fn write_u128(&mut self, val: &u128) -> TRes<()> {
+        WriteBytesExt::write_u128::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_i8(&mut self, val: i8) -> TRes<()> {
-        WriteBytesExt::write_i8(self, val)?;
+    fn write_i8(&mut self, val: &i8) -> TRes<()> {
+        WriteBytesExt::write_i8(self, *val)?;
         Ok(())
     }
-    fn write_i16(&mut self, val: i16) -> TRes<()> {
-        WriteBytesExt::write_i16::<BigEndian>(self, val)?;
+    fn write_i16(&mut self, val: &i16) -> TRes<()> {
+        WriteBytesExt::write_i16::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_i32(&mut self, val: i32) -> TRes<()> {
-        WriteBytesExt::write_i32::<BigEndian>(self, val)?;
+    fn write_i32(&mut self, val: &i32) -> TRes<()> {
+        WriteBytesExt::write_i32::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_i64(&mut self, val: i64) -> TRes<()> {
-        WriteBytesExt::write_i64::<BigEndian>(self, val)?;
+    fn write_i64(&mut self, val: &i64) -> TRes<()> {
+        WriteBytesExt::write_i64::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_i128(&mut self, val: i128) -> TRes<()> {
-        WriteBytesExt::write_i128::<BigEndian>(self, val)?;
+    fn write_i128(&mut self, val: &i128) -> TRes<()> {
+        WriteBytesExt::write_i128::<BigEndian>(self, *val)?;
         Ok(())
     }
-    fn write_f32(&mut self, val: f32) -> TRes<()> {
-        WriteBytesExt::write_f32::<BigEndian>(self, val)?;
-        Ok(())
-    }
-
-    fn write_f64(&mut self, val: f64) -> TRes<()> {
-        WriteBytesExt::write_f64::<BigEndian>(self, val)?;
+    fn write_f32(&mut self, val: &f32) -> TRes<()> {
+        WriteBytesExt::write_f32::<BigEndian>(self, *val)?;
         Ok(())
     }
 
-    fn write_bool(&mut self, val: bool) -> TRes<()> {
-        if val {
+    fn write_f64(&mut self, val: &f64) -> TRes<()> {
+        WriteBytesExt::write_f64::<BigEndian>(self, *val)?;
+        Ok(())
+    }
+
+    fn write_bool(&mut self, val: &bool) -> TRes<()> {
+        if *val {
             WriteBytesExt::write_u8(self, 1)?;
         } else {
             WriteBytesExt::write_u8(self, 0)?;
@@ -63,49 +63,49 @@ pub trait TWrite: Write {
         Ok(())
     }
 
-    fn write_string(&mut self, val: &str) -> TRes<()> {
+    fn write_string(&mut self, val: &String) -> TRes<()> {
         let b = val.as_bytes();
-        TWrite::write_u32(self, b.len() as u32)?;
+        TWrite::write_u32(self, &(b.len() as u32))?;
         self.write_all(b)?;
         Ok(())
     }
 
-    fn write_ref<T>(&mut self, val: Ref<T>) -> TRes<()> {
+    fn write_ref<T>(&mut self, val: &Ref<T>) -> TRes<()> {
         self.write_string(&format!("{}", val.raw_id))
     }
 
-    fn write_option<V, F>(&mut self, val: Option<V>, writer: F) -> TRes<()>
+    fn write_option<V, F>(&mut self, val: &Option<V>, writer: F) -> TRes<()>
     where
-        F: Fn(&mut Self, V) -> TRes<()>,
+        F: Fn(&mut Self, &V) -> TRes<()>,
     {
         if let Some(to_write) = val {
-            self.write_bool(true)?;
+            self.write_bool(&true)?;
             writer(self, to_write)?;
         } else {
-            self.write_bool(false)?;
+            self.write_bool(&false)?;
         }
         Ok(())
     }
-    fn write_array<V, F>(&mut self, val: Vec<V>, writer: F) -> TRes<()>
+    fn write_vec<V, F>(&mut self, val: &Vec<V>, writer: F) -> TRes<()>
     where
-        F: Fn(&mut Self, V) -> TRes<()>,
+        F: Fn(&mut Self, &V) -> TRes<()>,
     {
-        TWrite::write_u32(self, val.len() as u32)?;
+        TWrite::write_u32(self, &(val.len() as u32))?;
         for v in val {
             writer(self, v)?;
         }
         Ok(())
     }
 
-    fn write_option_array<V, F>(&mut self, val: Option<Vec<V>>, writer: F) -> TRes<()>
+    fn write_option_vec<V, F>(&mut self, val: &Option<Vec<V>>, writer: F) -> TRes<()>
     where
-        F: Fn(&mut Self, V) -> TRes<()>,
+        F: Fn(&mut Self, &V) -> TRes<()>,
     {
         if let Some(to_write) = val {
-            self.write_bool(true)?;
-            self.write_array(to_write, writer)?;
+            self.write_bool(&true)?;
+            self.write_vec(to_write, writer)?;
         } else {
-            self.write_bool(false)?;
+            self.write_bool(&false)?;
         }
         Ok(())
     }
@@ -169,10 +169,9 @@ pub trait TRead: Read {
         self.take(size).read_to_string(&mut s)?;
         Ok(s)
     }
-    fn read_ref<T>(&mut self) -> TRes<Ref<T>> {
-        //TODO: get type name,
+    fn read_ref<T: Persistent>(&mut self) -> TRes<Ref<T>> {
         Ok(Ref {
-            type_name: "".to_string(),
+            type_name: T::get_description().name.clone(),
             raw_id: self.read_string()?.parse()?,
             ph: PhantomData,
         })
@@ -187,7 +186,7 @@ pub trait TRead: Read {
             Ok(None)
         }
     }
-    fn read_array<V, F>(&mut self, reader: F) -> TRes<Vec<V>>
+    fn read_vec<V, F>(&mut self, reader: F) -> TRes<Vec<V>>
     where
         F: Fn(&mut Self) -> TRes<V>,
     {
@@ -198,12 +197,12 @@ pub trait TRead: Read {
         }
         Ok(v)
     }
-    fn read_option_array<V, F>(&mut self, reader: F) -> TRes<Option<Vec<V>>>
+    fn read_option_vec<V, F>(&mut self, reader: F) -> TRes<Option<Vec<V>>>
     where
         F: Fn(&mut Self) -> TRes<V>,
     {
         if self.read_bool()? {
-            Ok(Some(TRead::read_array(self, reader)?))
+            Ok(Some(TRead::read_vec(self, reader)?))
         } else {
             Ok(None)
         }

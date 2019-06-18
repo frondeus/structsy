@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 mod format;
-use format::{TRead, TWrite};
+pub use format::{TRead, TWrite};
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
@@ -37,7 +37,7 @@ impl From<IOError> for TsdbError {
     }
 }
 
-type TRes<T> = Result<T, TsdbError>;
+pub type TRes<T> = Result<T, TsdbError>;
 
 pub struct TsdbImpl {
     persy: Persy,
@@ -48,7 +48,7 @@ pub struct Tsdb {
     tsdb_impl: Arc<TsdbImpl>,
 }
 
-enum FieldValueType {
+pub enum FieldValueType {
     U8,
     U16,
     U32,
@@ -65,7 +65,7 @@ enum FieldValueType {
     String,
     Ref(String),
 }
-enum FieldType {
+pub enum FieldType {
     Value(FieldValueType),
     Option(FieldValueType),
     Array(FieldValueType),
@@ -99,30 +99,94 @@ impl FieldValueType {
     }
     fn write(&self, write: &mut Write) -> TRes<()> {
         match self {
-            FieldValueType::U8 => write.write_u8(1)?,
-            FieldValueType::U16 => write.write_u8(2)?,
-            FieldValueType::U32 => write.write_u8(3)?,
-            FieldValueType::U64 => write.write_u8(4)?,
-            FieldValueType::U128 => write.write_u8(5)?,
-            FieldValueType::I8 => write.write_u8(6)?,
-            FieldValueType::I16 => write.write_u8(7)?,
-            FieldValueType::I32 => write.write_u8(8)?,
-            FieldValueType::I64 => write.write_u8(9)?,
-            FieldValueType::I128 => write.write_u8(10)?,
-            FieldValueType::F32 => write.write_u8(11)?,
-            FieldValueType::F64 => write.write_u8(12)?,
-            FieldValueType::Bool => write.write_u8(13)?,
-            FieldValueType::String => write.write_u8(14)?,
+            FieldValueType::U8 => write.write_u8(&1)?,
+            FieldValueType::U16 => write.write_u8(&2)?,
+            FieldValueType::U32 => write.write_u8(&3)?,
+            FieldValueType::U64 => write.write_u8(&4)?,
+            FieldValueType::U128 => write.write_u8(&5)?,
+            FieldValueType::I8 => write.write_u8(&6)?,
+            FieldValueType::I16 => write.write_u8(&7)?,
+            FieldValueType::I32 => write.write_u8(&8)?,
+            FieldValueType::I64 => write.write_u8(&9)?,
+            FieldValueType::I128 => write.write_u8(&10)?,
+            FieldValueType::F32 => write.write_u8(&11)?,
+            FieldValueType::F64 => write.write_u8(&12)?,
+            FieldValueType::Bool => write.write_u8(&13)?,
+            FieldValueType::String => write.write_u8(&14)?,
             FieldValueType::Ref(t) => {
-                write.write_u8(15)?;
+                write.write_u8(&15)?;
                 write.write_string(&t)?;
             }
         }
         Ok(())
     }
 }
+pub trait SupportedType {
+    fn resolve() -> FieldType;
+}
+pub trait SimpleType {
+    fn resolve() -> FieldValueType;
+}
+macro_rules! impl_field_type {
+    ($t:ident,$v1:expr) => {
+        impl SimpleType for $t {
+            fn resolve() -> FieldValueType {
+                $v1
+            }
+        }
+    };
+}
+
+impl_field_type!(u8, (FieldValueType::U8));
+impl_field_type!(u16, (FieldValueType::U16));
+impl_field_type!(u32, (FieldValueType::U32));
+impl_field_type!(u64, (FieldValueType::U64));
+impl_field_type!(u128, (FieldValueType::U128));
+impl_field_type!(i8, (FieldValueType::I8));
+impl_field_type!(i16, (FieldValueType::I16));
+impl_field_type!(i32, (FieldValueType::I32));
+impl_field_type!(i64, (FieldValueType::I64));
+impl_field_type!(i128, (FieldValueType::I128));
+impl_field_type!(f32, (FieldValueType::F32));
+impl_field_type!(f64, (FieldValueType::F64));
+impl_field_type!(bool, (FieldValueType::Bool));
+impl_field_type!(String, (FieldValueType::String));
+
+impl<T: Persistent> SimpleType for Ref<T> {
+    fn resolve() -> FieldValueType {
+        FieldValueType::Ref(T::get_description().name)
+    }
+}
+
+impl<T: SimpleType> SupportedType for T {
+    fn resolve() -> FieldType {
+        FieldType::Value(T::resolve())
+    }
+}
+
+impl<T: SimpleType> SupportedType for Option<T> {
+    fn resolve() -> FieldType {
+        FieldType::Option(T::resolve())
+    }
+}
+
+impl<T: SimpleType> SupportedType for Option<Vec<T>> {
+    fn resolve() -> FieldType {
+        FieldType::OptionArray(T::resolve())
+    }
+}
+
+impl<T: SimpleType> SupportedType for Vec<T> {
+    fn resolve() -> FieldType {
+        FieldType::Array(T::resolve())
+    }
+}
 
 impl FieldType {
+    pub fn resolve<T: SupportedType>() -> FieldType {
+        T::resolve()
+    }
+
     fn read(read: &mut Read) -> TRes<FieldType> {
         let t = read.read_u8()?;
         Ok(match t {
@@ -136,19 +200,19 @@ impl FieldType {
     fn write(&self, write: &mut Write) -> TRes<()> {
         match self {
             FieldType::Value(t) => {
-                write.write_u8(1)?;
+                write.write_u8(&1)?;
                 t.write(write)?;
             }
             FieldType::Option(t) => {
-                write.write_u8(2)?;
+                write.write_u8(&2)?;
                 t.write(write)?;
             }
             FieldType::Array(t) => {
-                write.write_u8(3)?;
+                write.write_u8(&3)?;
                 t.write(write)?;
             }
             FieldType::OptionArray(t) => {
-                write.write_u8(4)?;
+                write.write_u8(&4)?;
                 t.write(write)?;
             }
         }
@@ -163,6 +227,13 @@ pub struct FieldDescription {
 }
 
 impl FieldDescription {
+    pub fn new(name: &str, field_type: FieldType, indexed: bool) -> FieldDescription {
+        FieldDescription {
+            name: name.to_string(),
+            field_type,
+            indexed,
+        }
+    }
     fn read(read: &mut Read) -> TRes<FieldDescription> {
         let name = read.read_string()?;
         let field_type = FieldType::read(read)?;
@@ -176,7 +247,7 @@ impl FieldDescription {
     fn write(&self, write: &mut Write) -> TRes<()> {
         write.write_string(&self.name)?;
         self.field_type.write(write)?;
-        write.write_bool(self.indexed)?;
+        write.write_bool(&self.indexed)?;
         Ok(())
     }
 }
@@ -188,6 +259,13 @@ pub struct StructDescription {
 }
 
 impl StructDescription {
+    pub fn new(name: &str, hash_id: &str, fields: Vec<FieldDescription>) -> StructDescription {
+        StructDescription {
+            name: name.to_string(),
+            hash_id: hash_id.to_string(),
+            fields,
+        }
+    }
     fn read(read: &mut Read) -> TRes<StructDescription> {
         let name = read.read_string()?;
         let hash_id = read.read_string()?;
@@ -201,7 +279,7 @@ impl StructDescription {
     fn write(&self, write: &mut Write) -> TRes<()> {
         write.write_string(&self.name)?;
         write.write_string(&self.hash_id)?;
-        write.write_u32(self.fields.len() as u32)?;
+        write.write_u32(&(self.fields.len() as u32))?;
         for f in &self.fields {
             f.write(write)?;
         }
@@ -319,7 +397,7 @@ impl TsdbImpl {
             Ok(false)
         }
     }
-    fn init_segment<P:AsRef<Path>>(path:P) -> TRes<()>{
+    fn init_segment<P: AsRef<Path>>(path: P) -> TRes<()> {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
         persy.create_segment(&mut tx, INTERNAL_SEGMENT_NAME)?;
@@ -403,8 +481,8 @@ impl TsdbImpl {
 mod test {
     use super::format::{TRead, TWrite};
     use super::{FieldDescription, FieldType, FieldValueType, Persistent, StructDescription, TRes, Tsdb};
-    use std::io::{Read, Write};
     use std::fs;
+    use std::io::{Read, Write};
     struct ToTest {
         name: String,
         length: u32,
@@ -431,7 +509,7 @@ mod test {
         }
         fn write(&self, write: &mut Write) -> TRes<()> {
             write.write_string(&self.name)?;
-            write.write_u32(self.length)?;
+            write.write_u32(&self.length)?;
             Ok(())
         }
         fn read(read: &mut Read) -> TRes<Self>
@@ -452,17 +530,17 @@ mod test {
         db.define::<ToTest>().expect("is define correctly");
         let mut tx = db.begin().expect("can start a transaction");
         let val = ToTest {
-            name:"one".to_string(),
-            length:3,
+            name: "one".to_string(),
+            length: 3,
         };
         let id = tx.insert(&val).expect("insert correctly");
         let mut read = tx.read(&id).expect("read correctly").expect("this should be some");
         assert_eq!(read.name, val.name);
         assert_eq!(read.length, val.length);
-        read.name ="new".to_string();
-        tx.update(&id,&read).expect("updated correctly");
+        read.name = "new".to_string();
+        tx.update(&id, &read).expect("updated correctly");
         db.commit(tx).expect("tx committed correctly");
-        let read_persistent =db.read(&id).expect("read correctly").expect("this is some");
+        let read_persistent = db.read(&id).expect("read correctly").expect("this is some");
         assert_eq!(read_persistent.name, read.name);
         assert_eq!(read_persistent.length, val.length);
         fs::remove_file("one.db").expect("remove file works");
