@@ -8,14 +8,9 @@ extern crate proc_macro2;
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::{Span, TokenStream};
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
-use syn::Attribute;
-use syn::Data::Struct;
 use syn::Type::Path;
 use syn::{
-    AngleBracketedGenericArguments, DataStruct, DeriveInput, Field, GenericArgument, Ident, PathArguments, PathSegment,
-    Type, TypePath,
+    AngleBracketedGenericArguments, DeriveInput, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
 };
 
 #[derive(FromDeriveInput, Debug)]
@@ -148,107 +143,80 @@ impl PersistentInfo {
                 }
             })
             .collect();
-        let fields_meta: Vec<TokenStream> = fields
+        let fields_info: Vec<((TokenStream,TokenStream),(TokenStream,TokenStream))> = fields
         .iter()
         .map(|(field, ty, sub, subsub,index_mode)| {
             let indexed = translate_option_mode(index_mode);
             let field_name = field.to_string();
+            let ty_name = ty.to_string().to_lowercase();
+                let read_fill = quote! {
+                    #field,
+                };
             match (sub, subsub) {
                 (Some(s), Some(s1)) => {
-                    quote! {
+                    let desc = quote! {
                         fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s<#s1>>>(),#indexed));
-                    }
+                    };
+                    let s_name = s.to_string().to_lowercase();
+                    let s1_name = s1.to_string().to_lowercase();
+                    let base_write = Ident::new( &format!("write_{}_{}", &ty_name,&s_name), Span::call_site());
+                    let add_write = Ident::new( &format!("write_{}", &s1_name), Span::call_site());
+
+                    let write = quote! {
+                        write.#base_write(&self.#field,TWrite::#add_write)?;
+                    };
+
+                    let base_read = Ident::new(&format!("read_{}_{}",&ty_name, &s_name), Span::call_site());
+                    let add_read = Ident::new(&format!("read_{}", &s1_name), Span::call_site());
+
+                    let read =quote! {
+                        let #field = read.#base_read(TRead::#add_read)?;
+                    };
+                    ((desc,write),(read,read_fill))
                 },
                 (Some(s), None) => {
-                    quote! {
+                    let s_name = s.to_string().to_lowercase();
+
+                    let desc =quote! {
                         fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s>>(),#indexed));
-                    }
+                    };
+                    let base_write = Ident::new(&format!("write_{}", &ty_name), Span::call_site());
+                    let add_write = Ident::new(&format!("write_{}", &s_name), Span::call_site());
+                    let write = quote! {
+                        write.#base_write(&self.#field,TWrite::#add_write)?;
+                    };
+                    let base_read = Ident::new(&format!("read_{}", &ty_name), Span::call_site());
+                    let add_read = Ident::new(&format!("read_{}", &s_name), Span::call_site());
+                    let read= quote! {
+                        let #field = read.#base_read(TRead::#add_read)?;
+                    };
+                    ((desc,write),(read,read_fill))
                 },
                 (None, None) => {
-                    quote! {
+                    let desc = quote! {
                         fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty>(),#indexed));
-                    }
+                    };
+
+                    let base_write =
+                        Ident::new(&format!("write_{}", &ty_name), Span::call_site());
+                    let write =quote! {
+                        write.#base_write(&self.#field)?;
+                    };
+                    let base_read = Ident::new(&format!("read_{}", &ty_name), Span::call_site());
+                    let read = quote! {
+                        let #field = read.#base_read()?;
+                    };
+                    ((desc,write),(read,read_fill))
                 },
                 _ => panic!("can't happen"),
             }
         })
         .collect();
 
-        let fields_write: Vec<TokenStream> = fields
-            .iter()
-            .map(|(field, ty, sub, subsub, _index_mode)| match (sub, subsub) {
-                (Some(s), Some(s1)) => {
-                    let base_write = Ident::new(
-                        &format!(
-                            "write_{}_{}",
-                            &ty.to_string().to_lowercase(),
-                            &s.to_string().to_lowercase()
-                        ),
-                        Span::call_site(),
-                    );
-                    let add_write = Ident::new(&format!("write_{}", &s1.to_string().to_lowercase()), Span::call_site());
-
-                    quote! {
-                        write.#base_write(&self.#field,TWrite::#add_write)?;
-                    }
-                }
-
-                (Some(s), None) => {
-                    let base_write =
-                        Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                    let add_write = Ident::new(&format!("write_{}", &s.to_string().to_lowercase()), Span::call_site());
-                    quote! {
-                        write.#base_write(&self.#field,TWrite::#add_write)?;
-                    }
-                }
-
-                (None, None) => {
-                    let base_write =
-                        Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                    quote! {
-                        write.#base_write(&self.#field)?;
-                    }
-                }
-                _ => panic!("can't happen"),
-            })
-            .collect();
-
-        let fields_read: Vec<TokenStream> = fields
-            .iter()
-            .map(|(field, ty, sub, subsub, _index_mode)| match (sub, subsub) {
-                (Some(s), Some(s1)) => {
-                    let base_read = Ident::new(
-                        &format!(
-                            "read_{}_{}",
-                            &ty.to_string().to_lowercase(),
-                            &s.to_string().to_lowercase()
-                        ),
-                        Span::call_site(),
-                    );
-                    let add_read = Ident::new(&format!("read_{}", &s1.to_string().to_lowercase()), Span::call_site());
-
-                    quote! {
-                        let #field = read.#base_read(TRead::#add_read)?;
-                    }
-                }
-
-                (Some(s), None) => {
-                    let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                    let add_read = Ident::new(&format!("read_{}", &s.to_string().to_lowercase()), Span::call_site());
-                    quote! {
-                        let #field = read.#base_read(TRead::#add_read)?;
-                    }
-                }
-
-                (None, None) => {
-                    let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                    quote! {
-                        let #field = read.#base_read()?;
-                    }
-                }
-                _ => panic!("can't happen"),
-            })
-            .collect();
+        let (fields_meta_write, fields_read_fill): (Vec<(TokenStream,TokenStream)>, Vec<(TokenStream, TokenStream)>) =
+            fields_info.into_iter().unzip();
+        let (fields_meta, fields_write): (Vec<TokenStream>, Vec<TokenStream>) = fields_meta_write.into_iter().unzip();
+        let (fields_read, fields_construct): (Vec<TokenStream>, Vec<TokenStream>) = fields_read_fill.into_iter().unzip();
 
         let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = fields
             .iter()
@@ -302,14 +270,6 @@ impl PersistentInfo {
                         (declare, (put, remove))
                     }
                     _ => panic!("can't happen"),
-                }
-            })
-            .collect();
-        let fields_construct: Vec<TokenStream> = fields
-            .iter()
-            .map(|(field, _ty, _sub, _subsub, _index_mode)| {
-                quote! {
-                    #field,
                 }
             })
             .collect();
