@@ -8,6 +8,8 @@ edition = "2018"
 syn = "0.15"
 quote = "0.6"
 proc-macro2 = "0.4"
+darling = "0.9"
+synstructure = "0.10"
 
 [dev-dependencies]
 tsdb = {path="../"}

@@ -2,7 +2,11 @@ extern crate proc_macro;
 extern crate syn;
 #[macro_use]
 extern crate quote;
+#[macro_use]
+extern crate darling;
 extern crate proc_macro2;
+use darling::ast::Data;
+use darling::{FromDeriveInput, FromField};
 use proc_macro2::{Span, TokenStream};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
@@ -14,20 +18,40 @@ use syn::{
     Type, TypePath,
 };
 
+#[derive(FromDeriveInput, Debug)]
+#[darling(attributes(index))]
+struct PersistentInfo {
+    ident: Ident,
+    data: Data<(), PersistentAttr>,
+}
+
+#[derive(FromMeta, Debug, Clone)]
+//#[darling(default)]
+enum IndexMode {
+    Exclusive,
+    Cluster,
+    Replace,
+}
+impl Default for IndexMode {
+    fn default() -> IndexMode {
+        IndexMode::Cluster
+    }
+}
+
+#[derive(FromField, Debug)]
+#[darling(attributes(index))]
+struct PersistentAttr {
+    ident: Option<Ident>,
+    ty: syn::Type,
+    #[darling(default)]
+    mode: Option<IndexMode>,
+}
+
 #[proc_macro_derive(Persistent, attributes(index))]
 pub fn persistent(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed: DeriveInput = syn::parse(input).unwrap();
 
-    let struct_name = &parsed.ident;
-    let gen = match parsed.data {
-        Struct(DataStruct {
-            fields: syn::Fields::Named(ref fields),
-            ..
-        }) => impl_persistent_for_struct(struct_name, &fields.named, &parsed.attrs),
-        _ => quote! {
-            other shit
-        },
-    };
+    let gen = PersistentInfo::from_derive_input(&parsed).unwrap().to_tokens();
     gen.into()
 }
 
@@ -54,172 +78,289 @@ fn sub_type(t: &Type) -> Option<&Type> {
     }
 }
 
-fn impl_persistent_for_struct(name: &Ident, fields: &Punctuated<Field, Comma>, attrs: &[Attribute]) -> TokenStream {
-    let fields: Vec<(Ident, Ident, Option<Ident>, Option<Ident>)> = fields
-        .iter()
-        .filter_map(|f| {
-            let field = f.ident.clone().unwrap();
-            let st = sub_type(&f.ty);
-            let sst = st.iter().filter_map(|x| sub_type(&x)).next();
-            if let Path(ref path) = f.ty {
-                let ty = path.clone().path.segments.iter().last().unwrap().ident.clone();
-                let sub = st
-                    .iter()
-                    .filter_map(|x| {
-                        if let Path(ref path) = x {
-                            Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .next();
-                let subsub = sst
-                    .iter()
-                    .filter_map(|x| {
-                        if let Path(ref path) = x {
-                            Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .next();
-                Some((field, ty, sub, subsub))
-            } else {
-                None
+fn translate_option_mode(mode: &Option<IndexMode>) -> TokenStream {
+    match mode {
+        None => quote! {
+            None
+        },
+        Some(x) => {
+            let mode = translate_mode(x);
+            quote! {
+                Some(#mode)
             }
-        })
-        .collect();
-    let fields_meta: Vec<TokenStream> = fields
+        }
+    }
+}
+
+fn translate_mode(mode: &IndexMode) -> TokenStream {
+    match mode {
+        IndexMode::Cluster => quote! {
+            tsdb::ValueMode::CLUSTER
+        },
+        IndexMode::Exclusive => quote! {
+            tsdb::ValueMode::EXCLUSIVE
+        },
+        IndexMode::Replace => quote! {
+            tsdb::ValueMode::REPLACE
+        },
+    }
+}
+
+impl PersistentInfo {
+    fn to_tokens(&self) -> TokenStream {
+        let name = &self.ident;
+        let fields: Vec<(Ident, Ident, Option<Ident>, Option<Ident>, Option<IndexMode>)> = self
+            .data
+            .as_ref()
+            .take_struct()
+            .unwrap()
+            .fields
+            .iter()
+            .filter_map(|f| {
+                let field = f.ident.clone().unwrap();
+                let st = sub_type(&f.ty);
+                let sst = st.iter().filter_map(|x| sub_type(&x)).next();
+                if let Path(ref path) = f.ty {
+                    let ty = path.clone().path.segments.iter().last().unwrap().ident.clone();
+                    let sub = st
+                        .iter()
+                        .filter_map(|x| {
+                            if let Path(ref path) = x {
+                                Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .next();
+                    let subsub = sst
+                        .iter()
+                        .filter_map(|x| {
+                            if let Path(ref path) = x {
+                                Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .next();
+                    Some((field, ty, sub, subsub, f.mode.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let fields_meta: Vec<TokenStream> = fields
         .iter()
-        .map(|(field, ty, sub, subsub)| {
+        .map(|(field, ty, sub, subsub,index_mode)| {
+            let indexed = translate_option_mode(index_mode);
             let field_name = field.to_string();
             match (sub, subsub) {
                 (Some(s), Some(s1)) => {
                     quote! {
-                        fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s<#s1>>>(),true));
+                        fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s<#s1>>>(),#indexed));
+                    }
+                },
+                (Some(s), None) => {
+                    quote! {
+                        fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s>>(),#indexed));
+                    }
+                },
+                (None, None) => {
+                    quote! {
+                        fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty>(),#indexed));
+                    }
+                },
+                _ => panic!("can't happen"),
+            }
+        })
+        .collect();
+
+        let fields_write: Vec<TokenStream> = fields
+            .iter()
+            .map(|(field, ty, sub, subsub, _index_mode)| match (sub, subsub) {
+                (Some(s), Some(s1)) => {
+                    let base_write = Ident::new(
+                        &format!(
+                            "write_{}_{}",
+                            &ty.to_string().to_lowercase(),
+                            &s.to_string().to_lowercase()
+                        ),
+                        Span::call_site(),
+                    );
+                    let add_write = Ident::new(&format!("write_{}", &s1.to_string().to_lowercase()), Span::call_site());
+
+                    quote! {
+                        write.#base_write(&self.#field,TWrite::#add_write)?;
                     }
                 }
 
-            (Some(s), None) => {
-            quote! {
-                fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s>>(),true));
-            }
-            }
-
-            (None, None) => {
-            quote! {
-                fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty>(),true));
-            }
-            }
-            _ => panic!("can't happen"),
-        }
-        })
-        .collect();
-
-    let fields_write: Vec<TokenStream> = fields
-        .iter()
-        .map(|(field, ty, sub, subsub)| match (sub, subsub) {
-            (Some(s), Some(s1)) => {
-                let base_write = Ident::new(
-                    &format!(
-                        "write_{}_{}",
-                        &ty.to_string().to_lowercase(),
-                        &s.to_string().to_lowercase()
-                    ),
-                    Span::call_site(),
-                );
-                let add_write = Ident::new(&format!("write_{}", &s1.to_string().to_lowercase()), Span::call_site());
-
-                quote! {
-                    write.#base_write(&self.#field,TWrite::#add_write)?;
+                (Some(s), None) => {
+                    let base_write =
+                        Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
+                    let add_write = Ident::new(&format!("write_{}", &s.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        write.#base_write(&self.#field,TWrite::#add_write)?;
+                    }
                 }
-            }
 
-            (Some(s), None) => {
-                let base_write = Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                let add_write = Ident::new(&format!("write_{}", &s.to_string().to_lowercase()), Span::call_site());
-                quote! {
-                    write.#base_write(&self.#field,TWrite::#add_write)?;
+                (None, None) => {
+                    let base_write =
+                        Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        write.#base_write(&self.#field)?;
+                    }
                 }
-            }
+                _ => panic!("can't happen"),
+            })
+            .collect();
 
-            (None, None) => {
-                let base_write = Ident::new(&format!("write_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                quote! {
-                    write.#base_write(&self.#field)?;
+        let fields_read: Vec<TokenStream> = fields
+            .iter()
+            .map(|(field, ty, sub, subsub, _index_mode)| match (sub, subsub) {
+                (Some(s), Some(s1)) => {
+                    let base_read = Ident::new(
+                        &format!(
+                            "read_{}_{}",
+                            &ty.to_string().to_lowercase(),
+                            &s.to_string().to_lowercase()
+                        ),
+                        Span::call_site(),
+                    );
+                    let add_read = Ident::new(&format!("read_{}", &s1.to_string().to_lowercase()), Span::call_site());
+
+                    quote! {
+                        let #field = read.#base_read(TRead::#add_read)?;
+                    }
                 }
-            }
-            _ => panic!("can't happen"),
-        })
-        .collect();
 
-    let fields_read: Vec<TokenStream> = fields
-        .iter()
-        .map(|(field, ty, sub, subsub)| match (sub, subsub) {
-            (Some(s), Some(s1)) => {
-                let base_read = Ident::new(
-                    &format!(
-                        "read_{}_{}",
-                        &ty.to_string().to_lowercase(),
-                        &s.to_string().to_lowercase()
-                    ),
-                    Span::call_site(),
-                );
-                let add_read = Ident::new(&format!("read_{}", &s1.to_string().to_lowercase()), Span::call_site());
-
-                quote! {
-                    let #field = read.#base_read(TRead::#add_read)?;
+                (Some(s), None) => {
+                    let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
+                    let add_read = Ident::new(&format!("read_{}", &s.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        let #field = read.#base_read(TRead::#add_read)?;
+                    }
                 }
-            }
 
-            (Some(s), None) => {
-                let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                let add_read = Ident::new(&format!("read_{}", &s.to_string().to_lowercase()), Span::call_site());
-                quote! {
-                    let #field = read.#base_read(TRead::#add_read)?;
+                (None, None) => {
+                    let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        let #field = read.#base_read()?;
+                    }
                 }
-            }
+                _ => panic!("can't happen"),
+            })
+            .collect();
 
-            (None, None) => {
-                let base_read = Ident::new(&format!("read_{}", &ty.to_string().to_lowercase()), Span::call_site());
-                quote! {
-                    let #field = read.#base_read()?;
+        let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = fields
+            .iter()
+            .filter(|(_, _, _, _, index_mode)| index_mode.is_some())
+            .map(|(field, ty, sub, subsub, index_mode)| {
+                let index_name = format!("{}.{}", name, field);
+                let mode = translate_mode(&index_mode.as_ref().unwrap());
+                match (sub, subsub) {
+                    (Some(_), Some(s1)) => {
+                        let declare = quote! {
+                            tsdb::declare_index::<#s1>(db,#index_name,#mode)?;
+                        };
+                        let put = quote! {
+                            if let Some(val) = self.#field {
+                                for single in val {
+                                    tsdb::put_index::<#s1,Self>(db,#index_name,single,id)?;
+                                }
+                            }
+                        };
+                        let remove = quote! {
+                            tsdb::remove_index::<#s1,Self>(tx,#index_name,&self.#field,id)?;
+                        };
+                        (declare, (put, remove))
+                    }
+
+                    (Some(s), None) => {
+                        let declare = quote! {
+                            tsdb::declare_index::<#s>(db,#index_name,#mode)?;
+                        };
+                        let put = quote! {
+                            for single in self.#field {
+                                tsdb::put_index::<#s,Self>(db,#index_name,single,id)?;
+                            }
+                        };
+                        let remove = quote! {
+                            tsdb::remove_index::<#s,Self>(tx,#index_name,&self.#field,id)?;
+                        };
+                        (declare, (put, remove))
+                    }
+
+                    (None, None) => {
+                        let declare = quote! {
+                            tsdb::declare_index::<#ty>(db,#index_name,#mode)?;
+                        };
+                        let put = quote! {
+                            tsdb::put_index::<#ty,Self>(tx,#index_name,&self.#field,id)?;
+                        };
+                        let remove = quote! {
+                            tsdb::remove_index::<#ty,Self>(tx,#index_name,&self.#field,id)?;
+                        };
+                        (declare, (put, remove))
+                    }
+                    _ => panic!("can't happen"),
                 }
-            }
-            _ => panic!("can't happen"),
-        })
-        .collect();
-    let fields_construct: Vec<TokenStream> = fields
-        .iter()
-        .map(|(field, _ty, _sub, _subsub)| {
-            quote! {
-                #field,
-            }
-        })
-        .collect();
-    let struct_name = name.to_string();
-    let hash_id = "".to_string();
-    quote! {
+            })
+            .collect();
+        let fields_construct: Vec<TokenStream> = fields
+            .iter()
+            .map(|(field, _ty, _sub, _subsub, _index_mode)| {
+                quote! {
+                    #field,
+                }
+            })
+            .collect();
+        let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
+            snippets.into_iter().unzip();
+        let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
+        let struct_name = name.to_string();
+        let hash_id = "".to_string();
+        let data = quote! {
+                fn get_description() -> tsdb::StructDescription {
+                    let mut fields = Vec::new();
+                    #( #fields_meta )*
+                    tsdb::StructDescription::new(#struct_name,#hash_id,fields)
+                }
 
-        impl tsdb::Persistent for #name {
-            fn get_description() -> tsdb::StructDescription {
-                let mut fields = Vec::new();
-                #( #fields_meta )*
-                tsdb::StructDescription::new(#struct_name,#hash_id,fields)
-            }
+                fn write(&self,write:&mut std::io::Write) -> tsdb::TRes<()> {
+                    use tsdb::TWrite;
+                    #( #fields_write )*
+                    Ok(())
+                }
 
-            fn write(&self,write:&mut std::io::Write) -> tsdb::TRes<()> {
-                use tsdb::TWrite;
-                #( #fields_write )*
-                Ok(())
-            }
+                fn read(read:&mut std::io::Read) -> tsdb::TRes<#name> {
+                    use tsdb::TRead;
+                    #( #fields_read )*
+                    Ok(#name {
+                    #( #fields_construct )*
+                    })
+                }
+        };
 
-            fn read(read:&mut std::io::Read) -> tsdb::TRes<#name> {
-                use tsdb::TRead;
-                #( #fields_read )*
-                Ok(#name {
-                #( #fields_construct )*
-                })
+        let indexes = quote! {
+                fn declare(&self, db:&tsdb::Tsdb)-> tsdb::TRes<()> {
+                    #( #index_declare )*
+                    Ok(())
+                }
+
+                fn put_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
+                    #( #index_put )*
+                    Ok(())
+                }
+
+                fn remove_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
+                    #( #index_remove )*
+                    Ok(())
+                }
+        };
+        quote! {
+            impl tsdb::Persistent for #name {
+                #data
+
+                #indexes
             }
         }
     }

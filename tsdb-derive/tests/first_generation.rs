@@ -3,8 +3,9 @@ use tsdb_derive::Persistent;
 
 #[derive(Persistent)]
 struct One {
-    #[index(exclusive)]
+    #[index(mode = "exclusive")]
     first: String,
+    //#[index()]
     second: u8,
     third: Option<u8>,
     forth: Vec<String>,

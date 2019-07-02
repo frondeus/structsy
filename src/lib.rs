@@ -1,11 +1,11 @@
-use persy::{Config, Persy, PersyError, PersyId, Transaction};
+use persy::{Config, Persy, PersyError, PersyId, Transaction, IndexType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IOError, Read, Write};
 use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
-
+pub use persy::ValueMode;
 mod format;
 pub use format::{TRead, TWrite};
 
@@ -223,11 +223,11 @@ impl FieldType {
 pub struct FieldDescription {
     name: String,
     field_type: FieldType,
-    indexed: bool,
+    indexed: Option<ValueMode>,
 }
 
 impl FieldDescription {
-    pub fn new(name: &str, field_type: FieldType, indexed: bool) -> FieldDescription {
+    pub fn new(name: &str, field_type: FieldType, indexed:Option<ValueMode>) -> FieldDescription {
         FieldDescription {
             name: name.to_string(),
             field_type,
@@ -237,7 +237,14 @@ impl FieldDescription {
     fn read(read: &mut Read) -> TRes<FieldDescription> {
         let name = read.read_string()?;
         let field_type = FieldType::read(read)?;
-        let indexed = read.read_bool()?;
+        let indexed_value = read.read_u8()?;
+        let indexed = match indexed_value {
+            0 => None,
+            1 => Some(ValueMode::CLUSTER),
+            2 => Some(ValueMode::EXCLUSIVE),
+            3 => Some(ValueMode::REPLACE),
+            _ => panic!("index type reading failure"),
+        };
         Ok(FieldDescription {
             name,
             field_type,
@@ -247,7 +254,12 @@ impl FieldDescription {
     fn write(&self, write: &mut Write) -> TRes<()> {
         write.write_string(&self.name)?;
         self.field_type.write(write)?;
-        write.write_bool(&self.indexed)?;
+        match self.indexed {
+            None => write.write_u8(&0)?,
+            Some(ValueMode::CLUSTER) => write.write_u8(&1)?,
+            Some(ValueMode::EXCLUSIVE) => write.write_u8(&2)?,
+            Some(ValueMode::REPLACE) => write.write_u8(&3)?,
+        }
         Ok(())
     }
 }
@@ -293,6 +305,31 @@ pub trait Persistent {
     fn read(read: &mut Read) -> TRes<Self>
     where
         Self: std::marker::Sized;
+    fn declare(&self, db:&Tsdb)-> TRes<()>;
+    fn put_indexes(&self, tx:&mut Tstx, id:&Ref<Self>)-> TRes<()> 
+    where
+        Self: std::marker::Sized;
+    fn remove_indexes(&self, tx:&mut Tstx, id:&Ref<Self>)-> TRes<()> 
+    where
+        Self: std::marker::Sized;
+}
+
+pub fn declare_index<T:IndexType> (db:&Tsdb, name:&str, mode:ValueMode) -> TRes<()>{
+    let mut tx = db.tsdb_impl.persy.begin()?;
+    db.tsdb_impl.persy.create_index::<T,PersyId>(&mut tx,name,mode)?;
+    let prep =db.tsdb_impl.persy.prepare_commit(tx)?;
+    db.tsdb_impl.persy.commit(prep)?;
+    Ok(())
+}
+
+pub fn put_index<T:IndexType,P:Persistent> (tx:&mut Tstx, name:&str,k:&T,id:&Ref<P>) -> TRes<()>{
+    tx.tsdb_impl.persy.put::<T,PersyId>(&mut tx.trans,name,k.clone(),id.raw_id.clone())?;
+    Ok(())
+}
+
+pub fn remove_index<T:IndexType,P:Persistent> (tx:&mut Tstx, name:&str,k:&T,id:&Ref<P>) -> TRes<()>{
+    tx.tsdb_impl.persy.remove::<T,PersyId>(&mut tx.trans,name,k.clone(),Some(id.raw_id.clone()))?;
+    Ok(())
 }
 
 pub struct Ref<T> {
@@ -313,25 +350,36 @@ impl Tstx {
         sct.write(&mut buff)?;
         let segment = T::get_description().name;
         let id = self.tsdb_impl.persy.insert_record(&mut self.trans, &segment, &buff)?;
-        Ok(Ref {
+        let id_ref = Ref {
             type_name: segment,
             raw_id: id,
             ph: PhantomData,
-        })
+        };
+        sct.put_indexes(self, &id_ref)?;
+        Ok(id_ref)
     }
 
     pub fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> TRes<()> {
         self.tsdb_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
+        let old = self.read::<T>(sref)?;
+        if let Some(old_rec) = old {
+            old_rec.remove_indexes(self, &sref)?; 
+        }
         self.tsdb_impl
             .persy
             .update_record(&mut self.trans, &sref.type_name, &sref.raw_id, &buff)?;
+        sct.put_indexes(self, &sref)?;
         Ok(())
     }
 
     pub fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> TRes<()> {
         self.tsdb_impl.check_defined::<T>()?;
+        let old = self.read::<T>(sref)?;
+        if let Some(old_rec) = old {
+            old_rec.remove_indexes(self, &sref)?; 
+        }
         self.tsdb_impl
             .persy
             .delete_record(&mut self.trans, &sref.type_name, &sref.raw_id)?;
@@ -377,8 +425,8 @@ impl Tsdb {
             trans: self.tsdb_impl.begin()?,
         })
     }
-
-    pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> TRes<Option<T>> {
+    
+    fn read<T: Persistent>(&self, sref: &Ref<T>) -> TRes<Option<T>> {
         self.tsdb_impl.read(sref)
     }
 
@@ -480,7 +528,8 @@ impl TsdbImpl {
 #[cfg(test)]
 mod test {
     use super::format::{TRead, TWrite};
-    use super::{FieldDescription, FieldType, FieldValueType, Persistent, StructDescription, TRes, Tsdb};
+    use super::{FieldDescription, FieldType, FieldValueType, Persistent, StructDescription, TRes,Ref, Tsdb, Tstx};
+    use persy::ValueMode;
     use std::fs;
     use std::io::{Read, Write};
     struct ToTest {
@@ -494,12 +543,12 @@ mod test {
             fields.push(FieldDescription {
                 name: "name".to_string(),
                 field_type: FieldType::Value(FieldValueType::String),
-                indexed: false,
+                indexed: Some(ValueMode::CLUSTER),
             });
             fields.push(FieldDescription {
                 name: "length".to_string(),
                 field_type: FieldType::Value(FieldValueType::U32),
-                indexed: false,
+                indexed: None,
             });
             StructDescription {
                 name: "ToTest".to_string(),
@@ -520,6 +569,17 @@ mod test {
                 name: read.read_string()?,
                 length: read.read_u32()?,
             })
+        }
+
+        fn declare(&self, _db:&Tsdb)-> TRes<()> {
+            Ok(())
+        }
+        fn put_indexes(&self, _tx:&mut Tstx, _id: &Ref<Self>)-> TRes<()> {
+            Ok(())
+        }
+
+        fn remove_indexes(&self, _tx:&mut Tstx, _id: &Ref<Self>)-> TRes<()> {
+            Ok(())
         }
     }
 
