@@ -10,7 +10,7 @@ struct One {
     third: Option<u8>,
     forth: Vec<String>,
     fifth: Option<Vec<String>>,
-    //sixth: Ref<Two>,
+    sixth: Ref<Two>,
 }
 
 #[derive(Persistent)]

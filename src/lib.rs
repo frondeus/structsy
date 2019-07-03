@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 mod format;
-pub use format::{TRead, TWrite};
+pub use format::PeristentEmbedded;
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
@@ -74,7 +74,7 @@ pub enum FieldType {
 
 impl FieldValueType {
     fn read(read: &mut Read) -> TRes<FieldValueType> {
-        let sv = read.read_u8()?;
+        let sv = u8::read(read)?;
         Ok(match sv {
             1 => FieldValueType::U8,
             2 => FieldValueType::U16,
@@ -91,7 +91,7 @@ impl FieldValueType {
             13 => FieldValueType::Bool,
             14 => FieldValueType::String,
             15 => {
-                let s = read.read_string()?;
+                let s = String::read(read)?;
                 FieldValueType::Ref(s)
             }
             _ => panic!("error on de-serialization"),
@@ -99,23 +99,23 @@ impl FieldValueType {
     }
     fn write(&self, write: &mut Write) -> TRes<()> {
         match self {
-            FieldValueType::U8 => write.write_u8(&1)?,
-            FieldValueType::U16 => write.write_u8(&2)?,
-            FieldValueType::U32 => write.write_u8(&3)?,
-            FieldValueType::U64 => write.write_u8(&4)?,
-            FieldValueType::U128 => write.write_u8(&5)?,
-            FieldValueType::I8 => write.write_u8(&6)?,
-            FieldValueType::I16 => write.write_u8(&7)?,
-            FieldValueType::I32 => write.write_u8(&8)?,
-            FieldValueType::I64 => write.write_u8(&9)?,
-            FieldValueType::I128 => write.write_u8(&10)?,
-            FieldValueType::F32 => write.write_u8(&11)?,
-            FieldValueType::F64 => write.write_u8(&12)?,
-            FieldValueType::Bool => write.write_u8(&13)?,
-            FieldValueType::String => write.write_u8(&14)?,
+            FieldValueType::U8 => u8::write(&1, write)?,
+            FieldValueType::U16 => u8::write(&2, write)?,
+            FieldValueType::U32 => u8::write(&3, write)?,
+            FieldValueType::U64 => u8::write(&4, write)?,
+            FieldValueType::U128 => u8::write(&5, write)?,
+            FieldValueType::I8 => u8::write(&6, write)?,
+            FieldValueType::I16 => u8::write(&7, write)?,
+            FieldValueType::I32 => u8::write(&8, write)?,
+            FieldValueType::I64 => u8::write(&9, write)?,
+            FieldValueType::I128 => u8::write(&10, write)?,
+            FieldValueType::F32 => u8::write(&11, write)?,
+            FieldValueType::F64 => u8::write(&12, write)?,
+            FieldValueType::Bool => u8::write(&13, write)?,
+            FieldValueType::String => u8::write(&14, write)?,
             FieldValueType::Ref(t) => {
-                write.write_u8(&15)?;
-                write.write_string(&t)?;
+                u8::write(&15, write)?;
+                String::write(&t, write)?;
             }
         }
         Ok(())
@@ -188,7 +188,7 @@ impl FieldType {
     }
 
     fn read(read: &mut Read) -> TRes<FieldType> {
-        let t = read.read_u8()?;
+        let t = u8::read(read)?;
         Ok(match t {
             1 => FieldType::Value(FieldValueType::read(read)?),
             2 => FieldType::Option(FieldValueType::read(read)?),
@@ -200,19 +200,19 @@ impl FieldType {
     fn write(&self, write: &mut Write) -> TRes<()> {
         match self {
             FieldType::Value(t) => {
-                write.write_u8(&1)?;
+                u8::write(&1, write)?;
                 t.write(write)?;
             }
             FieldType::Option(t) => {
-                write.write_u8(&2)?;
+                u8::write(&2, write)?;
                 t.write(write)?;
             }
             FieldType::Array(t) => {
-                write.write_u8(&3)?;
+                u8::write(&3, write)?;
                 t.write(write)?;
             }
             FieldType::OptionArray(t) => {
-                write.write_u8(&4)?;
+                u8::write(&4, write)?;
                 t.write(write)?;
             }
         }
@@ -235,9 +235,9 @@ impl FieldDescription {
         }
     }
     fn read(read: &mut Read) -> TRes<FieldDescription> {
-        let name = read.read_string()?;
+        let name = String::read(read)?;
         let field_type = FieldType::read(read)?;
-        let indexed_value = read.read_u8()?;
+        let indexed_value = u8::read(read)?;
         let indexed = match indexed_value {
             0 => None,
             1 => Some(ValueMode::CLUSTER),
@@ -252,13 +252,13 @@ impl FieldDescription {
         })
     }
     fn write(&self, write: &mut Write) -> TRes<()> {
-        write.write_string(&self.name)?;
+        self.name.write(write)?;
         self.field_type.write(write)?;
         match self.indexed {
-            None => write.write_u8(&0)?,
-            Some(ValueMode::CLUSTER) => write.write_u8(&1)?,
-            Some(ValueMode::EXCLUSIVE) => write.write_u8(&2)?,
-            Some(ValueMode::REPLACE) => write.write_u8(&3)?,
+            None => u8::write(&0, write)?,
+            Some(ValueMode::CLUSTER) => u8::write(&1, write)?,
+            Some(ValueMode::EXCLUSIVE) => u8::write(&2, write)?,
+            Some(ValueMode::REPLACE) => u8::write(&3, write)?,
         }
         Ok(())
     }
@@ -279,9 +279,9 @@ impl StructDescription {
         }
     }
     fn read(read: &mut Read) -> TRes<StructDescription> {
-        let name = read.read_string()?;
-        let hash_id = read.read_string()?;
-        let n_fields = read.read_u32()?;
+        let name = String::read(read)?;
+        let hash_id = String::read(read)?;
+        let n_fields = u32::read(read)?;
         let mut fields = Vec::new();
         for _ in 0..n_fields {
             fields.push(FieldDescription::read(read)?);
@@ -289,9 +289,9 @@ impl StructDescription {
         Ok(StructDescription { name, hash_id, fields })
     }
     fn write(&self, write: &mut Write) -> TRes<()> {
-        write.write_string(&self.name)?;
-        write.write_string(&self.hash_id)?;
-        write.write_u32(&(self.fields.len() as u32))?;
+        self.name.write(write)?;
+        self.hash_id.write(write)?;
+        (self.fields.len() as u32).write(write)?;
         for f in &self.fields {
             f.write(write)?;
         }
@@ -531,7 +531,6 @@ impl TsdbImpl {
 
 #[cfg(test)]
 mod test {
-    use super::format::{TRead, TWrite};
     use super::{FieldDescription, FieldType, FieldValueType, Persistent, Ref, StructDescription, TRes, Tsdb, Tstx};
     use persy::ValueMode;
     use std::fs;
@@ -561,17 +560,19 @@ mod test {
             }
         }
         fn write(&self, write: &mut Write) -> TRes<()> {
-            write.write_string(&self.name)?;
-            write.write_u32(&self.length)?;
+            use super::PeristentEmbedded;
+            self.name.write(write)?;
+            self.length.write(write)?;
             Ok(())
         }
         fn read(read: &mut Read) -> TRes<Self>
         where
             Self: std::marker::Sized,
         {
+            use super::PeristentEmbedded;
             Ok(ToTest {
-                name: read.read_string()?,
-                length: read.read_u32()?,
+                name: String::read(read)?,
+                length: u32::read(read)?,
             })
         }
 
