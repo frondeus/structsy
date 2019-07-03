@@ -100,6 +100,13 @@ fn translate_mode(mode: &IndexMode) -> TokenStream {
         },
     }
 }
+fn get_type_ident(ty:&syn::Type) -> Option<Ident>{
+    if let Path(ref path) = ty {
+        Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
+    } else {
+        None
+    }
+}
 
 impl PersistentInfo {
     fn to_tokens(&self) -> TokenStream {
@@ -114,53 +121,33 @@ impl PersistentInfo {
             .filter_map(|f| {
                 let field = f.ident.clone().unwrap();
                 let st = sub_type(&f.ty);
-                let sst = st.iter().filter_map(|x| sub_type(&x)).next();
-                if let Path(ref path) = f.ty {
-                    let ty = path.clone().path.segments.iter().last().unwrap().ident.clone();
-                    let sub = st
-                        .iter()
-                        .filter_map(|x| {
-                            if let Path(ref path) = x {
-                                Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next();
-                    let subsub = sst
-                        .iter()
-                        .filter_map(|x| {
-                            if let Path(ref path) = x {
-                                Some(path.clone().path.segments.iter().last().unwrap().ident.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next();
+                let sub = st.iter().filter_map(|x|get_type_ident(*x)).next();
+                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
+                if let Some(ty) = get_type_ident(&f.ty){
                     Some((field, ty, sub, subsub, f.mode.clone()))
                 } else {
                     None
                 }
             })
-            .collect();
+        .collect();
         let fields_info: Vec<((TokenStream,TokenStream),(TokenStream,TokenStream))> = fields
-        .iter()
-        .map(|(field, ty, sub, subsub,index_mode)| {
-            let indexed = translate_option_mode(index_mode);
-            let field_name = field.to_string();
-            let ty_name = ty.to_string().to_lowercase();
+            .iter()
+            .map(|(field, ty, sub, subsub,index_mode)| {
+                let indexed = translate_option_mode(index_mode);
+                let field_name = field.to_string();
+                let ty_name = ty.to_string().to_lowercase();
                 let read_fill = quote! {
                     #field,
                 };
-            match (sub, subsub) {
-                (Some(s), Some(s1)) => {
-                    let desc = quote! {
-                        fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s<#s1>>>(),#indexed));
-                    };
-                    let s_name = s.to_string().to_lowercase();
-                    let s1_name = s1.to_string().to_lowercase();
-                    let base_write = Ident::new( &format!("write_{}_{}", &ty_name,&s_name), Span::call_site());
-                    let add_write = Ident::new( &format!("write_{}", &s1_name), Span::call_site());
+                match (sub, subsub) {
+                    (Some(s), Some(s1)) => {
+                        let desc = quote! {
+                            fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#s<#s1>>>(),#indexed));
+                        };
+                        let s_name = s.to_string().to_lowercase();
+                        let s1_name = s1.to_string().to_lowercase();
+                        let base_write = Ident::new( &format!("write_{}_{}", &ty_name,&s_name), Span::call_site());
+                        let add_write = Ident::new( &format!("write_{}", &s1_name), Span::call_site());
 
                     let write = quote! {
                         write.#base_write(&self.#field,TWrite::#add_write)?;
