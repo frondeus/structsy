@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 mod format;
-pub use format::PeristentEmbedded;
+pub use format::PersistentEmbedded;
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
@@ -560,7 +560,7 @@ mod test {
             }
         }
         fn write(&self, write: &mut Write) -> TRes<()> {
-            use super::PeristentEmbedded;
+            use super::PersistentEmbedded;
             self.name.write(write)?;
             self.length.write(write)?;
             Ok(())
@@ -569,7 +569,7 @@ mod test {
         where
             Self: std::marker::Sized,
         {
-            use super::PeristentEmbedded;
+            use super::PersistentEmbedded;
             Ok(ToTest {
                 name: String::read(read)?,
                 length: u32::read(read)?,

@@ -2,14 +2,14 @@ use crate::{Persistent, Ref, TRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
-pub trait PeristentEmbedded {
+pub trait PersistentEmbedded {
     fn write(&self, write: &mut Write) -> TRes<()>;
     fn read(read: &mut Read) -> TRes<Self>
     where
         Self: Sized;
 }
 
-impl PeristentEmbedded for u8 {
+impl PersistentEmbedded for u8 {
     fn write(&self, write: &mut Write) -> TRes<()> {
         WriteBytesExt::write_u8(write, *self)?;
         Ok(())
@@ -18,7 +18,7 @@ impl PeristentEmbedded for u8 {
         Ok(ReadBytesExt::read_u8(read)?)
     }
 }
-impl PeristentEmbedded for i8 {
+impl PersistentEmbedded for i8 {
     fn write(&self, write: &mut Write) -> TRes<()> {
         WriteBytesExt::write_i8(write, *self)?;
         Ok(())
@@ -27,7 +27,7 @@ impl PeristentEmbedded for i8 {
         Ok(ReadBytesExt::read_i8(read)?)
     }
 }
-impl PeristentEmbedded for bool {
+impl PersistentEmbedded for bool {
     fn write(&self, write: &mut Write) -> TRes<()> {
         if *self {
             WriteBytesExt::write_u8(write, 1)?;
@@ -41,7 +41,7 @@ impl PeristentEmbedded for bool {
     }
 }
 
-impl PeristentEmbedded for String {
+impl PersistentEmbedded for String {
     fn write(&self, write: &mut Write) -> TRes<()> {
         let b = self.as_bytes();
         WriteBytesExt::write_u32::<BigEndian>(write, b.len() as u32)?;
@@ -56,7 +56,7 @@ impl PeristentEmbedded for String {
     }
 }
 
-impl<T: PeristentEmbedded> PeristentEmbedded for Option<T> {
+impl<T: PersistentEmbedded> PersistentEmbedded for Option<T> {
     fn write(&self, write: &mut Write) -> TRes<()> {
         if let Some(to_write) = self {
             WriteBytesExt::write_u8(write, 1)?;
@@ -75,7 +75,7 @@ impl<T: PeristentEmbedded> PeristentEmbedded for Option<T> {
     }
 }
 
-impl<T: PeristentEmbedded> PeristentEmbedded for Vec<T> {
+impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
     fn write(&self, write: &mut Write) -> TRes<()> {
         WriteBytesExt::write_u32::<BigEndian>(write, self.len() as u32)?;
         for v in self {
@@ -92,7 +92,7 @@ impl<T: PeristentEmbedded> PeristentEmbedded for Vec<T> {
         Ok(v)
     }
 }
-impl<T: Persistent> PeristentEmbedded for Ref<T> {
+impl<T: Persistent> PersistentEmbedded for Ref<T> {
     fn write(&self, write: &mut Write) -> TRes<()> {
         format!("{}", self.raw_id).write(write)?;
         Ok(())
@@ -108,9 +108,9 @@ impl<T: Persistent> PeristentEmbedded for Ref<T> {
     }
 }
 
-macro_rules! impl_persist_emp {
+macro_rules! impl_persistent_embedded {
     ($t:ident,$w:ident,$r:ident) => {
-        impl PeristentEmbedded for $t {
+        impl PersistentEmbedded for $t {
             fn write(&self, write: &mut Write) -> TRes<()> {
                 WriteBytesExt::$w::<BigEndian>(write, *self)?;
                 Ok(())
@@ -121,13 +121,13 @@ macro_rules! impl_persist_emp {
         }
     };
 }
-impl_persist_emp!(u16, write_u16, read_u16);
-impl_persist_emp!(u32, write_u32, read_u32);
-impl_persist_emp!(u64, write_u64, read_u64);
-impl_persist_emp!(u128, write_u128, read_u128);
-impl_persist_emp!(i16, write_i16, read_i16);
-impl_persist_emp!(i32, write_i32, read_i32);
-impl_persist_emp!(i64, write_i64, read_i64);
-impl_persist_emp!(i128, write_i128, read_i128);
-impl_persist_emp!(f32, write_f32, read_f32);
-impl_persist_emp!(f64, write_f64, read_f64);
+impl_persistent_embedded!(u16, write_u16, read_u16);
+impl_persistent_embedded!(u32, write_u32, read_u32);
+impl_persistent_embedded!(u64, write_u64, read_u64);
+impl_persistent_embedded!(u128, write_u128, read_u128);
+impl_persistent_embedded!(i16, write_i16, read_i16);
+impl_persistent_embedded!(i32, write_i32, read_i32);
+impl_persistent_embedded!(i64, write_i64, read_i64);
+impl_persistent_embedded!(i128, write_i128, read_i128);
+impl_persistent_embedded!(f32, write_f32, read_f32);
+impl_persistent_embedded!(f64, write_f64, read_f64);

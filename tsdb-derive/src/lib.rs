@@ -162,7 +162,7 @@ impl PersistentInfo {
                 };
 
                 let read =quote! {
-                    let #field = PeristentEmbedded::read(read)?;
+                    let #field = PersistentEmbedded::read(read)?;
                 };
                 ((desc, write), (read, read_fill))
             })
@@ -242,13 +242,13 @@ impl PersistentInfo {
                 }
 
                 fn write(&self,write:&mut std::io::Write) -> tsdb::TRes<()> {
-                    use tsdb::PeristentEmbedded;
+                    use tsdb::PersistentEmbedded;
                     #( #fields_write )*
                     Ok(())
                 }
 
                 fn read(read:&mut std::io::Read) -> tsdb::TRes<#name> {
-                    use tsdb::PeristentEmbedded;
+                    use tsdb::PersistentEmbedded;
                     #( #fields_read )*
                     Ok(#name {
                     #( #fields_construct )*
