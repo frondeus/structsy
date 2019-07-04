@@ -180,53 +180,33 @@ impl PersistentInfo {
             .map(|(field, ty, sub, subsub, index_mode)| {
                 let index_name = format!("{}.{}", name, field);
                 let mode = translate_mode(&index_mode.as_ref().unwrap());
-                match (sub, subsub) {
+                let declare = match (sub, subsub) {
                     (Some(_), Some(s1)) => {
-                        let declare = quote! {
+                        quote! {
                             tsdb::declare_index::<#s1>(db,#index_name,#mode)?;
-                        };
-                        let put = quote! {
-                            if let Some(val) = self.#field {
-                                for single in val {
-                                    tsdb::put_index::<#s1,Self>(db,#index_name,single,id)?;
-                                }
-                            }
-                        };
-                        let remove = quote! {
-                            tsdb::remove_index::<#s1,Self>(tx,#index_name,&self.#field,id)?;
-                        };
-                        (declare, (put, remove))
+                        }
                     }
 
                     (Some(s), None) => {
-                        let declare = quote! {
+                        quote! {
                             tsdb::declare_index::<#s>(db,#index_name,#mode)?;
-                        };
-                        let put = quote! {
-                            for single in self.#field {
-                                tsdb::put_index::<#s,Self>(db,#index_name,single,id)?;
-                            }
-                        };
-                        let remove = quote! {
-                            tsdb::remove_index::<#s,Self>(tx,#index_name,&self.#field,id)?;
-                        };
-                        (declare, (put, remove))
+                        }
                     }
 
                     (None, None) => {
-                        let declare = quote! {
+                        quote! {
                             tsdb::declare_index::<#ty>(db,#index_name,#mode)?;
-                        };
-                        let put = quote! {
-                            tsdb::put_index::<#ty,Self>(tx,#index_name,&self.#field,id)?;
-                        };
-                        let remove = quote! {
-                            tsdb::remove_index::<#ty,Self>(tx,#index_name,&self.#field,id)?;
-                        };
-                        (declare, (put, remove))
+                        }
                     }
                     _ => panic!("can't happen"),
-                }
+                };
+                let put = quote! {
+                    self.#field.puts(tx,#index_name,id);
+                };
+                let remove = quote! {
+                    self.#field.removes(tx,#index_name,id);
+                };
+                (declare, (put, remove))
             })
             .collect();
         let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
@@ -257,17 +237,19 @@ impl PersistentInfo {
         };
 
         let indexes = quote! {
-                fn declare(&self, db:&tsdb::Tsdb)-> tsdb::TRes<()> {
+                fn declare(db:&mut tsdb::Tstx)-> tsdb::TRes<()> {
                     #( #index_declare )*
                     Ok(())
                 }
 
                 fn put_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
+                    use tsdb::IndexableValue;
                     #( #index_put )*
                     Ok(())
                 }
 
                 fn remove_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
+                    use tsdb::IndexableValue;
                     #( #index_remove )*
                     Ok(())
                 }

@@ -56,7 +56,7 @@ pub trait Persistent {
     fn read(read: &mut Read) -> TRes<Self>
     where
         Self: std::marker::Sized;
-    fn declare(&self, db: &Tsdb) -> TRes<()>;
+    fn declare(db: &mut Tstx) -> TRes<()>;
     fn put_indexes(&self, tx: &mut Tstx, id: &Ref<Self>) -> TRes<()>
     where
         Self: std::marker::Sized;
@@ -65,12 +65,77 @@ pub trait Persistent {
         Self: std::marker::Sized;
 }
 
-pub fn declare_index<T: IndexType>(db: &Tsdb, name: &str, mode: ValueMode) -> TRes<()> {
-    let mut tx = db.tsdb_impl.persy.begin()?;
-    db.tsdb_impl.persy.create_index::<T, PersyId>(&mut tx, name, mode)?;
-    let prep = db.tsdb_impl.persy.prepare_commit(tx)?;
-    db.tsdb_impl.persy.commit(prep)?;
+pub fn declare_index<T: IndexType>(db: &mut Tstx, name: &str, mode: ValueMode) -> TRes<()> {
+    db.tsdb_impl.persy.create_index::<T, PersyId>(&mut db.trans, name, mode)?;
     Ok(())
+}
+
+pub trait IndexableValue {
+    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>;
+    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>;
+}
+
+macro_rules! impl_indexable_value {
+    ($t:ident) => {
+        impl IndexableValue for $t {
+            fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+                put_index(tx,name,self,id)
+            }
+            fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+                remove_index(tx,name,self,id)
+            }
+        }
+    }
+}
+impl_indexable_value!(u8);
+impl_indexable_value!(u16);
+impl_indexable_value!(u32);
+impl_indexable_value!(u64);
+impl_indexable_value!(u128);
+impl_indexable_value!(i8);
+impl_indexable_value!(i16);
+impl_indexable_value!(i32);
+impl_indexable_value!(i64);
+impl_indexable_value!(i128);
+impl_indexable_value!(String);
+
+impl<T:IndexableValue> IndexableValue for Option<T> {
+    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        if let Some(x) = self {
+            x.puts(tx,name,id)?;
+        }
+        Ok(())
+    }
+    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        if let Some(x) = self {
+            x.removes(tx,name,id)?;
+        }
+        Ok(())
+    }
+}
+impl<T:IndexableValue> IndexableValue for Vec<T> {
+    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        for x in self {
+            x.puts(tx,name,id)?;
+        }
+        Ok(())
+    }
+    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        for x in self {
+            x.removes(tx,name,id)?;
+        }
+        Ok(())
+    }
+}
+impl<T:Persistent> IndexableValue for Ref<T> {
+    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        put_index(tx,name,&self.raw_id,id)?;
+        Ok(())
+    }
+    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+        remove_index(tx,name,&self.raw_id,id)?;
+        Ok(())
+    }
 }
 
 pub fn put_index<T: IndexType, P: Persistent>(tx: &mut Tstx, name: &str, k: &T, id: &Ref<P>) -> TRes<()> {
@@ -171,7 +236,7 @@ impl Tsdb {
     }
 
     pub fn define<T: Persistent>(&self) -> TRes<()> {
-        self.tsdb_impl.define::<T>()
+        self.tsdb_impl.define::<T>(&self)
     }
 
     pub fn begin(&self) -> TRes<Tstx> {
@@ -238,7 +303,7 @@ impl TsdbImpl {
         Ok(())
     }
 
-    pub fn define<T: Persistent>(&self) -> TRes<()> {
+    pub fn define<T: Persistent>(&self,tsdb:&Tsdb) -> TRes<()> {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.name.clone()) {
@@ -250,11 +315,11 @@ impl TsdbImpl {
             Entry::Vacant(x) => {
                 let mut buff = Vec::new();
                 desc.write(&mut buff)?;
-                let mut tx = self.persy.begin()?;
-                self.persy.insert_record(&mut tx, INTERNAL_SEGMENT_NAME, &buff)?;
-                self.persy.create_segment(&mut tx, &desc.name)?;
-                let prep = self.persy.prepare_commit(tx)?;
-                self.persy.commit(prep)?;
+                let mut tx = tsdb.begin()?;
+                self.persy.insert_record(&mut tx.trans, INTERNAL_SEGMENT_NAME, &buff)?;
+                self.persy.create_segment(&mut tx.trans, &desc.name)?;
+                T::declare(&mut tx)?;
+                tsdb.commit(tx)?;
                 x.insert(desc);
             }
         }
@@ -327,14 +392,20 @@ mod test {
             })
         }
 
-        fn declare(&self, _db: &Tsdb) -> TRes<()> {
+        fn declare(tx: &mut Tstx) -> TRes<()> {
+            use super::declare_index;
+            declare_index::<String>(tx, "ToTest.name", ValueMode::EXCLUSIVE)?;
             Ok(())
         }
-        fn put_indexes(&self, _tx: &mut Tstx, _id: &Ref<Self>) -> TRes<()> {
+        fn put_indexes(&self, tx: &mut Tstx, id: &Ref<Self>) -> TRes<()> {
+            use super::IndexableValue;
+            self.name.puts(tx,"ToTest.name",id)?;
             Ok(())
         }
 
-        fn remove_indexes(&self, _tx: &mut Tstx, _id: &Ref<Self>) -> TRes<()> {
+        fn remove_indexes(&self, tx: &mut Tstx, id: &Ref<Self>) -> TRes<()> {
+            use super::IndexableValue;
+            self.name.removes(tx,"ToTest.name",id)?;
             Ok(())
         }
     }
