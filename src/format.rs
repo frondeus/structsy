@@ -1,34 +1,34 @@
-use crate::{Persistent, Ref, TRes};
+use crate::{Persistent, Ref, SRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
 pub trait PersistentEmbedded {
-    fn write(&self, write: &mut Write) -> TRes<()>;
-    fn read(read: &mut Read) -> TRes<Self>
+    fn write(&self, write: &mut Write) -> SRes<()>;
+    fn read(read: &mut Read) -> SRes<Self>
     where
         Self: Sized;
 }
 
 impl PersistentEmbedded for u8 {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         WriteBytesExt::write_u8(write, *self)?;
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<u8> {
+    fn read(read: &mut Read) -> SRes<u8> {
         Ok(ReadBytesExt::read_u8(read)?)
     }
 }
 impl PersistentEmbedded for i8 {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         WriteBytesExt::write_i8(write, *self)?;
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<i8> {
+    fn read(read: &mut Read) -> SRes<i8> {
         Ok(ReadBytesExt::read_i8(read)?)
     }
 }
 impl PersistentEmbedded for bool {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         if *self {
             WriteBytesExt::write_u8(write, 1)?;
         } else {
@@ -36,19 +36,19 @@ impl PersistentEmbedded for bool {
         }
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<bool> {
+    fn read(read: &mut Read) -> SRes<bool> {
         Ok(ReadBytesExt::read_u8(read)? == 1)
     }
 }
 
 impl PersistentEmbedded for String {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         let b = self.as_bytes();
         WriteBytesExt::write_u32::<BigEndian>(write, b.len() as u32)?;
         write.write_all(b)?;
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<String> {
+    fn read(read: &mut Read) -> SRes<String> {
         let size = ReadBytesExt::read_u32::<BigEndian>(read)? as u64;
         let mut s = String::new();
         read.take(size).read_to_string(&mut s)?;
@@ -57,7 +57,7 @@ impl PersistentEmbedded for String {
 }
 
 impl<T: PersistentEmbedded> PersistentEmbedded for Option<T> {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         if let Some(to_write) = self {
             WriteBytesExt::write_u8(write, 1)?;
             to_write.write(write)?;
@@ -66,7 +66,7 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Option<T> {
         }
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<Option<T>> {
+    fn read(read: &mut Read) -> SRes<Option<T>> {
         if ReadBytesExt::read_u8(read)? == 1 {
             Ok(Some(T::read(read)?))
         } else {
@@ -76,14 +76,14 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Option<T> {
 }
 
 impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         WriteBytesExt::write_u32::<BigEndian>(write, self.len() as u32)?;
         for v in self {
             T::write(v, write)?;
         }
         Ok(())
     }
-    fn read(read: &mut Read) -> TRes<Vec<T>> {
+    fn read(read: &mut Read) -> SRes<Vec<T>> {
         let len = ReadBytesExt::read_u32::<BigEndian>(read)?;
         let mut v = Vec::new();
         for _ in 0..len {
@@ -93,12 +93,12 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
     }
 }
 impl<T: Persistent> PersistentEmbedded for Ref<T> {
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         format!("{}", self.raw_id).write(write)?;
         Ok(())
     }
 
-    fn read(read: &mut Read) -> TRes<Ref<T>> {
+    fn read(read: &mut Read) -> SRes<Ref<T>> {
         let s_id = String::read(read)?;
         Ok(Ref {
             type_name: T::get_description().name.clone(),
@@ -111,11 +111,11 @@ impl<T: Persistent> PersistentEmbedded for Ref<T> {
 macro_rules! impl_persistent_embedded {
     ($t:ident,$w:ident,$r:ident) => {
         impl PersistentEmbedded for $t {
-            fn write(&self, write: &mut Write) -> TRes<()> {
+            fn write(&self, write: &mut Write) -> SRes<()> {
                 WriteBytesExt::$w::<BigEndian>(write, *self)?;
                 Ok(())
             }
-            fn read(read: &mut Read) -> TRes<$t> {
+            fn read(read: &mut Read) -> SRes<$t> {
                 Ok(ReadBytesExt::$r::<BigEndian>(read)?)
             }
         }

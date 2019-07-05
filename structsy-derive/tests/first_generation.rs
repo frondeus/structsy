@@ -1,5 +1,5 @@
-use tsdb::Ref;
-use tsdb_derive::Persistent;
+use structsy::Ref;
+use structsy_derive::Persistent;
 
 #[derive(Persistent)]
 struct One {

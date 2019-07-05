@@ -1,4 +1,4 @@
-use super::{Persistent, Ref, TRes};
+use super::{Persistent, Ref, SRes};
 use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
@@ -28,7 +28,7 @@ pub enum FieldType {
 }
 
 impl FieldValueType {
-    fn read(read: &mut Read) -> TRes<FieldValueType> {
+    fn read(read: &mut Read) -> SRes<FieldValueType> {
         let sv = u8::read(read)?;
         Ok(match sv {
             1 => FieldValueType::U8,
@@ -52,7 +52,7 @@ impl FieldValueType {
             _ => panic!("error on de-serialization"),
         })
     }
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         match self {
             FieldValueType::U8 => u8::write(&1, write)?,
             FieldValueType::U16 => u8::write(&2, write)?,
@@ -142,7 +142,7 @@ impl FieldType {
         T::resolve()
     }
 
-    fn read(read: &mut Read) -> TRes<FieldType> {
+    fn read(read: &mut Read) -> SRes<FieldType> {
         let t = u8::read(read)?;
         Ok(match t {
             1 => FieldType::Value(FieldValueType::read(read)?),
@@ -152,7 +152,7 @@ impl FieldType {
             _ => panic!("invalid value"),
         })
     }
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         match self {
             FieldType::Value(t) => {
                 u8::write(&1, write)?;
@@ -189,7 +189,7 @@ impl FieldDescription {
             indexed,
         }
     }
-    fn read(read: &mut Read) -> TRes<FieldDescription> {
+    fn read(read: &mut Read) -> SRes<FieldDescription> {
         let name = String::read(read)?;
         let field_type = FieldType::read(read)?;
         let indexed_value = u8::read(read)?;
@@ -206,7 +206,7 @@ impl FieldDescription {
             indexed,
         })
     }
-    fn write(&self, write: &mut Write) -> TRes<()> {
+    fn write(&self, write: &mut Write) -> SRes<()> {
         self.name.write(write)?;
         self.field_type.write(write)?;
         match self.indexed {
@@ -233,7 +233,7 @@ impl StructDescription {
             fields,
         }
     }
-    pub(crate) fn read(read: &mut Read) -> TRes<StructDescription> {
+    pub(crate) fn read(read: &mut Read) -> SRes<StructDescription> {
         let name = String::read(read)?;
         let hash_id = u64::read(read)?;
         let n_fields = u32::read(read)?;
@@ -243,7 +243,7 @@ impl StructDescription {
         }
         Ok(StructDescription { name, hash_id, fields })
     }
-    pub(crate) fn write(&self, write: &mut Write) -> TRes<()> {
+    pub(crate) fn write(&self, write: &mut Write) -> SRes<()> {
         self.name.write(write)?;
         self.hash_id.write(write)?;
         (self.fields.len() as u32).write(write)?;

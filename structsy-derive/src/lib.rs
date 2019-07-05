@@ -92,13 +92,13 @@ fn translate_option_mode(mode: &Option<IndexMode>) -> TokenStream {
 fn translate_mode(mode: &IndexMode) -> TokenStream {
     match mode {
         IndexMode::Cluster => quote! {
-            tsdb::ValueMode::CLUSTER
+            structsy::ValueMode::CLUSTER
         },
         IndexMode::Exclusive => quote! {
-            tsdb::ValueMode::EXCLUSIVE
+            structsy::ValueMode::EXCLUSIVE
         },
         IndexMode::Replace => quote! {
-            tsdb::ValueMode::REPLACE
+            structsy::ValueMode::REPLACE
         },
     }
 }
@@ -159,17 +159,17 @@ impl PersistentInfo {
                 let desc =match (sub,subsub) {
                         (Some(x),Some(z)) => {
                             quote! {
-                                fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#x<#z>>>(),#indexed));
+                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty<#x<#z>>>(),#indexed));
                             }
                         }
                         (Some(x),None) => {
                             quote! {
-                                fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty<#x>>(),#indexed));
+                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty<#x>>(),#indexed));
                             }
                         }
                         (None,None) => {
                             quote! {
-                                fields.push(tsdb::FieldDescription::new(#field_name,tsdb::FieldType::resolve::<#ty>(),#indexed));
+                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty>(),#indexed));
                             }
                         }
                         (None,Some(_x)) => panic!(""),
@@ -201,19 +201,19 @@ impl PersistentInfo {
                 let declare = match (sub, subsub) {
                     (Some(_), Some(s1)) => {
                         quote! {
-                            tsdb::declare_index::<#s1>(db,#index_name,#mode)?;
+                            structsy::declare_index::<#s1>(db,#index_name,#mode)?;
                         }
                     }
 
                     (Some(s), None) => {
                         quote! {
-                            tsdb::declare_index::<#s>(db,#index_name,#mode)?;
+                            structsy::declare_index::<#s>(db,#index_name,#mode)?;
                         }
                     }
 
                     (None, None) => {
                         quote! {
-                            tsdb::declare_index::<#ty>(db,#index_name,#mode)?;
+                            structsy::declare_index::<#ty>(db,#index_name,#mode)?;
                         }
                     }
                     _ => panic!("can't happen"),
@@ -232,20 +232,20 @@ impl PersistentInfo {
         let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
         let struct_name = name.to_string();
         let data = quote! {
-                fn get_description() -> tsdb::StructDescription {
+                fn get_description() -> structsy::StructDescription {
                     let mut fields = Vec::new();
                     #( #fields_meta )*
-                    tsdb::StructDescription::new(#struct_name,#hash_id,fields)
+                    structsy::StructDescription::new(#struct_name,#hash_id,fields)
                 }
 
-                fn write(&self,write:&mut std::io::Write) -> tsdb::TRes<()> {
-                    use tsdb::PersistentEmbedded;
+                fn write(&self,write:&mut std::io::Write) -> structsy::SRes<()> {
+                    use structsy::PersistentEmbedded;
                     #( #fields_write )*
                     Ok(())
                 }
 
-                fn read(read:&mut std::io::Read) -> tsdb::TRes<#name> {
-                    use tsdb::PersistentEmbedded;
+                fn read(read:&mut std::io::Read) -> structsy::SRes<#name> {
+                    use structsy::PersistentEmbedded;
                     #( #fields_read )*
                     Ok(#name {
                     #( #fields_construct )*
@@ -254,26 +254,26 @@ impl PersistentInfo {
         };
 
         let indexes = quote! {
-                fn declare(db:&mut tsdb::Tstx)-> tsdb::TRes<()> {
+                fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
                     #( #index_declare )*
                     Ok(())
                 }
 
-                fn put_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
-                    use tsdb::IndexableValue;
+                fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                    use structsy::IndexableValue;
                     #( #index_put )*
                     Ok(())
                 }
 
-                fn remove_indexes(&self, tx:&mut tsdb::Tstx, id:&tsdb::Ref<Self>) -> tsdb::TRes<()> {
-                    use tsdb::IndexableValue;
+                fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                    use structsy::IndexableValue;
                     #( #index_remove )*
                     Ok(())
                 }
         };
         quote! {
 
-            impl tsdb::Persistent for #name {
+            impl structsy::Persistent for #name {
 
                 #data
 
