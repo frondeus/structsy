@@ -221,21 +221,21 @@ impl FieldDescription {
 
 pub struct StructDescription {
     pub(crate) name: String,
-    pub(crate) hash_id: String,
+    pub(crate) hash_id: u64,
     pub(crate) fields: Vec<FieldDescription>,
 }
 
 impl StructDescription {
-    pub fn new(name: &str, hash_id: &str, fields: Vec<FieldDescription>) -> StructDescription {
+    pub fn new(name: &str, hash_id: u64, fields: Vec<FieldDescription>) -> StructDescription {
         StructDescription {
             name: name.to_string(),
-            hash_id: hash_id.to_string(),
+            hash_id,
             fields,
         }
     }
     pub(crate) fn read(read: &mut Read) -> TRes<StructDescription> {
         let name = String::read(read)?;
-        let hash_id = String::read(read)?;
+        let hash_id = u64::read(read)?;
         let n_fields = u32::read(read)?;
         let mut fields = Vec::new();
         for _ in 0..n_fields {

@@ -8,6 +8,8 @@ extern crate proc_macro2;
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::TokenStream;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use syn::Type::Path;
 use syn::{
     AngleBracketedGenericArguments, DeriveInput, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
@@ -130,6 +132,22 @@ impl PersistentInfo {
                 }
             })
             .collect();
+        let mut identity = fields
+            .iter()
+            .map(|(field, ty, sub, subsub, _index_mode)| {
+                let mut fs = format!(":{}:{}", field.to_string(), ty.to_string());
+                match (sub, subsub) {
+                    (Some(x), Some(z)) => fs.push_str(&format!("<{}<{}>>", x.to_string(), z.to_string())),
+                    (Some(x), None) => fs.push_str(&format!("<{}>", x.to_string())),
+                    _ => {}
+                };
+                fs
+            })
+            .collect::<Vec<String>>();
+        identity.sort();
+        let mut hasher = DefaultHasher::new();
+        hasher.write(format!("{}{}", name, identity.into_iter().collect::<String>()).as_bytes());
+        let hash_id = hasher.finish();
         let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
             .iter()
             .map(|(field, ty, sub, subsub, index_mode)| {
@@ -213,7 +231,6 @@ impl PersistentInfo {
             snippets.into_iter().unzip();
         let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
         let struct_name = name.to_string();
-        let hash_id = "".to_string();
         let data = quote! {
                 fn get_description() -> tsdb::StructDescription {
                     let mut fields = Vec::new();

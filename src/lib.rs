@@ -66,26 +66,28 @@ pub trait Persistent {
 }
 
 pub fn declare_index<T: IndexType>(db: &mut Tstx, name: &str, mode: ValueMode) -> TRes<()> {
-    db.tsdb_impl.persy.create_index::<T, PersyId>(&mut db.trans, name, mode)?;
+    db.tsdb_impl
+        .persy
+        .create_index::<T, PersyId>(&mut db.trans, name, mode)?;
     Ok(())
 }
 
 pub trait IndexableValue {
-    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>;
-    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>;
+    fn puts<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()>;
+    fn removes<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()>;
 }
 
 macro_rules! impl_indexable_value {
     ($t:ident) => {
         impl IndexableValue for $t {
-            fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
-                put_index(tx,name,self,id)
+            fn puts<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
+                put_index(tx, name, self, id)
             }
-            fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
-                remove_index(tx,name,self,id)
+            fn removes<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
+                remove_index(tx, name, self, id)
             }
         }
-    }
+    };
 }
 impl_indexable_value!(u8);
 impl_indexable_value!(u16);
@@ -99,41 +101,41 @@ impl_indexable_value!(i64);
 impl_indexable_value!(i128);
 impl_indexable_value!(String);
 
-impl<T:IndexableValue> IndexableValue for Option<T> {
-    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+impl<T: IndexableValue> IndexableValue for Option<T> {
+    fn puts<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
         if let Some(x) = self {
-            x.puts(tx,name,id)?;
+            x.puts(tx, name, id)?;
         }
         Ok(())
     }
-    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+    fn removes<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
         if let Some(x) = self {
-            x.removes(tx,name,id)?;
+            x.removes(tx, name, id)?;
         }
         Ok(())
     }
 }
-impl<T:IndexableValue> IndexableValue for Vec<T> {
-    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+impl<T: IndexableValue> IndexableValue for Vec<T> {
+    fn puts<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
         for x in self {
-            x.puts(tx,name,id)?;
+            x.puts(tx, name, id)?;
         }
         Ok(())
     }
-    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
+    fn removes<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
         for x in self {
-            x.removes(tx,name,id)?;
+            x.removes(tx, name, id)?;
         }
         Ok(())
     }
 }
-impl<T:Persistent> IndexableValue for Ref<T> {
-    fn puts<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
-        put_index(tx,name,&self.raw_id,id)?;
+impl<T: Persistent> IndexableValue for Ref<T> {
+    fn puts<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
+        put_index(tx, name, &self.raw_id, id)?;
         Ok(())
     }
-    fn removes<P:Persistent>(&self, tx:&mut Tstx,name:&str,id:&Ref<P>) -> TRes<()>{
-        remove_index(tx,name,&self.raw_id,id)?;
+    fn removes<P: Persistent>(&self, tx: &mut Tstx, name: &str, id: &Ref<P>) -> TRes<()> {
+        remove_index(tx, name, &self.raw_id, id)?;
         Ok(())
     }
 }
@@ -303,7 +305,7 @@ impl TsdbImpl {
         Ok(())
     }
 
-    pub fn define<T: Persistent>(&self,tsdb:&Tsdb) -> TRes<()> {
+    pub fn define<T: Persistent>(&self, tsdb: &Tsdb) -> TRes<()> {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.name.clone()) {
@@ -371,7 +373,7 @@ mod test {
             });
             StructDescription {
                 name: "ToTest".to_string(),
-                hash_id: "Todo!!!".to_string(),
+                hash_id: 10,
                 fields,
             }
         }
@@ -399,13 +401,13 @@ mod test {
         }
         fn put_indexes(&self, tx: &mut Tstx, id: &Ref<Self>) -> TRes<()> {
             use super::IndexableValue;
-            self.name.puts(tx,"ToTest.name",id)?;
+            self.name.puts(tx, "ToTest.name", id)?;
             Ok(())
         }
 
         fn remove_indexes(&self, tx: &mut Tstx, id: &Ref<Self>) -> TRes<()> {
             use super::IndexableValue;
-            self.name.removes(tx,"ToTest.name",id)?;
+            self.name.removes(tx, "ToTest.name", id)?;
             Ok(())
         }
     }
