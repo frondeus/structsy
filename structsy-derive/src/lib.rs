@@ -7,7 +7,7 @@ extern crate darling;
 extern crate proc_macro2;
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField};
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use syn::Type::Path;
@@ -22,7 +22,7 @@ struct PersistentInfo {
     data: Data<(), PersistentAttr>,
 }
 
-#[derive(FromMeta, Debug, Clone)]
+#[derive(FromMeta, Debug, Clone, PartialEq)]
 //#[darling(default)]
 enum IndexMode {
     Exclusive,
@@ -192,41 +192,95 @@ impl PersistentInfo {
         let (fields_read, fields_construct): (Vec<TokenStream>, Vec<TokenStream>) =
             fields_read_fill.into_iter().unzip();
 
-        let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = fields
+        let only_indexed: Vec<(Ident, Ident, Option<Ident>, Option<Ident>, Option<IndexMode>)> = fields
             .iter()
             .filter(|(_, _, _, _, index_mode)| index_mode.is_some())
+            .map(|x| x.clone())
+            .collect();
+
+        let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = only_indexed
+            .iter()
             .map(|(field, ty, sub, subsub, index_mode)| {
                 let index_name = format!("{}.{}", name, field);
                 let mode = translate_mode(&index_mode.as_ref().unwrap());
-                let declare = match (sub, subsub) {
-                    (Some(_), Some(s1)) => {
-                        quote! {
-                            structsy::declare_index::<#s1>(db,#index_name,#mode)?;
-                        }
-                    }
-
-                    (Some(s), None) => {
-                        quote! {
-                            structsy::declare_index::<#s>(db,#index_name,#mode)?;
-                        }
-                    }
-
-                    (None, None) => {
-                        quote! {
-                            structsy::declare_index::<#ty>(db,#index_name,#mode)?;
-                        }
-                    }
-                    _ => panic!("can't happen"),
+                let index_type = match (sub, subsub) {
+                    (Some(_), Some(s1)) => s1,
+                    (Some(s), None) => s,
+                    _ => ty,
+                };
+                let declare = quote! {
+                    structsy::declare_index::<#index_type>(db,#index_name,#mode)?;
                 };
                 let put = quote! {
-                    self.#field.puts(tx,#index_name,id);
+                    self.#field.puts(tx,#index_name,id)?;
                 };
                 let remove = quote! {
-                    self.#field.removes(tx,#index_name,id);
+                    self.#field.removes(tx,#index_name,id)?;
                 };
                 (declare, (put, remove))
             })
             .collect();
+        let lookup_methods:Vec<TokenStream> = only_indexed.iter()
+            .map(|(field, ty, sub, subsub, index_mode)| {
+                let index_name = format!("{}.{}", name, field);
+                let index_type = match (sub, subsub) {
+                    (Some(_), Some(s1)) => s1,
+                    (Some(s), None) => s,
+                    _ =>ty,
+                };
+                let field_name = field.to_string();
+                let find_by= Ident::new( &format!("find_by_{}", &field_name), Span::call_site());
+                let find_by_tx= Ident::new( &format!("find_by_{}_tx", &field_name), Span::call_site());
+                let find_by_range= Ident::new( &format!("find_by_{}_range", &field_name), Span::call_site());
+                if index_mode == &Some(IndexMode::Cluster) {
+                    let find = quote!{
+                        fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
+                            structsy::find(st,#index_name,val)
+                        }
+                        fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
+                            structsy::find_tx(st,#index_name,val)
+                        }
+                    };
+                    let range = quote! {
+                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (#index_type, Vec<(Ref<Self>, Self)>)>> {
+                            structsy::find_range(st,#index_name,range)
+                        }
+                    };
+                    quote! {
+                        #find
+                        #range
+                    }
+                } else {
+                    let find =quote!{
+                        fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
+                            structsy::find_unique(st,#index_name,val)
+                        }
+                        fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
+                            structsy::find_unique_tx(st,#index_name,val)
+                        }
+
+                    };
+                    let range = quote! {
+                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (#index_type, (Ref<Self>, Self))>> {
+                            structsy::find_unique_range(st,#index_name,range)
+                        }
+                    };
+
+                    quote! {
+                        #find
+                        #range
+                    }
+                }
+            }).collect();
+        let impls = if lookup_methods.is_empty() {
+            quote! {}
+        } else {
+            quote! {
+                impl #name {
+                    #( #lookup_methods )*
+                }
+            }
+        };
         let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
             snippets.into_iter().unzip();
         let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
@@ -279,6 +333,8 @@ impl PersistentInfo {
 
                 #indexes
             }
+
+            #impls
         }
     }
 }

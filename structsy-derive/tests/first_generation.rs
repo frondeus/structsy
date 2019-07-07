@@ -5,7 +5,7 @@ use structsy_derive::Persistent;
 struct One {
     #[index(mode = "exclusive")]
     first: String,
-    //#[index()]
+    #[index(mode = "cluster")]
     second: u8,
     third: Option<u8>,
     forth: Vec<String>,

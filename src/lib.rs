@@ -10,6 +10,8 @@ mod format;
 pub use format::PersistentEmbedded;
 mod desc;
 pub use desc::{FieldDescription, FieldType, FieldValueType, StructDescription};
+mod index;
+pub use index::{find, find_range, find_tx, find_unique, find_unique_range, find_unique_tx, IndexableValue};
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
@@ -45,7 +47,7 @@ pub struct StructsyImpl {
     persy: Persy,
     definitions: Mutex<HashMap<String, StructDescription>>,
 }
-
+#[derive(Clone)]
 pub struct Structsy {
     tsdb_impl: Arc<StructsyImpl>,
 }
@@ -72,92 +74,20 @@ pub fn declare_index<T: IndexType>(db: &mut Sytx, name: &str, mode: ValueMode) -
     Ok(())
 }
 
-pub trait IndexableValue {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
-}
-
-macro_rules! impl_indexable_value {
-    ($t:ident) => {
-        impl IndexableValue for $t {
-            fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-                put_index(tx, name, self, id)
-            }
-            fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-                remove_index(tx, name, self, id)
-            }
-        }
-    };
-}
-impl_indexable_value!(u8);
-impl_indexable_value!(u16);
-impl_indexable_value!(u32);
-impl_indexable_value!(u64);
-impl_indexable_value!(u128);
-impl_indexable_value!(i8);
-impl_indexable_value!(i16);
-impl_indexable_value!(i32);
-impl_indexable_value!(i64);
-impl_indexable_value!(i128);
-impl_indexable_value!(String);
-
-impl<T: IndexableValue> IndexableValue for Option<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        if let Some(x) = self {
-            x.puts(tx, name, id)?;
-        }
-        Ok(())
-    }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        if let Some(x) = self {
-            x.removes(tx, name, id)?;
-        }
-        Ok(())
-    }
-}
-impl<T: IndexableValue> IndexableValue for Vec<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        for x in self {
-            x.puts(tx, name, id)?;
-        }
-        Ok(())
-    }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        for x in self {
-            x.removes(tx, name, id)?;
-        }
-        Ok(())
-    }
-}
-impl<T: Persistent> IndexableValue for Ref<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        put_index(tx, name, &self.raw_id, id)?;
-        Ok(())
-    }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        remove_index(tx, name, &self.raw_id, id)?;
-        Ok(())
-    }
-}
-
-pub fn put_index<T: IndexType, P: Persistent>(tx: &mut Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
-    tx.tsdb_impl
-        .persy
-        .put::<T, PersyId>(&mut tx.trans, name, k.clone(), id.raw_id.clone())?;
-    Ok(())
-}
-
-pub fn remove_index<T: IndexType, P: Persistent>(tx: &mut Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
-    tx.tsdb_impl
-        .persy
-        .remove::<T, PersyId>(&mut tx.trans, name, k.clone(), Some(id.raw_id.clone()))?;
-    Ok(())
-}
-
 pub struct Ref<T> {
     type_name: String,
     raw_id: PersyId,
     ph: PhantomData<T>,
+}
+
+impl<T: Persistent> Ref<T> {
+    fn new(persy_id: PersyId) -> Ref<T> {
+        Ref {
+            type_name: T::get_description().name.clone(),
+            raw_id: persy_id,
+            ph: PhantomData,
+        }
+    }
 }
 
 pub struct Sytx {
@@ -349,7 +279,9 @@ impl StructsyImpl {
 
 #[cfg(test)]
 mod test {
-    use super::{FieldDescription, FieldType, FieldValueType, Persistent, Ref, StructDescription, SRes, Structsy, Sytx};
+    use super::{
+        FieldDescription, FieldType, FieldValueType, Persistent, Ref, SRes, StructDescription, Structsy, Sytx,
+    };
     use persy::ValueMode;
     use std::fs;
     use std::io::{Read, Write};
