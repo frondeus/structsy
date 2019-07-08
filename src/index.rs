@@ -29,6 +29,8 @@ impl_indexable_value!(i16);
 impl_indexable_value!(i32);
 impl_indexable_value!(i64);
 impl_indexable_value!(i128);
+impl_indexable_value!(f32);
+impl_indexable_value!(f64);
 impl_indexable_value!(String);
 
 impl<T: IndexableValue> IndexableValue for Option<T> {
@@ -111,7 +113,7 @@ pub(crate) fn map_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> 
         .collect()
 }
 
-pub(crate) fn map_unique_entry_tx<P: Persistent>(db: &mut Sytx, entry: Value<PersyId>) -> Option<(Ref<P>, P)> {
+fn map_unique_entry_tx<P: Persistent>(db: &mut Sytx, entry: Value<PersyId>) -> Option<(Ref<P>, P)> {
     if let Some(id) = entry.into_iter().next() {
         let r = Ref::new(id);
         if let Ok(val) = db.read(&r) {
@@ -124,7 +126,7 @@ pub(crate) fn map_unique_entry_tx<P: Persistent>(db: &mut Sytx, entry: Value<Per
     }
 }
 
-pub(crate) fn map_entry_tx<P: Persistent>(db: &mut Sytx, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
+fn map_entry_tx<P: Persistent>(db: &mut Sytx, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
     entry
         .into_iter()
         .filter_map(|id| {
@@ -198,3 +200,4 @@ pub fn find_tx<K: IndexType, P: Persistent>(db: &mut Sytx, name: &str, k: &K) ->
         Ok(Vec::new())
     }
 }
+
