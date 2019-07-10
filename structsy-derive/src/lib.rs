@@ -232,6 +232,7 @@ impl PersistentInfo {
                 let find_by= Ident::new( &format!("find_by_{}", &field_name), Span::call_site());
                 let find_by_tx= Ident::new( &format!("find_by_{}_tx", &field_name), Span::call_site());
                 let find_by_range= Ident::new( &format!("find_by_{}_range", &field_name), Span::call_site());
+                let find_by_range_tx= Ident::new( &format!("find_by_{}_range_tx", &field_name), Span::call_site());
                 if index_mode == &Some(IndexMode::Cluster) {
                     let find = quote!{
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
@@ -242,13 +243,19 @@ impl PersistentInfo {
                         }
                     };
                     let range = quote! {
-                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (#index_type, Vec<(Ref<Self>, Self)>)>> {
+                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (Ref<Self>, Self,#index_type)>> {
                             structsy::find_range(st,#index_name,range)
+                        }
+                    };
+                    let range_tx = quote! {
+                        fn #find_by_range_tx<'a, R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::RangeIterator<'a,#index_type,Self>> {
+                            structsy::find_range_tx(st,#index_name,range)
                         }
                     };
                     quote! {
                         #find
                         #range
+                        #range_tx
                     }
                 } else {
                     let find =quote!{
@@ -261,14 +268,20 @@ impl PersistentInfo {
 
                     };
                     let range = quote! {
-                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (#index_type, (Ref<Self>, Self))>> {
+                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (Ref<Self>, Self,#index_type)>> {
                             structsy::find_unique_range(st,#index_name,range)
+                        }
+                    };
+                    let range_tx = quote! {
+                        fn #find_by_range_tx<'a,R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::UniqueRangeIterator<'a,#index_type,Self>> {
+                            structsy::find_unique_range_tx(st,#index_name,range)
                         }
                     };
 
                     quote! {
                         #find
                         #range
+                        #range_tx
                     }
                 }
             }).collect();

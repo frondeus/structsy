@@ -11,7 +11,10 @@ pub use format::PersistentEmbedded;
 mod desc;
 pub use desc::{FieldDescription, FieldType, FieldValueType, StructDescription};
 mod index;
-pub use index::{find, find_range, find_tx, find_unique, find_unique_range, find_unique_tx, IndexableValue};
+pub use index::{
+    find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx, find_unique_tx,
+    IndexableValue, RangeIterator, UniqueRangeIterator,
+};
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
@@ -140,15 +143,15 @@ impl Sytx {
 
     pub fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.tsdb_impl.check_defined::<T>()?;
-        if let Some(buff) = self
-            .tsdb_impl
-            .persy
-            .read_record_tx(&mut self.trans, &sref.type_name, &sref.raw_id)?
-        {
-            Ok(Some(T::read(&mut Cursor::new(buff))?))
-        } else {
-            Ok(None)
-        }
+        tx_read(&self.tsdb_impl.persy, &sref.type_name, &mut self.trans, &sref.raw_id)
+    }
+}
+
+fn tx_read<T: Persistent>(persy: &Persy, name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {
+    if let Some(buff) = persy.read_record_tx(tx, name, id)? {
+        Ok(Some(T::read(&mut Cursor::new(buff))?))
+    } else {
+        Ok(None)
     }
 }
 
