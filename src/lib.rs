@@ -332,8 +332,8 @@ impl StructsyImpl {
 #[cfg(test)]
 mod test {
     use super::{
-        FieldDescription, FieldType, FieldValueType, Persistent, Ref, SRes, StructDescription, Structsy, StructsyTx,
-        Sytx,
+        find, find_range, find_range_tx, find_tx, FieldDescription, FieldType, FieldValueType, Persistent,
+        RangeIterator, Ref, SRes, StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;
@@ -396,6 +396,26 @@ mod test {
             Ok(())
         }
     }
+    impl ToTest {
+        fn find_by_name(st: &Structsy, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
+            find(st, "ToTest.name", val)
+        }
+        fn find_by_name_tx(st: &mut Sytx, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
+            find_tx(st, "ToTest.name", val)
+        }
+        fn find_by_name_range<R: std::ops::RangeBounds<String>>(
+            st: &Structsy,
+            range: R,
+        ) -> SRes<impl Iterator<Item = (Ref<Self>, Self, String)>> {
+            find_range(st, "ToTest.name", range)
+        }
+        fn find_by_name_range_tx<'a, R: std::ops::RangeBounds<String>>(
+            st: &'a mut Sytx,
+            range: R,
+        ) -> SRes<RangeIterator<'a, String, Self>> {
+            find_range_tx(st, "ToTest.name", range)
+        }
+    }
 
     #[test()]
     fn simple_basic_flow() {
@@ -411,9 +431,38 @@ mod test {
         let mut read = tx.read(&id).expect("read correctly").expect("this should be some");
         assert_eq!(read.name, val.name);
         assert_eq!(read.length, val.length);
+        let looked_up_tx = ToTest::find_by_name_tx(&mut tx, &"one".to_string())
+            .map(|x| x.into_iter())
+            .into_iter()
+            .flatten()
+            .map(|(_id, e)| e.name.clone())
+            .next();
+        assert_eq!(looked_up_tx, Some("one".to_string()));
+        let looked_up = ToTest::find_by_name_range_tx(&mut tx, &"mne".to_string()..&"pne".to_string())
+            .map(|x| x.into_iter())
+            .into_iter()
+            .flatten()
+            .map(|(_id, e, _k)| e.name.clone())
+            .next();
+        assert_eq!(looked_up, Some("one".to_string()));
         read.name = "new".to_string();
         tx.update(&id, &read).expect("updated correctly");
         db.commit(tx).expect("tx committed correctly");
+
+        let looked_up = ToTest::find_by_name(&db, &"new".to_string())
+            .map(|x| x.into_iter())
+            .into_iter()
+            .flatten()
+            .map(|(_id, e)| e.name.clone())
+            .next();
+        assert_eq!(looked_up, Some("new".to_string()));
+        let looked_up = ToTest::find_by_name_range(&db, &"mew".to_string()..&"oew".to_string())
+            .map(|x| x.into_iter())
+            .into_iter()
+            .flatten()
+            .map(|(_id, e, _k)| e.name.clone())
+            .next();
+        assert_eq!(looked_up, Some("new".to_string()));
         let read_persistent = db.read(&id).expect("read correctly").expect("this is some");
         assert_eq!(read_persistent.name, read.name);
         assert_eq!(read_persistent.length, val.length);
