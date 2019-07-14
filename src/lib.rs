@@ -71,9 +71,8 @@ pub trait Persistent {
 }
 
 pub fn declare_index<T: IndexType>(db: &mut Sytx, name: &str, mode: ValueMode) -> SRes<()> {
-    db.tsdb_impl
-        .persy
-        .create_index::<T, PersyId>(&mut db.trans, name, mode)?;
+    let persy = &db.structsy().structsy_impl.persy;
+    persy.create_index::<T, PersyId>(&mut db.tx().trans, name, mode)?;
     Ok(())
 }
 
@@ -93,18 +92,69 @@ impl<T: Persistent> Ref<T> {
     }
 }
 
-pub struct Sytx {
+pub struct OwnedSytx {
     tsdb_impl: Arc<StructsyImpl>,
     trans: Transaction,
 }
 
-impl Sytx {
-    pub fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>> {
-        self.tsdb_impl.check_defined::<T>()?;
+pub struct RefSytx<'a> {
+    tsdb_impl: Arc<StructsyImpl>,
+    trans: &'a mut Transaction,
+}
+
+pub struct TxRef<'a> {
+    trans: &'a mut Transaction,
+}
+
+pub struct ImplRef {
+    structsy_impl: Arc<StructsyImpl>,
+}
+
+pub trait Sytx {
+    fn tx(&mut self) -> TxRef;
+    fn structsy(&self) -> ImplRef;
+}
+
+impl Sytx for OwnedSytx {
+    fn tx(&mut self) -> TxRef {
+        TxRef { trans: &mut self.trans }
+    }
+    fn structsy(&self) -> ImplRef {
+        ImplRef {
+            structsy_impl: self.tsdb_impl.clone(),
+        }
+    }
+}
+
+impl<'a> Sytx for RefSytx<'a> {
+    fn tx(&mut self) -> TxRef {
+        TxRef { trans: self.trans }
+    }
+    fn structsy(&self) -> ImplRef {
+        ImplRef {
+            structsy_impl: self.tsdb_impl.clone(),
+        }
+    }
+}
+
+pub trait StructsyTx: Sytx {
+    fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>>;
+    fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()>;
+    fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()>;
+    fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>>;
+}
+
+impl<TX> StructsyTx for TX
+where
+    TX: Sytx + Sized,
+{
+    fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
         let segment = T::get_description().name;
-        let id = self.tsdb_impl.persy.insert_record(&mut self.trans, &segment, &buff)?;
+        let persy = &self.structsy().structsy_impl.persy;
+        let id = persy.insert_record(self.tx().trans, &segment, &buff)?;
         let id_ref = Ref {
             type_name: segment,
             raw_id: id,
@@ -114,36 +164,35 @@ impl Sytx {
         Ok(id_ref)
     }
 
-    pub fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()> {
-        self.tsdb_impl.check_defined::<T>()?;
+    fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tsdb_impl
-            .persy
-            .update_record(&mut self.trans, &sref.type_name, &sref.raw_id, &buff)?;
+        let persy = &self.structsy().structsy_impl.persy;
+        persy.update_record(&mut self.tx().trans, &sref.type_name, &sref.raw_id, &buff)?;
         sct.put_indexes(self, &sref)?;
         Ok(())
     }
 
-    pub fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()> {
-        self.tsdb_impl.check_defined::<T>()?;
+    fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tsdb_impl
-            .persy
-            .delete_record(&mut self.trans, &sref.type_name, &sref.raw_id)?;
+        let persy = &self.structsy().structsy_impl.persy;
+        persy.delete_record(&mut self.tx().trans, &sref.type_name, &sref.raw_id)?;
         Ok(())
     }
 
-    pub fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.tsdb_impl.check_defined::<T>()?;
-        tx_read(&self.tsdb_impl.persy, &sref.type_name, &mut self.trans, &sref.raw_id)
+    fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let persy = &self.structsy().structsy_impl.persy;
+        tx_read(&persy, &sref.type_name, &mut self.tx().trans, &sref.raw_id)
     }
 }
 
@@ -174,8 +223,8 @@ impl Structsy {
         self.tsdb_impl.define::<T>(&self)
     }
 
-    pub fn begin(&self) -> SRes<Sytx> {
-        Ok(Sytx {
+    pub fn begin(&self) -> SRes<OwnedSytx> {
+        Ok(OwnedSytx {
             tsdb_impl: self.tsdb_impl.clone(),
             trans: self.tsdb_impl.begin()?,
         })
@@ -185,7 +234,7 @@ impl Structsy {
         self.tsdb_impl.read(sref)
     }
 
-    pub fn commit(&self, tx: Sytx) -> SRes<()> {
+    pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
         self.tsdb_impl.commit(tx.trans)
     }
 }
@@ -283,7 +332,8 @@ impl StructsyImpl {
 #[cfg(test)]
 mod test {
     use super::{
-        FieldDescription, FieldType, FieldValueType, Persistent, Ref, SRes, StructDescription, Structsy, Sytx,
+        FieldDescription, FieldType, FieldValueType, Persistent, Ref, SRes, StructDescription, Structsy, StructsyTx,
+        Sytx,
     };
     use persy::ValueMode;
     use std::fs;
