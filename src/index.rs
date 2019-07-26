@@ -220,6 +220,7 @@ pub struct RangeIterator<'a, K: IndexType, P: Persistent> {
     persy_iter: persy::TxIndexIter<'a, K, PersyId>,
     iter: Option<IntoIter<(Ref<P>, P, K)>>,
 }
+
 impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
     fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> RangeIterator<'a, K, P> {
         RangeIterator {
@@ -234,7 +235,28 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
             trans: self.persy_iter.tx(),
         }
     }
+
+    pub fn next_tx<'b: 'a>(&'b mut self) -> Option<(Vec<(Ref<P>, P)>, K, RefSytx<'a>)> {
+        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
+            let name = P::get_description().name;
+            let mut pv = Vec::new();
+            for id in v {
+                if let Ok(Some(val)) = tx_read::<P>(&self.structsy.persy, &name, tx, &id) {
+                    let r = Ref::new(id);
+                    pv.push((r, val));
+                }
+            }
+            let ref_tx = RefSytx {
+                tsdb_impl: self.structsy.clone(),
+                trans: tx,
+            };
+            return Some((pv, k, ref_tx));
+        } else {
+            return None;
+        }
+    }
 }
+
 impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
     type Item = (Ref<P>, P, K);
     fn next(&mut self) -> Option<Self::Item> {
@@ -284,15 +306,32 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
             trans: self.persy_iter.tx(),
         }
     }
+
+    pub fn next_tx(&'a mut self) -> Option<(Ref<P>, P, K, RefSytx<'a>)> {
+        let name = P::get_description().name;
+        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
+            if let Some(id) = v.into_iter().next() {
+                if let Ok(Some(val)) = tx_read::<P>(&self.structsy.persy.clone(), &name, tx, &id) {
+                    let r = Ref::new(id);
+                    Some((r, val, k, self.tx()))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, P: Persistent, K: IndexType> Iterator for UniqueRangeIterator<'a, K, P> {
     type Item = (Ref<P>, P, K);
     fn next(&mut self) -> Option<Self::Item> {
         let name = P::get_description().name;
-        if let Some((k, v)) = self.persy_iter.next() {
+        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
             if let Some(id) = v.into_iter().next() {
-                let tx = self.persy_iter.tx();
                 if let Ok(Some(val)) = tx_read::<P>(&self.structsy.persy.clone(), &name, tx, &id) {
                     let r = Ref::new(id);
                     Some((r, val, k))
