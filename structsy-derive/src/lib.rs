@@ -44,6 +44,14 @@ struct PersistentAttr {
     mode: Option<IndexMode>,
 }
 
+#[proc_macro_derive(PersistentEmbedded, attributes(index))]
+pub fn persistent_embedded(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed: DeriveInput = syn::parse(input).unwrap();
+
+    let gen = PersistentInfo::from_derive_input(&parsed).unwrap().to_embedded_tokens();
+    gen.into()
+}
+
 #[proc_macro_derive(Persistent, attributes(index))]
 pub fn persistent(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed: DeriveInput = syn::parse(input).unwrap();
@@ -110,53 +118,43 @@ fn get_type_ident(ty: &syn::Type) -> Option<Ident> {
     }
 }
 
-impl PersistentInfo {
-    fn to_tokens(&self) -> TokenStream {
-        let name = &self.ident;
-        let fields: Vec<(Ident, Ident, Option<Ident>, Option<Ident>, Option<IndexMode>)> = self
-            .data
-            .as_ref()
-            .take_struct()
-            .unwrap()
-            .fields
+#[derive(Clone)]
+struct FieldInfo {
+    name: Ident,
+    ty: Ident,
+    template_ty: Option<Ident>,
+    sub_template_ty: Option<Ident>,
+    index_mode: Option<IndexMode>,
+}
+
+fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
+    let mut identity = fields
+        .iter()
+        .map(|field| {
+            let mut fs = format!(":{}:{}", field.name.to_string(), field.ty.to_string());
+            match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+                (Some(x), Some(z)) => fs.push_str(&format!("<{}<{}>>", x.to_string(), z.to_string())),
+                (Some(x), None) => fs.push_str(&format!("<{}>", x.to_string())),
+                _ => {}
+            };
+            fs
+        })
+        .collect::<Vec<String>>();
+    identity.sort();
+    let mut hasher = DefaultHasher::new();
+    hasher.write(format!("{}{}", name, identity.into_iter().collect::<String>()).as_bytes());
+    let hash_id = hasher.finish();
+    let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
             .iter()
-            .filter_map(|f| {
-                let field = f.ident.clone().unwrap();
-                let st = sub_type(&f.ty);
-                let sub = st.iter().filter_map(|x| get_type_ident(*x)).next();
-                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
-                if let Some(ty) = get_type_ident(&f.ty) {
-                    Some((field, ty, sub, subsub, f.mode.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let mut identity = fields
-            .iter()
-            .map(|(field, ty, sub, subsub, _index_mode)| {
-                let mut fs = format!(":{}:{}", field.to_string(), ty.to_string());
-                match (sub, subsub) {
-                    (Some(x), Some(z)) => fs.push_str(&format!("<{}<{}>>", x.to_string(), z.to_string())),
-                    (Some(x), None) => fs.push_str(&format!("<{}>", x.to_string())),
-                    _ => {}
-                };
-                fs
-            })
-            .collect::<Vec<String>>();
-        identity.sort();
-        let mut hasher = DefaultHasher::new();
-        hasher.write(format!("{}{}", name, identity.into_iter().collect::<String>()).as_bytes());
-        let hash_id = hasher.finish();
-        let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
-            .iter()
-            .map(|(field, ty, sub, subsub, index_mode)| {
-                let indexed = translate_option_mode(index_mode);
-                let field_name = field.to_string();
+            .map(|field| {
+                let indexed = translate_option_mode(&field.index_mode);
+                let field_name = field.name.to_string();
+                let field_ident= field.name.clone();
                 let read_fill = quote! {
-                    #field,
+                    #field_ident,
                 };
-                let desc =match (sub,subsub) {
+                let ty= field.ty.clone();
+                let desc =match (field.template_ty.clone(),field.sub_template_ty.clone()) {
                         (Some(x),Some(z)) => {
                             quote! {
                                 fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty<#x<#z>>>(),#indexed));
@@ -176,64 +174,91 @@ impl PersistentInfo {
                     };
 
                 let write = quote! {
-                    self.#field.write(write)?;
+                    self.#field_ident.write(write)?;
                 };
 
                 let read =quote! {
-                    let #field = PersistentEmbedded::read(read)?;
+                    let #field_ident= PersistentEmbedded::read(read)?;
                 };
                 ((desc, write), (read, read_fill))
             })
             .collect();
 
-        let (fields_meta_write, fields_read_fill): (Vec<(TokenStream, TokenStream)>, Vec<(TokenStream, TokenStream)>) =
-            fields_info.into_iter().unzip();
-        let (fields_meta, fields_write): (Vec<TokenStream>, Vec<TokenStream>) = fields_meta_write.into_iter().unzip();
-        let (fields_read, fields_construct): (Vec<TokenStream>, Vec<TokenStream>) =
-            fields_read_fill.into_iter().unzip();
+    let (fields_meta_write, fields_read_fill): (Vec<(TokenStream, TokenStream)>, Vec<(TokenStream, TokenStream)>) =
+        fields_info.into_iter().unzip();
+    let (fields_meta, fields_write): (Vec<TokenStream>, Vec<TokenStream>) = fields_meta_write.into_iter().unzip();
+    let (fields_read, fields_construct): (Vec<TokenStream>, Vec<TokenStream>) = fields_read_fill.into_iter().unzip();
 
-        let only_indexed: Vec<(Ident, Ident, Option<Ident>, Option<Ident>, Option<IndexMode>)> = fields
-            .iter()
-            .filter(|(_, _, _, _, index_mode)| index_mode.is_some())
-            .map(|x| x.clone())
-            .collect();
+    let struct_name = name.to_string();
+    let desc = quote! {
+            fn get_description() -> structsy::StructDescription {
+                let mut fields = Vec::new();
+                #( #fields_meta )*
+                structsy::StructDescription::new(#struct_name,#hash_id,fields)
+            }
+    };
+    let serialization = quote! {
+            fn write(&self,write:&mut std::io::Write) -> structsy::SRes<()> {
+                use structsy::PersistentEmbedded;
+                #( #fields_write )*
+                Ok(())
+            }
 
-        let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = only_indexed
-            .iter()
-            .map(|(field, ty, sub, subsub, index_mode)| {
-                let index_name = format!("{}.{}", name, field);
-                let mode = translate_mode(&index_mode.as_ref().unwrap());
-                let index_type = match (sub, subsub) {
+            fn read(read:&mut std::io::Read) -> structsy::SRes<#name> {
+                use structsy::PersistentEmbedded;
+                #( #fields_read )*
+                Ok(#name {
+                #( #fields_construct )*
+                })
+            }
+    };
+    (desc, serialization)
+}
+
+fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
+    let only_indexed: Vec<FieldInfo> = fields
+        .iter()
+        .filter(|f| f.index_mode.is_some())
+        .map(|x| x.clone())
+        .collect();
+
+    let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = only_indexed
+        .iter()
+        .map(|f| {
+            let index_name = format!("{}.{}", name, f.name);
+            let field = f.name.clone();
+            let mode = translate_mode(&f.index_mode.as_ref().unwrap());
+            let index_type = match (f.template_ty.clone(), f.sub_template_ty.clone()) {
+                (Some(_), Some(s1)) => s1,
+                (Some(s), None) => s,
+                _ => f.ty.clone(),
+            };
+            let declare = quote! {
+                structsy::declare_index::<#index_type>(db,#index_name,#mode)?;
+            };
+            let put = quote! {
+                self.#field.puts(tx,#index_name,id)?;
+            };
+            let remove = quote! {
+                self.#field.removes(tx,#index_name,id)?;
+            };
+            (declare, (put, remove))
+        })
+        .collect();
+    let lookup_methods:Vec<TokenStream> = only_indexed.iter()
+            .map(|f| {
+                let index_name = format!("{}.{}", name, f.name);
+                let index_type = match (f.template_ty.clone(),f.sub_template_ty.clone()) {
                     (Some(_), Some(s1)) => s1,
                     (Some(s), None) => s,
-                    _ => ty,
+                    _ =>f.ty.clone(),
                 };
-                let declare = quote! {
-                    structsy::declare_index::<#index_type>(db,#index_name,#mode)?;
-                };
-                let put = quote! {
-                    self.#field.puts(tx,#index_name,id)?;
-                };
-                let remove = quote! {
-                    self.#field.removes(tx,#index_name,id)?;
-                };
-                (declare, (put, remove))
-            })
-            .collect();
-        let lookup_methods:Vec<TokenStream> = only_indexed.iter()
-            .map(|(field, ty, sub, subsub, index_mode)| {
-                let index_name = format!("{}.{}", name, field);
-                let index_type = match (sub, subsub) {
-                    (Some(_), Some(s1)) => s1,
-                    (Some(s), None) => s,
-                    _ =>ty,
-                };
-                let field_name = field.to_string();
+                let field_name = f.name.to_string();
                 let find_by= Ident::new( &format!("find_by_{}", &field_name), Span::call_site());
                 let find_by_tx= Ident::new( &format!("find_by_{}_tx", &field_name), Span::call_site());
                 let find_by_range= Ident::new( &format!("find_by_{}_range", &field_name), Span::call_site());
                 let find_by_range_tx= Ident::new( &format!("find_by_{}_range_tx", &field_name), Span::call_site());
-                if index_mode == &Some(IndexMode::Cluster) {
+                if f.index_mode == Some(IndexMode::Cluster) {
                     let find = quote!{
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
                             structsy::find(st,#index_name,val)
@@ -285,69 +310,106 @@ impl PersistentInfo {
                     }
                 }
             }).collect();
-        let impls = if lookup_methods.is_empty() {
-            quote! {}
-        } else {
-            quote! {
-                impl #name {
-                    #( #lookup_methods )*
-                }
+
+    let impls = if lookup_methods.is_empty() {
+        quote! {}
+    } else {
+        quote! {
+            impl #name {
+                #( #lookup_methods )*
             }
-        };
-        let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
-            snippets.into_iter().unzip();
-        let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
-        let struct_name = name.to_string();
-        let data = quote! {
-                fn get_description() -> structsy::StructDescription {
-                    let mut fields = Vec::new();
-                    #( #fields_meta )*
-                    structsy::StructDescription::new(#struct_name,#hash_id,fields)
-                }
+        }
+    };
+    let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
+        snippets.into_iter().unzip();
+    let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
 
-                fn write(&self,write:&mut std::io::Write) -> structsy::SRes<()> {
-                    use structsy::PersistentEmbedded;
-                    #( #fields_write )*
-                    Ok(())
-                }
+    let indexes = quote! {
+            fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
+                #( #index_declare )*
+                Ok(())
+            }
 
-                fn read(read:&mut std::io::Read) -> structsy::SRes<#name> {
-                    use structsy::PersistentEmbedded;
-                    #( #fields_read )*
-                    Ok(#name {
-                    #( #fields_construct )*
+            fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                use structsy::IndexableValue;
+                #( #index_put )*
+                Ok(())
+            }
+
+            fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                use structsy::IndexableValue;
+                #( #index_remove )*
+                Ok(())
+            }
+    };
+    (indexes, impls)
+}
+
+impl PersistentInfo {
+    fn field_infos(&self) -> Vec<FieldInfo> {
+        self.data
+            .as_ref()
+            .take_struct()
+            .unwrap()
+            .fields
+            .iter()
+            .filter_map(|f| {
+                let field = f.ident.clone().unwrap();
+                let st = sub_type(&f.ty);
+                let sub = st.iter().filter_map(|x| get_type_ident(*x)).next();
+                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
+                if let Some(ty) = get_type_ident(&f.ty) {
+                    Some(FieldInfo {
+                        name: field,
+                        ty: ty,
+                        template_ty: sub,
+                        sub_template_ty: subsub,
+                        index_mode: f.mode.clone(),
                     })
+                } else {
+                    None
                 }
-        };
+            })
+            .collect()
+    }
 
-        let indexes = quote! {
-                fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
-                    #( #index_declare )*
-                    Ok(())
-                }
-
-                fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                    use structsy::IndexableValue;
-                    #( #index_put )*
-                    Ok(())
-                }
-
-                fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                    use structsy::IndexableValue;
-                    #( #index_remove )*
-                    Ok(())
-                }
-        };
+    fn to_tokens(&self) -> TokenStream {
+        let name = &self.ident;
+        let fields = self.field_infos();
+        let (desc, ser) = serializetion_tokens(name, &fields);
+        let (indexes, impls) = indexes_tokens(name, &fields);
         quote! {
 
             impl structsy::Persistent for #name {
 
-                #data
+                #desc
+                #ser
 
                 #indexes
             }
 
             #impls
+        }
+    }
+
+    fn to_embedded_tokens(&self) -> TokenStream {
+        let name = &self.ident;
+        let fields = self.field_infos();
+        let (desc, ser) = serializetion_tokens(name, &fields);
+
+        for f in fields {
+            if f.index_mode.is_some() {
+                panic!("indexing not supported for Persistent Embedded structs");
+            }
+        }
+
+        quote! {
+            impl structsy::EmbeddedDescription for #name {
+                #desc
+            }
+            impl structsy::PersistentEmbedded for #name {
+                #ser
+            }
         }
     }
 }

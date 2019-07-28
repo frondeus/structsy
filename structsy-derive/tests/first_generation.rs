@@ -1,5 +1,5 @@
 use structsy::Ref;
-use structsy_derive::Persistent;
+use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
 struct One {
@@ -11,11 +11,17 @@ struct One {
     forth: Vec<String>,
     fifth: Option<Vec<String>>,
     sixth: Ref<Two>,
+    seventh: Three,
 }
 
 #[derive(Persistent)]
 struct Two {
     first: String,
+}
+
+#[derive(PersistentEmbedded)]
+struct Three {
+    name: String,
 }
 
 #[test()]

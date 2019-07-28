@@ -1,4 +1,4 @@
-use super::{Persistent, Ref, SRes};
+use super::{EmbeddedDescription, Persistent, Ref, SRes};
 use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
@@ -19,6 +19,7 @@ pub enum FieldValueType {
     Bool,
     String,
     Ref(String),
+    Embedded(StructDescription),
 }
 pub enum FieldType {
     Value(FieldValueType),
@@ -49,6 +50,10 @@ impl FieldValueType {
                 let s = String::read(read)?;
                 FieldValueType::Ref(s)
             }
+            26 => {
+                let s = StructDescription::read(read)?;
+                FieldValueType::Embedded(s)
+            }
             _ => panic!("error on de-serialization"),
         })
     }
@@ -71,6 +76,10 @@ impl FieldValueType {
             FieldValueType::Ref(t) => {
                 u8::write(&15, write)?;
                 String::write(&t, write)?;
+            }
+            FieldValueType::Embedded(t) => {
+                u8::write(&16, write)?;
+                t.write(write)?;
             }
         }
         Ok(())
@@ -110,6 +119,12 @@ impl_field_type!(String, (FieldValueType::String));
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> FieldValueType {
         FieldValueType::Ref(T::get_description().name)
+    }
+}
+
+impl<T: EmbeddedDescription> SimpleType for T {
+    fn resolve() -> FieldValueType {
+        FieldValueType::Embedded(T::get_description())
     }
 }
 

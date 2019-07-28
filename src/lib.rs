@@ -55,6 +55,9 @@ pub struct Structsy {
     tsdb_impl: Arc<StructsyImpl>,
 }
 
+pub trait EmbeddedDescription: PersistentEmbedded {
+    fn get_description() -> StructDescription;
+}
 pub trait Persistent {
     fn get_description() -> StructDescription;
     fn write(&self, write: &mut Write) -> SRes<()>;
