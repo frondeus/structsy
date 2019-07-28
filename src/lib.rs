@@ -226,6 +226,31 @@ impl Structsy {
         self.tsdb_impl.define::<T>(&self)
     }
 
+    pub fn migrate<S, D>(&self) -> SRes<()>
+    where
+        S: Persistent,
+        D: Persistent,
+        D: From<S>,
+    {
+        self.tsdb_impl.check_defined::<S>()?;
+        // TODO: Handle update of references
+        // TODO: Handle partial migration
+        let batch = 1000;
+        let mut tx = self.begin()?;
+        let mut count = 0;
+        for (id, record) in self.scan::<S>()? {
+            tx.delete(&id)?;
+            tx.insert(&D::from(record))?;
+            count += 1;
+            if count % batch == 0 {
+                self.commit(tx)?;
+                tx = self.begin()?;
+            }
+        }
+        self.commit(tx)?;
+        Ok(())
+    }
+
     pub fn begin(&self) -> SRes<OwnedSytx> {
         Ok(OwnedSytx {
             tsdb_impl: self.tsdb_impl.clone(),
@@ -235,6 +260,18 @@ impl Structsy {
 
     fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.tsdb_impl.read(sref)
+    }
+
+    pub fn scan<T: Persistent>(&self) -> SRes<impl Iterator<Item = (Ref<T>, T)>> {
+        self.tsdb_impl.check_defined::<T>()?;
+        let name = T::get_description().name;
+        Ok(self.tsdb_impl.persy.scan(&name)?.filter_map(|(id, buff)| {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        }))
     }
 
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
