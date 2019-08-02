@@ -146,7 +146,9 @@ fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
     let hash_id = hasher.finish();
     let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
             .iter()
-            .map(|field| {
+            .enumerate()
+            .map(|(position,field)| {
+                let pos = position as u32;
                 let indexed = translate_option_mode(&field.index_mode);
                 let field_name = field.name.to_string();
                 let field_ident= field.name.clone();
@@ -157,17 +159,17 @@ fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
                 let desc =match (field.template_ty.clone(),field.sub_template_ty.clone()) {
                         (Some(x),Some(z)) => {
                             quote! {
-                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty<#x<#z>>>(),#indexed));
+                                fields.push(structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed));
                             }
                         }
                         (Some(x),None) => {
                             quote! {
-                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty<#x>>(),#indexed));
+                                fields.push(structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed));
                             }
                         }
                         (None,None) => {
                             quote! {
-                                fields.push(structsy::FieldDescription::new(#field_name,structsy::FieldType::resolve::<#ty>(),#indexed));
+                                fields.push(structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed));
                             }
                         }
                         (None,Some(_x)) => panic!(""),
@@ -378,9 +380,14 @@ impl PersistentInfo {
         let fields = self.field_infos();
         let (desc, ser) = serializetion_tokens(name, &fields);
         let (indexes, impls) = indexes_tokens(name, &fields);
+        let string_name = name.to_string();
         quote! {
 
             impl structsy::Persistent for #name {
+
+                fn get_name() -> &'static str {
+                    #string_name
+                }
 
                 #desc
                 #ser

@@ -3,6 +3,7 @@ use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
 
+#[derive(PartialEq,Eq)]
 pub enum FieldValueType {
     U8,
     U16,
@@ -21,6 +22,8 @@ pub enum FieldValueType {
     Ref(String),
     Embedded(StructDescription),
 }
+
+#[derive(PartialEq,Eq)]
 pub enum FieldType {
     Value(FieldValueType),
     Option(FieldValueType),
@@ -190,21 +193,25 @@ impl FieldType {
     }
 }
 
+#[derive(PartialEq,Eq)]
 pub struct FieldDescription {
+    pub(crate) position:u32,
     pub(crate) name: String,
     pub(crate) field_type: FieldType,
     pub(crate) indexed: Option<ValueMode>,
 }
 
 impl FieldDescription {
-    pub fn new(name: &str, field_type: FieldType, indexed: Option<ValueMode>) -> FieldDescription {
+    pub fn new<T:SupportedType>(position:u32,name: &str, indexed: Option<ValueMode>) -> FieldDescription {
         FieldDescription {
+            position,
             name: name.to_string(),
-            field_type,
+            field_type:FieldType::resolve::<T>(),
             indexed,
         }
     }
     fn read(read: &mut Read) -> SRes<FieldDescription> {
+        let position= u32::read(read)?;
         let name = String::read(read)?;
         let field_type = FieldType::read(read)?;
         let indexed_value = u8::read(read)?;
@@ -216,6 +223,7 @@ impl FieldDescription {
             _ => panic!("index type reading failure"),
         };
         Ok(FieldDescription {
+            position,
             name,
             field_type,
             indexed,
@@ -234,6 +242,12 @@ impl FieldDescription {
     }
 }
 
+pub struct InternalDescription {
+    pub desc:StructDescription,
+    pub checked:bool,
+}
+
+#[derive(PartialEq,Eq)]
 pub struct StructDescription {
     pub(crate) name: String,
     pub(crate) hash_id: u64,

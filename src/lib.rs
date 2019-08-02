@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 mod format;
 pub use format::PersistentEmbedded;
 mod desc;
-pub use desc::{FieldDescription, FieldType, FieldValueType, StructDescription};
+pub use desc::{FieldDescription,StructDescription};
+use desc::InternalDescription;
 mod index;
 pub use index::{
     find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx, find_unique_tx,
@@ -46,9 +47,9 @@ impl From<IOError> for StructsyError {
 
 pub type SRes<T> = Result<T, StructsyError>;
 
-pub struct StructsyImpl {
+struct StructsyImpl {
     persy: Persy,
-    definitions: Mutex<HashMap<String, StructDescription>>,
+    definitions: Mutex<HashMap<String, InternalDescription>>,
 }
 #[derive(Clone)]
 pub struct Structsy {
@@ -59,6 +60,7 @@ pub trait EmbeddedDescription: PersistentEmbedded {
     fn get_description() -> StructDescription;
 }
 pub trait Persistent {
+    fn get_name() -> &'static str;
     fn get_description() -> StructDescription;
     fn write(&self, write: &mut Write) -> SRes<()>;
     fn read(read: &mut Read) -> SRes<Self>
@@ -79,6 +81,7 @@ pub fn declare_index<T: IndexType>(db: &mut Sytx, name: &str, mode: ValueMode) -
     Ok(())
 }
 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Ref<T> {
     type_name: String,
     raw_id: PersyId,
@@ -145,6 +148,80 @@ pub trait StructsyTx: Sytx {
     fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()>;
     fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()>;
     fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>>;
+    fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>>;
+}
+
+pub struct RecordIter<T: Persistent> {
+    iter: persy::SegmentIter,
+    marker: PhantomData<T>,
+}
+
+impl<T: Persistent> Iterator for RecordIter<T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, buff)) = self.iter.next() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+pub struct TxRecordIter<'a, T: Persistent> {
+    iter: persy::TxSegmentIter<'a>,
+    marker: PhantomData<T>,
+    structsy_impl: Arc<StructsyImpl>,
+}
+
+impl<'a, T: Persistent> TxRecordIter<'a, T> {
+    fn new(iter: persy::TxSegmentIter<'a>, structsy_impl: Arc<StructsyImpl>) -> TxRecordIter<'a, T> {
+        TxRecordIter {
+            iter,
+            marker: PhantomData,
+            structsy_impl,
+        }
+    }
+
+    pub fn tx(&mut self) -> RefSytx {
+        RefSytx {
+            trans: self.iter.tx(),
+            tsdb_impl: self.structsy_impl.clone(),
+        }
+    }
+
+    pub fn next_tx(&mut self) -> Option<(Ref<T>, T, RefSytx)> {
+        if let Some((id, buff, tx)) = self.iter.next_tx() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                let stx = RefSytx {
+                    trans: tx,
+                    tsdb_impl: self.structsy_impl.clone(),
+                };
+                Some((Ref::new(id), x, stx))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T: Persistent> Iterator for TxRecordIter<'a, T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, buff)) = self.iter.next() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl<TX> StructsyTx for TX
@@ -196,6 +273,15 @@ where
         self.structsy().structsy_impl.check_defined::<T>()?;
         let persy = &self.structsy().structsy_impl.persy;
         tx_read(&persy, &sref.type_name, &mut self.tx().trans, &sref.raw_id)
+    }
+
+    fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let name = T::get_description().name;
+        let persy = &self.structsy().structsy_impl.persy;
+        let implc = self.structsy().structsy_impl.clone();
+        let iter = persy.scan_tx(self.tx().trans, &name)?;
+        Ok(TxRecordIter::new(iter, implc))
     }
 }
 
@@ -262,20 +348,20 @@ impl Structsy {
         self.tsdb_impl.read(sref)
     }
 
-    pub fn scan<T: Persistent>(&self) -> SRes<impl Iterator<Item = (Ref<T>, T)>> {
+    pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
         self.tsdb_impl.check_defined::<T>()?;
         let name = T::get_description().name;
-        Ok(self.tsdb_impl.persy.scan(&name)?.filter_map(|(id, buff)| {
-            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
-                Some((Ref::new(id), x))
-            } else {
-                None
-            }
-        }))
+        Ok(RecordIter {
+            iter: self.tsdb_impl.persy.scan(&name)?,
+            marker: PhantomData,
+        })
     }
 
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
         self.tsdb_impl.commit(tx.trans)
+    }
+    pub fn is_defined<T:Persistent> (&self) -> SRes<bool> {
+        self.tsdb_impl.is_defined::<T>()
     }
 }
 
@@ -308,7 +394,7 @@ impl StructsyImpl {
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
             .filter_map(|(_, r)| StructDescription::read(&mut Cursor::new(r)).ok())
-            .map(|d| (d.name.clone(), d))
+            .map(|d| (d.name.clone(), InternalDescription{desc:d,checked:false}))
             .collect();
         Ok(StructsyImpl {
             definitions: Mutex::new(definitions),
@@ -317,14 +403,28 @@ impl StructsyImpl {
     }
 
     pub fn check_defined<T: Persistent>(&self) -> SRes<()> {
-        let desc = T::get_description();
-        let lock = self.definitions.lock()?;
-        if let Some(x) = lock.get(&desc.name) {
-            if x.hash_id != desc.hash_id {
-                return Err(StructsyError::StructNotDefined(desc.name.clone()));
+        let mut lock = self.definitions.lock()?;
+        let name = T::get_name();
+        if let Some(x) = lock.get_mut(name) {
+            if x.checked {
+                Ok(())
+            } else {
+                let desc = T::get_description();
+                if x.desc != desc {
+                    Err(StructsyError::StructNotDefined(desc.name.clone()))
+                } else {
+                    x.checked = true;
+                    Ok(())
+                }
             }
+        } else {
+            Err(StructsyError::StructNotDefined(String::from(name)))
         }
-        Ok(())
+    }
+
+    pub fn is_defined<T: Persistent>(&self) -> SRes<bool> {
+        let lock = self.definitions.lock()?;
+        Ok(lock.contains_key(T::get_name()))
     }
 
     pub fn define<T: Persistent>(&self, tsdb: &Structsy) -> SRes<()> {
@@ -332,7 +432,7 @@ impl StructsyImpl {
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.name.clone()) {
             Entry::Occupied(x) => {
-                if x.get().hash_id != desc.hash_id {
+                if x.get().desc != desc {
                     return Err(StructsyError::StructAlreadyDefined(desc.name.clone()));
                 }
             }
@@ -344,7 +444,10 @@ impl StructsyImpl {
                 self.persy.create_segment(&mut tx.trans, &desc.name)?;
                 T::declare(&mut tx)?;
                 tsdb.commit(tx)?;
-                x.insert(desc);
+                x.insert(InternalDescription{
+                    desc,
+                    checked: true,
+                });
             }
         }
         Ok(())
@@ -372,30 +475,26 @@ impl StructsyImpl {
 #[cfg(test)]
 mod test {
     use super::{
-        find, find_range, find_range_tx, find_tx, FieldDescription, FieldType, FieldValueType, Persistent,
+        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent,
         RangeIterator, Ref, SRes, StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;
     use std::io::{Read, Write};
+    #[derive(Debug, PartialEq)]
     struct ToTest {
         name: String,
         length: u32,
     }
-
     impl Persistent for ToTest {
+
+        fn get_name() -> &'static str {
+            "ToTest"
+        }
         fn get_description() -> StructDescription {
             let mut fields = Vec::new();
-            fields.push(FieldDescription {
-                name: "name".to_string(),
-                field_type: FieldType::Value(FieldValueType::String),
-                indexed: Some(ValueMode::CLUSTER),
-            });
-            fields.push(FieldDescription {
-                name: "length".to_string(),
-                field_type: FieldType::Value(FieldValueType::U32),
-                indexed: None,
-            });
+            fields.push(FieldDescription::new::<String>(0,"name",Some(ValueMode::CLUSTER)));
+            fields.push(FieldDescription::new::<u32>(1, "length", None));
             StructDescription {
                 name: "ToTest".to_string(),
                 hash_id: 10,
@@ -487,6 +586,27 @@ mod test {
         assert_eq!(looked_up, Some("one".to_string()));
         read.name = "new".to_string();
         tx.update(&id, &read).expect("updated correctly");
+
+        let mut count = 0;
+        let mut iter = tx.scan::<ToTest>().expect("scan works");
+        assert_eq!(iter.tx().read(&id).expect("transaction access works").is_some(), true);
+        for (sid, rec) in iter {
+            assert_eq!(rec.name, read.name);
+            assert_eq!(rec.length, val.length);
+            assert_eq!(sid, id);
+            count += 1;
+        }
+
+        assert_eq!(count, 1);
+        count = 0;
+        let mut iter = tx.scan::<ToTest>().expect("scan works");
+        while let Some((sid, rec, _tx)) = iter.next_tx() {
+            assert_eq!(rec.name, read.name);
+            assert_eq!(rec.length, val.length);
+            assert_eq!(sid, id);
+            count += 1;
+        }
+        assert_eq!(count, 1);
         db.commit(tx).expect("tx committed correctly");
 
         let looked_up = ToTest::find_by_name(&db, &"new".to_string())
@@ -506,6 +626,14 @@ mod test {
         let read_persistent = db.read(&id).expect("read correctly").expect("this is some");
         assert_eq!(read_persistent.name, read.name);
         assert_eq!(read_persistent.length, val.length);
+        let mut count = 0;
+        for (sid, rec) in db.scan::<ToTest>().expect("scan works") {
+            assert_eq!(rec.name, read.name);
+            assert_eq!(rec.length, val.length);
+            assert_eq!(sid, id);
+            count += 1;
+        }
+        assert_eq!(count, 1);
         fs::remove_file("one.db").expect("remove file works");
     }
 
