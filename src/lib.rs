@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 mod format;
 pub use format::PersistentEmbedded;
 mod desc;
-pub use desc::{FieldDescription,StructDescription};
 use desc::InternalDescription;
+pub use desc::{FieldDescription, StructDescription};
 mod index;
 pub use index::{
     find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx, find_unique_tx,
@@ -360,7 +360,7 @@ impl Structsy {
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
         self.tsdb_impl.commit(tx.trans)
     }
-    pub fn is_defined<T:Persistent> (&self) -> SRes<bool> {
+    pub fn is_defined<T: Persistent>(&self) -> SRes<bool> {
         self.tsdb_impl.is_defined::<T>()
     }
 }
@@ -394,7 +394,15 @@ impl StructsyImpl {
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
             .filter_map(|(_, r)| StructDescription::read(&mut Cursor::new(r)).ok())
-            .map(|d| (d.name.clone(), InternalDescription{desc:d,checked:false}))
+            .map(|d| {
+                (
+                    d.name.clone(),
+                    InternalDescription {
+                        desc: d,
+                        checked: false,
+                    },
+                )
+            })
             .collect();
         Ok(StructsyImpl {
             definitions: Mutex::new(definitions),
@@ -444,10 +452,7 @@ impl StructsyImpl {
                 self.persy.create_segment(&mut tx.trans, &desc.name)?;
                 T::declare(&mut tx)?;
                 tsdb.commit(tx)?;
-                x.insert(InternalDescription{
-                    desc,
-                    checked: true,
-                });
+                x.insert(InternalDescription { desc, checked: true });
             }
         }
         Ok(())
@@ -475,8 +480,8 @@ impl StructsyImpl {
 #[cfg(test)]
 mod test {
     use super::{
-        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent,
-        RangeIterator, Ref, SRes, StructDescription, Structsy, StructsyTx, Sytx,
+        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, RangeIterator, Ref, SRes,
+        StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;
@@ -487,17 +492,15 @@ mod test {
         length: u32,
     }
     impl Persistent for ToTest {
-
         fn get_name() -> &'static str {
             "ToTest"
         }
         fn get_description() -> StructDescription {
             let mut fields = Vec::new();
-            fields.push(FieldDescription::new::<String>(0,"name",Some(ValueMode::CLUSTER)));
+            fields.push(FieldDescription::new::<String>(0, "name", Some(ValueMode::CLUSTER)));
             fields.push(FieldDescription::new::<u32>(1, "length", None));
             StructDescription {
                 name: "ToTest".to_string(),
-                hash_id: 10,
                 fields,
             }
         }

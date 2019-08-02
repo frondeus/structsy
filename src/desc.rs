@@ -3,7 +3,7 @@ use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
 
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq, Eq)]
 pub enum FieldValueType {
     U8,
     U16,
@@ -23,7 +23,7 @@ pub enum FieldValueType {
     Embedded(StructDescription),
 }
 
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq, Eq)]
 pub enum FieldType {
     Value(FieldValueType),
     Option(FieldValueType),
@@ -193,25 +193,25 @@ impl FieldType {
     }
 }
 
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq, Eq)]
 pub struct FieldDescription {
-    pub(crate) position:u32,
+    pub(crate) position: u32,
     pub(crate) name: String,
     pub(crate) field_type: FieldType,
     pub(crate) indexed: Option<ValueMode>,
 }
 
 impl FieldDescription {
-    pub fn new<T:SupportedType>(position:u32,name: &str, indexed: Option<ValueMode>) -> FieldDescription {
+    pub fn new<T: SupportedType>(position: u32, name: &str, indexed: Option<ValueMode>) -> FieldDescription {
         FieldDescription {
             position,
             name: name.to_string(),
-            field_type:FieldType::resolve::<T>(),
+            field_type: FieldType::resolve::<T>(),
             indexed,
         }
     }
     fn read(read: &mut Read) -> SRes<FieldDescription> {
-        let position= u32::read(read)?;
+        let position = u32::read(read)?;
         let name = String::read(read)?;
         let field_type = FieldType::read(read)?;
         let indexed_value = u8::read(read)?;
@@ -243,38 +243,34 @@ impl FieldDescription {
 }
 
 pub struct InternalDescription {
-    pub desc:StructDescription,
-    pub checked:bool,
+    pub desc: StructDescription,
+    pub checked: bool,
 }
 
-#[derive(PartialEq,Eq)]
+#[derive(PartialEq, Eq)]
 pub struct StructDescription {
     pub(crate) name: String,
-    pub(crate) hash_id: u64,
     pub(crate) fields: Vec<FieldDescription>,
 }
 
 impl StructDescription {
-    pub fn new(name: &str, hash_id: u64, fields: Vec<FieldDescription>) -> StructDescription {
+    pub fn new(name: &str, fields: Vec<FieldDescription>) -> StructDescription {
         StructDescription {
             name: name.to_string(),
-            hash_id,
             fields,
         }
     }
     pub(crate) fn read(read: &mut Read) -> SRes<StructDescription> {
         let name = String::read(read)?;
-        let hash_id = u64::read(read)?;
         let n_fields = u32::read(read)?;
         let mut fields = Vec::new();
         for _ in 0..n_fields {
             fields.push(FieldDescription::read(read)?);
         }
-        Ok(StructDescription { name, hash_id, fields })
+        Ok(StructDescription { name, fields })
     }
     pub(crate) fn write(&self, write: &mut Write) -> SRes<()> {
         self.name.write(write)?;
-        self.hash_id.write(write)?;
         (self.fields.len() as u32).write(write)?;
         for f in &self.fields {
             f.write(write)?;

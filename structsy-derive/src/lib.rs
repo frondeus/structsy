@@ -8,8 +8,6 @@ extern crate proc_macro2;
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::{Span, TokenStream};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
 use syn::Type::Path;
 use syn::{
     AngleBracketedGenericArguments, DeriveInput, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
@@ -128,22 +126,6 @@ struct FieldInfo {
 }
 
 fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
-    let mut identity = fields
-        .iter()
-        .map(|field| {
-            let mut fs = format!(":{}:{}", field.name.to_string(), field.ty.to_string());
-            match (field.template_ty.clone(), field.sub_template_ty.clone()) {
-                (Some(x), Some(z)) => fs.push_str(&format!("<{}<{}>>", x.to_string(), z.to_string())),
-                (Some(x), None) => fs.push_str(&format!("<{}>", x.to_string())),
-                _ => {}
-            };
-            fs
-        })
-        .collect::<Vec<String>>();
-    identity.sort();
-    let mut hasher = DefaultHasher::new();
-    hasher.write(format!("{}{}", name, identity.into_iter().collect::<String>()).as_bytes());
-    let hash_id = hasher.finish();
     let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
             .iter()
             .enumerate()
@@ -196,7 +178,7 @@ fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
             fn get_description() -> structsy::StructDescription {
                 let mut fields = Vec::new();
                 #( #fields_meta )*
-                structsy::StructDescription::new(#struct_name,#hash_id,fields)
+                structsy::StructDescription::new(#struct_name,fields)
             }
     };
     let serialization = quote! {
