@@ -230,6 +230,7 @@ impl FieldDescription {
         })
     }
     fn write(&self, write: &mut Write) -> SRes<()> {
+        self.position.write(write)?;
         self.name.write(write)?;
         self.field_type.write(write)?;
         match self.indexed {

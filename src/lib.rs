@@ -308,7 +308,7 @@ impl Structsy {
         })
     }
 
-    pub fn define<T: Persistent>(&self) -> SRes<()> {
+    pub fn define<T: Persistent>(&self) -> SRes<bool> {
         self.tsdb_impl.define::<T>(&self)
     }
 
@@ -435,7 +435,7 @@ impl StructsyImpl {
         Ok(lock.contains_key(T::get_name()))
     }
 
-    pub fn define<T: Persistent>(&self, tsdb: &Structsy) -> SRes<()> {
+    pub fn define<T: Persistent>(&self, tsdb: &Structsy) -> SRes<bool> {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.name.clone()) {
@@ -443,6 +443,7 @@ impl StructsyImpl {
                 if x.get().desc != desc {
                     return Err(StructsyError::StructAlreadyDefined(desc.name.clone()));
                 }
+                Ok(false)
             }
             Entry::Vacant(x) => {
                 let mut buff = Vec::new();
@@ -453,9 +454,9 @@ impl StructsyImpl {
                 T::declare(&mut tx)?;
                 tsdb.commit(tx)?;
                 x.insert(InternalDescription { desc, checked: true });
+                Ok(true)
             }
         }
-        Ok(())
     }
 
     pub fn begin(&self) -> SRes<Transaction> {
