@@ -344,7 +344,7 @@ impl Structsy {
         })
     }
 
-    fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
+    pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.tsdb_impl.read(sref)
     }
 
