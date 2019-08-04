@@ -9,7 +9,6 @@ struct MyData {
 }
 
 fn main() -> Result<(), StructsyError> {
-    Structsy::create_if_not_exists("my_data.db")?;
     let db = Structsy::open("my_data.db")?;
     db.define::<MyData>()?;
 

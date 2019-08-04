@@ -4,7 +4,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{Cursor, Error as IOError, Read, Write};
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 mod format;
 pub use format::PersistentEmbedded;
@@ -293,18 +293,35 @@ fn tx_read<T: Persistent>(persy: &Persy, name: &str, tx: &mut Transaction, id: &
     }
 }
 
+pub struct StructsyConfig {
+    create: bool,
+    path: PathBuf,
+}
+impl StructsyConfig {
+    pub fn create(mut self, create: bool) -> StructsyConfig {
+        self.create = create;
+        self
+    }
+}
+impl<T: AsRef<Path>> From<T> for StructsyConfig {
+    fn from(path: T) -> StructsyConfig {
+        StructsyConfig {
+            create: true,
+            path: path.as_ref().to_path_buf(),
+        }
+    }
+}
+
 impl Structsy {
-    pub fn create_if_not_exists<P: AsRef<Path>>(path: P) -> SRes<bool> {
-        StructsyImpl::create_if_not_exists(path)
+    pub fn config<C: AsRef<Path>>(path: C) -> StructsyConfig {
+        let mut c = StructsyConfig::from(path);
+        c.create = false;
+        c
     }
 
-    pub fn create<P: AsRef<Path>>(path: P) -> SRes<()> {
-        StructsyImpl::create(path)
-    }
-
-    pub fn open<P: AsRef<Path>>(path: P) -> SRes<Structsy> {
+    pub fn open<C: Into<StructsyConfig>>(config: C) -> SRes<Structsy> {
         Ok(Structsy {
-            structsy_impl: Arc::new(StructsyImpl::open(path)?),
+            structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
         })
     }
 
@@ -366,15 +383,6 @@ impl Structsy {
 }
 
 impl StructsyImpl {
-    pub fn create_if_not_exists<P: AsRef<Path>>(path: P) -> SRes<bool> {
-        if !path.as_ref().exists() {
-            Persy::create(path.as_ref())?;
-            StructsyImpl::init_segment(path)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
     fn init_segment<P: AsRef<Path>>(path: P) -> SRes<()> {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
@@ -383,14 +391,13 @@ impl StructsyImpl {
         persy.commit(prep)?;
         Ok(())
     }
-    pub fn create<P: AsRef<Path>>(path: P) -> SRes<()> {
-        Persy::create(path.as_ref())?;
-        StructsyImpl::init_segment(path)?;
-        Ok(())
-    }
 
-    pub fn open<P: AsRef<Path>>(path: P) -> SRes<StructsyImpl> {
-        let persy = Persy::open(path, Config::new())?;
+    pub fn open(config: StructsyConfig) -> SRes<StructsyImpl> {
+        if config.create && !config.path.exists() {
+            Persy::create(&config.path)?;
+            StructsyImpl::init_segment(&config.path)?;
+        }
+        let persy = Persy::open(&config.path, Config::new())?;
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
             .filter_map(|(_, r)| StructDescription::read(&mut Cursor::new(r)).ok())
@@ -562,7 +569,6 @@ mod test {
 
     #[test()]
     fn simple_basic_flow() {
-        Structsy::create("one.db").expect("can create the database");
         let db = Structsy::open("one.db").expect("can open the database");
         db.define::<ToTest>().expect("is define correctly");
         let mut tx = db.begin().expect("can start a transaction");

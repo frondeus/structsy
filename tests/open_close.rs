@@ -13,7 +13,6 @@ fn save_close_open_read() {
     let file = dir.path().join("save_close_open_read.db");
     let id;
     {
-        Structsy::create(&file).expect("create works fine");
         let db = Structsy::open(&file).expect("can open just create");
         db.define::<Simple>().expect("can define the struct");
         let data = Simple {
@@ -24,7 +23,9 @@ fn save_close_open_read() {
         db.commit(tx).expect("trasaction is committed");
     }
     {
-        let db = Structsy::open(file).expect("can open just create");
+        let config = Structsy::config(file).create(false);
+        let db = Structsy::open(config).expect("can open just create");
+        db.define::<Simple>().expect("can define the struct");
         let data = db
             .read(&id)
             .expect("can read just saved record")
@@ -32,3 +33,4 @@ fn save_close_open_read() {
         assert_eq!(data.name, "one");
     }
 }
+
