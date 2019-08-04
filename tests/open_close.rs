@@ -33,4 +33,3 @@ fn save_close_open_read() {
         assert_eq!(data.name, "one");
     }
 }
-
