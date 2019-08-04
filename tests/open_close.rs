@@ -1,10 +1,10 @@
 use structsy::{Structsy, StructsyTx};
-use structsy_derive::{Persistent};
+use structsy_derive::Persistent;
 use tempfile::tempdir;
 
-#[derive(Persistent,Debug)]
+#[derive(Persistent, Debug)]
 struct Simple {
-    name:String,
+    name: String,
 }
 
 #[test]
@@ -14,7 +14,7 @@ fn save_close_open_read() {
     let id;
     {
         Structsy::create(&file).expect("create works fine");
-        let db =Structsy::open(&file).expect("can open just create");
+        let db = Structsy::open(&file).expect("can open just create");
         db.define::<Simple>().expect("can define the struct");
         let data = Simple {
             name: "one".to_string(),
@@ -24,10 +24,11 @@ fn save_close_open_read() {
         db.commit(tx).expect("trasaction is committed");
     }
     {
-        let db =Structsy::open(file).expect("can open just create");
-        let data = db.read(&id).expect("can read just saved record").expect("the record is there");
+        let db = Structsy::open(file).expect("can open just create");
+        let data = db
+            .read(&id)
+            .expect("can read just saved record")
+            .expect("the record is there");
         assert_eq!(data.name, "one");
     }
 }
-
-

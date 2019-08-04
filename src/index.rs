@@ -148,7 +148,7 @@ fn map_entry_tx<P: Persistent>(persy: &Persy, tx: &mut Transaction, entry: Value
 }
 
 pub fn find_unique<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    if let Some(id_container) = db.tsdb_impl.persy.get::<K, PersyId>(name, k)? {
+    if let Some(id_container) = db.structsy_impl.persy.get::<K, PersyId>(name, k)? {
         Ok(map_unique_entry(db, id_container))
     } else {
         Ok(None)
@@ -162,7 +162,7 @@ pub fn find_unique_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 ) -> SRes<impl Iterator<Item = (Ref<P>, P, K)>> {
     let db1: Structsy = db.clone();
     Ok(db
-        .tsdb_impl
+        .structsy_impl
         .persy
         .range::<K, PersyId, R>(name, range)?
         .filter_map(move |e| {
@@ -172,7 +172,7 @@ pub fn find_unique_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 }
 
 pub fn find<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    if let Some(e) = db.tsdb_impl.persy.get::<K, PersyId>(name, k)? {
+    if let Some(e) = db.structsy_impl.persy.get::<K, PersyId>(name, k)? {
         Ok(map_entry(db, e))
     } else {
         Ok(Vec::new())
@@ -186,7 +186,7 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 ) -> SRes<impl Iterator<Item = (Ref<P>, P, K)>> {
     let db1: Structsy = db.clone();
     Ok(db
-        .tsdb_impl
+        .structsy_impl
         .persy
         .range::<K, PersyId, R>(name, range)?
         .map(move |e| {
@@ -231,7 +231,7 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
     }
     pub fn tx(&'a mut self) -> RefSytx<'a> {
         RefSytx {
-            tsdb_impl: self.structsy.clone(),
+            structsy_impl: self.structsy.clone(),
             trans: self.persy_iter.tx(),
         }
     }
@@ -247,7 +247,7 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
                 }
             }
             let ref_tx = RefSytx {
-                tsdb_impl: self.structsy.clone(),
+                structsy_impl: self.structsy.clone(),
                 trans: tx,
             };
             return Some((pv, k, ref_tx));
@@ -302,7 +302,7 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
     }
     pub fn tx(&'a mut self) -> RefSytx<'a> {
         RefSytx {
-            tsdb_impl: self.structsy.clone(),
+            structsy_impl: self.structsy.clone(),
             trans: self.persy_iter.tx(),
         }
     }

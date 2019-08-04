@@ -53,7 +53,7 @@ struct StructsyImpl {
 }
 #[derive(Clone)]
 pub struct Structsy {
-    tsdb_impl: Arc<StructsyImpl>,
+    structsy_impl: Arc<StructsyImpl>,
 }
 
 pub trait EmbeddedDescription: PersistentEmbedded {
@@ -99,12 +99,12 @@ impl<T: Persistent> Ref<T> {
 }
 
 pub struct OwnedSytx {
-    tsdb_impl: Arc<StructsyImpl>,
+    structsy_impl: Arc<StructsyImpl>,
     trans: Transaction,
 }
 
 pub struct RefSytx<'a> {
-    tsdb_impl: Arc<StructsyImpl>,
+    structsy_impl: Arc<StructsyImpl>,
     trans: &'a mut Transaction,
 }
 
@@ -127,7 +127,7 @@ impl Sytx for OwnedSytx {
     }
     fn structsy(&self) -> ImplRef {
         ImplRef {
-            structsy_impl: self.tsdb_impl.clone(),
+            structsy_impl: self.structsy_impl.clone(),
         }
     }
 }
@@ -138,7 +138,7 @@ impl<'a> Sytx for RefSytx<'a> {
     }
     fn structsy(&self) -> ImplRef {
         ImplRef {
-            structsy_impl: self.tsdb_impl.clone(),
+            structsy_impl: self.structsy_impl.clone(),
         }
     }
 }
@@ -188,7 +188,7 @@ impl<'a, T: Persistent> TxRecordIter<'a, T> {
     pub fn tx(&mut self) -> RefSytx {
         RefSytx {
             trans: self.iter.tx(),
-            tsdb_impl: self.structsy_impl.clone(),
+            structsy_impl: self.structsy_impl.clone(),
         }
     }
 
@@ -197,7 +197,7 @@ impl<'a, T: Persistent> TxRecordIter<'a, T> {
             if let Ok(x) = T::read(&mut Cursor::new(buff)) {
                 let stx = RefSytx {
                     trans: tx,
-                    tsdb_impl: self.structsy_impl.clone(),
+                    structsy_impl: self.structsy_impl.clone(),
                 };
                 Some((Ref::new(id), x, stx))
             } else {
@@ -304,12 +304,12 @@ impl Structsy {
 
     pub fn open<P: AsRef<Path>>(path: P) -> SRes<Structsy> {
         Ok(Structsy {
-            tsdb_impl: Arc::new(StructsyImpl::open(path)?),
+            structsy_impl: Arc::new(StructsyImpl::open(path)?),
         })
     }
 
     pub fn define<T: Persistent>(&self) -> SRes<bool> {
-        self.tsdb_impl.define::<T>(&self)
+        self.structsy_impl.define::<T>(&self)
     }
 
     pub fn migrate<S, D>(&self) -> SRes<()>
@@ -318,7 +318,7 @@ impl Structsy {
         D: Persistent,
         D: From<S>,
     {
-        self.tsdb_impl.check_defined::<S>()?;
+        self.structsy_impl.check_defined::<S>()?;
         // TODO: Handle update of references
         // TODO: Handle partial migration
         let batch = 1000;
@@ -339,29 +339,29 @@ impl Structsy {
 
     pub fn begin(&self) -> SRes<OwnedSytx> {
         Ok(OwnedSytx {
-            tsdb_impl: self.tsdb_impl.clone(),
-            trans: self.tsdb_impl.begin()?,
+            structsy_impl: self.structsy_impl.clone(),
+            trans: self.structsy_impl.begin()?,
         })
     }
 
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.tsdb_impl.read(sref)
+        self.structsy_impl.read(sref)
     }
 
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
-        self.tsdb_impl.check_defined::<T>()?;
+        self.structsy_impl.check_defined::<T>()?;
         let name = T::get_description().name;
         Ok(RecordIter {
-            iter: self.tsdb_impl.persy.scan(&name)?,
+            iter: self.structsy_impl.persy.scan(&name)?,
             marker: PhantomData,
         })
     }
 
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
-        self.tsdb_impl.commit(tx.trans)
+        self.structsy_impl.commit(tx.trans)
     }
     pub fn is_defined<T: Persistent>(&self) -> SRes<bool> {
-        self.tsdb_impl.is_defined::<T>()
+        self.structsy_impl.is_defined::<T>()
     }
 }
 
@@ -435,7 +435,7 @@ impl StructsyImpl {
         Ok(lock.contains_key(T::get_name()))
     }
 
-    pub fn define<T: Persistent>(&self, tsdb: &Structsy) -> SRes<bool> {
+    pub fn define<T: Persistent>(&self, structsy: &Structsy) -> SRes<bool> {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.name.clone()) {
@@ -448,11 +448,11 @@ impl StructsyImpl {
             Entry::Vacant(x) => {
                 let mut buff = Vec::new();
                 desc.write(&mut buff)?;
-                let mut tx = tsdb.begin()?;
+                let mut tx = structsy.begin()?;
                 self.persy.insert_record(&mut tx.trans, INTERNAL_SEGMENT_NAME, &buff)?;
                 self.persy.create_segment(&mut tx.trans, &desc.name)?;
                 T::declare(&mut tx)?;
-                tsdb.commit(tx)?;
+                structsy.commit(tx)?;
                 x.insert(InternalDescription { desc, checked: true });
                 Ok(true)
             }
