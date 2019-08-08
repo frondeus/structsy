@@ -127,46 +127,46 @@ struct FieldInfo {
 
 fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
     let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
-            .iter()
-            .enumerate()
-            .map(|(position,field)| {
-                let pos = position as u32;
-                let indexed = translate_option_mode(&field.index_mode);
-                let field_name = field.name.to_string();
-                let field_ident= field.name.clone();
-                let read_fill = quote! {
-                    #field_ident,
-                };
-                let ty= field.ty.clone();
-                let desc =match (field.template_ty.clone(),field.sub_template_ty.clone()) {
-                        (Some(x),Some(z)) => {
-                            quote! {
-                                fields.push(structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed));
-                            }
-                        }
-                        (Some(x),None) => {
-                            quote! {
-                                fields.push(structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed));
-                            }
-                        }
-                        (None,None) => {
-                            quote! {
-                                fields.push(structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed));
-                            }
-                        }
-                        (None,Some(_x)) => panic!(""),
-                    };
+        .iter()
+        .enumerate()
+        .map(|(position, field)| {
+            let pos = position as u32;
+            let indexed = translate_option_mode(&field.index_mode);
+            let field_name = field.name.to_string();
+            let field_ident = field.name.clone();
+            let read_fill = quote! {
+                #field_ident,
+            };
+            let ty = field.ty.clone();
+            let desc = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+                (Some(x), Some(z)) => {
+                    quote! {
+                        fields.push(structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed));
+                    }
+                }
+                (Some(x), None) => {
+                    quote! {
+                        fields.push(structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed));
+                    }
+                }
+                (None, None) => {
+                    quote! {
+                        fields.push(structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed));
+                    }
+                }
+                (None, Some(_x)) => panic!(""),
+            };
 
-                let write = quote! {
-                    self.#field_ident.write(write)?;
-                };
+            let write = quote! {
+                self.#field_ident.write(write)?;
+            };
 
-                let read =quote! {
-                    let #field_ident= PersistentEmbedded::read(read)?;
-                };
-                ((desc, write), (read, read_fill))
-            })
-            .collect();
+            let read = quote! {
+                let #field_ident= PersistentEmbedded::read(read)?;
+            };
+            ((desc, write), (read, read_fill))
+        })
+        .collect();
 
     let (fields_meta_write, fields_read_fill): (Vec<(TokenStream, TokenStream)>, Vec<(TokenStream, TokenStream)>) =
         fields_info.into_iter().unzip();
@@ -334,7 +334,7 @@ impl PersistentInfo {
         self.data
             .as_ref()
             .take_struct()
-            .unwrap()
+            .expect("Only struct type supported")
             .fields
             .iter()
             .filter_map(|f| {
