@@ -1,13 +1,19 @@
 [package]
 name = "structsy"
 version = "0.1.0"
+description = "Simple single file structs database"
+license = "MIT"
 authors = ["Tglman <tglman@tglman.com>"]
+repository = "https://gitlab.com/tglman/structsy"
 edition = "2018"
+readme = "README.md"
+
+[badges]
+gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
 persy = { git = "https://gitlab.com/tglman/persy.git"}
 byteorder="1.3"
-
 
 [dev-dependencies]
 structsy-derive= { path="structsy-derive"}

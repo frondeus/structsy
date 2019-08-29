@@ -1,8 +1,14 @@
 [package]
 name = "structsy-derive"
 version = "0.1.0"
+description = "Structsy single file struct database persistent derive implementation" 
+license = "MIT"
 authors = ["Tglman <tglman@tglman.com>"]
 edition = "2018"
+repository = "https://gitlab.com/tglman/structsy"
+
+[badges]
+gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
 syn = "0.15"
