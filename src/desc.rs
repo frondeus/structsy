@@ -87,6 +87,13 @@ impl FieldValueType {
         }
         Ok(())
     }
+    fn has_refer_to(&self, name: &str) -> bool {
+        match self {
+            FieldValueType::Ref(t) => t == name,
+            FieldValueType::Embedded(t) => t.has_refer_to(name),
+            _ => false,
+        }
+    }
 }
 pub trait SupportedType {
     fn resolve() -> FieldType;
@@ -241,11 +248,25 @@ impl FieldDescription {
         }
         Ok(())
     }
+
+    fn has_refer_to(&self, name: &str) -> bool {
+        match &self.field_type {
+            FieldType::Array(t) => t.has_refer_to(name),
+            FieldType::Option(t) => t.has_refer_to(name),
+            FieldType::OptionArray(t) => t.has_refer_to(name),
+            FieldType::Value(t) => t.has_refer_to(name),
+        }
+    }
 }
 
 pub struct InternalDescription {
     pub desc: StructDescription,
     pub checked: bool,
+}
+impl InternalDescription {
+    pub fn has_refer_to(&self, name: &str) -> bool {
+        self.desc.has_refer_to(name)
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -277,5 +298,14 @@ impl StructDescription {
             f.write(write)?;
         }
         Ok(())
+    }
+
+    pub(crate) fn has_refer_to(&self, name: &str) -> bool {
+        for f in &self.fields {
+            if f.has_refer_to(name) {
+                return true;
+            }
+        }
+        false
     }
 }

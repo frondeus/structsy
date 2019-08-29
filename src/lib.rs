@@ -26,6 +26,7 @@ pub enum StructsyError {
     StructNotDefined(String),
     IOError,
     PoisonedLock,
+    MigrationNotSupported(String),
 }
 
 impl From<PersyError> for StructsyError {
@@ -63,7 +64,7 @@ pub trait Persistent {
     fn get_name() -> &'static str;
     fn get_description() -> StructDescription;
     fn write(&self, write: &mut Write) -> SRes<()>;
-    fn read(read: &mut Read) -> SRes<Self>
+    fn read(read: &mut dyn Read) -> SRes<Self>
     where
         Self: std::marker::Sized;
     fn declare(db: &mut Sytx) -> SRes<()>;
@@ -336,6 +337,12 @@ impl Structsy {
         D: From<S>,
     {
         self.structsy_impl.check_defined::<S>()?;
+        if self.structsy_impl.is_referred_by_others::<S>()? {
+            return Err(StructsyError::MigrationNotSupported(format!(
+                "Struct referred with Ref<{}> by other struct, migration of referred struct is not supported yet",
+                S::get_name()
+            )));
+        }
         // TODO: Handle update of references
         // TODO: Handle partial migration
         let batch = 1000;
@@ -482,6 +489,15 @@ impl StructsyImpl {
         let to_finalize = self.persy.prepare_commit(tx)?;
         self.persy.commit(to_finalize)?;
         Ok(())
+    }
+    pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
+        let name = T::get_name();
+        for def in self.definitions.lock()?.values() {
+            if def.has_refer_to(name) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }
 
