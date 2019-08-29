@@ -63,20 +63,20 @@ pub trait EmbeddedDescription: PersistentEmbedded {
 pub trait Persistent {
     fn get_name() -> &'static str;
     fn get_description() -> StructDescription;
-    fn write(&self, write: &mut Write) -> SRes<()>;
+    fn write(&self, write: &mut dyn Write) -> SRes<()>;
     fn read(read: &mut dyn Read) -> SRes<Self>
     where
         Self: std::marker::Sized;
-    fn declare(db: &mut Sytx) -> SRes<()>;
-    fn put_indexes(&self, tx: &mut Sytx, id: &Ref<Self>) -> SRes<()>
+    fn declare(db: &mut dyn Sytx) -> SRes<()>;
+    fn put_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()>
     where
         Self: std::marker::Sized;
-    fn remove_indexes(&self, tx: &mut Sytx, id: &Ref<Self>) -> SRes<()>
+    fn remove_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()>
     where
         Self: std::marker::Sized;
 }
 
-pub fn declare_index<T: IndexType>(db: &mut Sytx, name: &str, mode: ValueMode) -> SRes<()> {
+pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {
     let persy = &db.structsy().structsy_impl.persy;
     persy.create_index::<T, PersyId>(&mut db.tx().trans, name, mode)?;
     Ok(())
@@ -528,13 +528,13 @@ mod test {
                 fields,
             }
         }
-        fn write(&self, write: &mut Write) -> SRes<()> {
+        fn write(&self, write: &mut dyn Write) -> SRes<()> {
             use super::PersistentEmbedded;
             self.name.write(write)?;
             self.length.write(write)?;
             Ok(())
         }
-        fn read(read: &mut Read) -> SRes<Self>
+        fn read(read: &mut dyn Read) -> SRes<Self>
         where
             Self: std::marker::Sized,
         {
@@ -545,18 +545,18 @@ mod test {
             })
         }
 
-        fn declare(tx: &mut Sytx) -> SRes<()> {
+        fn declare(tx: &mut dyn Sytx) -> SRes<()> {
             use super::declare_index;
             declare_index::<String>(tx, "ToTest.name", ValueMode::EXCLUSIVE)?;
             Ok(())
         }
-        fn put_indexes(&self, tx: &mut Sytx, id: &Ref<Self>) -> SRes<()> {
+        fn put_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()> {
             use super::IndexableValue;
             self.name.puts(tx, "ToTest.name", id)?;
             Ok(())
         }
 
-        fn remove_indexes(&self, tx: &mut Sytx, id: &Ref<Self>) -> SRes<()> {
+        fn remove_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()> {
             use super::IndexableValue;
             self.name.removes(tx, "ToTest.name", id)?;
             Ok(())
@@ -566,7 +566,7 @@ mod test {
         fn find_by_name(st: &Structsy, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
             find(st, "ToTest.name", val)
         }
-        fn find_by_name_tx(st: &mut Sytx, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
+        fn find_by_name_tx(st: &mut dyn Sytx, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
             find_tx(st, "ToTest.name", val)
         }
         fn find_by_name_range<R: std::ops::RangeBounds<String>>(
@@ -576,7 +576,7 @@ mod test {
             find_range(st, "ToTest.name", range)
         }
         fn find_by_name_range_tx<'a, R: std::ops::RangeBounds<String>>(
-            st: &'a mut Sytx,
+            st: &'a mut dyn Sytx,
             range: R,
         ) -> SRes<RangeIterator<'a, String, Self>> {
             find_range_tx(st, "ToTest.name", range)

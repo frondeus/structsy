@@ -32,7 +32,7 @@ pub enum FieldType {
 }
 
 impl FieldValueType {
-    fn read(read: &mut Read) -> SRes<FieldValueType> {
+    fn read(read: &mut dyn Read) -> SRes<FieldValueType> {
         let sv = u8::read(read)?;
         Ok(match sv {
             1 => FieldValueType::U8,
@@ -60,7 +60,7 @@ impl FieldValueType {
             _ => panic!("error on de-serialization"),
         })
     }
-    fn write(&self, write: &mut Write) -> SRes<()> {
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
         match self {
             FieldValueType::U8 => u8::write(&1, write)?,
             FieldValueType::U16 => u8::write(&2, write)?,
@@ -167,7 +167,7 @@ impl FieldType {
         T::resolve()
     }
 
-    fn read(read: &mut Read) -> SRes<FieldType> {
+    fn read(read: &mut dyn Read) -> SRes<FieldType> {
         let t = u8::read(read)?;
         Ok(match t {
             1 => FieldType::Value(FieldValueType::read(read)?),
@@ -177,7 +177,7 @@ impl FieldType {
             _ => panic!("invalid value"),
         })
     }
-    fn write(&self, write: &mut Write) -> SRes<()> {
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
         match self {
             FieldType::Value(t) => {
                 u8::write(&1, write)?;
@@ -217,7 +217,7 @@ impl FieldDescription {
             indexed,
         }
     }
-    fn read(read: &mut Read) -> SRes<FieldDescription> {
+    fn read(read: &mut dyn Read) -> SRes<FieldDescription> {
         let position = u32::read(read)?;
         let name = String::read(read)?;
         let field_type = FieldType::read(read)?;
@@ -236,7 +236,7 @@ impl FieldDescription {
             indexed,
         })
     }
-    fn write(&self, write: &mut Write) -> SRes<()> {
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
         self.position.write(write)?;
         self.name.write(write)?;
         self.field_type.write(write)?;
@@ -282,7 +282,7 @@ impl StructDescription {
             fields,
         }
     }
-    pub(crate) fn read(read: &mut Read) -> SRes<StructDescription> {
+    pub(crate) fn read(read: &mut dyn Read) -> SRes<StructDescription> {
         let name = String::read(read)?;
         let n_fields = u32::read(read)?;
         let mut fields = Vec::new();
@@ -291,7 +291,7 @@ impl StructDescription {
         }
         Ok(StructDescription { name, fields })
     }
-    pub(crate) fn write(&self, write: &mut Write) -> SRes<()> {
+    pub(crate) fn write(&self, write: &mut dyn Write) -> SRes<()> {
         self.name.write(write)?;
         (self.fields.len() as u32).write(write)?;
         for f in &self.fields {

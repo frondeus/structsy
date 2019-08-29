@@ -6,17 +6,17 @@ use std::sync::Arc;
 use std::vec::IntoIter;
 
 pub trait IndexableValue {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
 }
 
 macro_rules! impl_indexable_value {
     ($t:ident) => {
         impl IndexableValue for $t {
-            fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+            fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
                 put_index(tx, name, self, id)
             }
-            fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+            fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
                 remove_index(tx, name, self, id)
             }
         }
@@ -37,13 +37,13 @@ impl_indexable_value!(f64);
 impl_indexable_value!(String);
 
 impl<T: IndexableValue> IndexableValue for Option<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         if let Some(x) = self {
             x.puts(tx, name, id)?;
         }
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         if let Some(x) = self {
             x.removes(tx, name, id)?;
         }
@@ -51,13 +51,13 @@ impl<T: IndexableValue> IndexableValue for Option<T> {
     }
 }
 impl<T: IndexableValue> IndexableValue for Vec<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         for x in self {
             x.puts(tx, name, id)?;
         }
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         for x in self {
             x.removes(tx, name, id)?;
         }
@@ -65,23 +65,23 @@ impl<T: IndexableValue> IndexableValue for Vec<T> {
     }
 }
 impl<T: Persistent> IndexableValue for Ref<T> {
-    fn puts<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         put_index(tx, name, &self.raw_id, id)?;
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
         remove_index(tx, name, &self.raw_id, id)?;
         Ok(())
     }
 }
 
-fn put_index<T: IndexType, P: Persistent>(tx: &mut Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
+fn put_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
     let persy = &tx.structsy().structsy_impl.persy;
     persy.put::<T, PersyId>(&mut tx.tx().trans, name, k.clone(), id.raw_id.clone())?;
     Ok(())
 }
 
-fn remove_index<T: IndexType, P: Persistent>(tx: &mut Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
+fn remove_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
     let persy = &tx.structsy().structsy_impl.persy;
     persy.remove::<T, PersyId>(&mut tx.tx().trans, name, k.clone(), Some(id.raw_id.clone()))?;
     Ok(())
@@ -197,7 +197,7 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
         .flatten())
 }
 
-pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
+pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
     let persy = &db.structsy().structsy_impl.persy;
     if let Some(id_container) = persy.get_tx::<K, PersyId>(&mut db.tx().trans, name, k)? {
         Ok(map_unique_entry_tx(persy, &mut db.tx().trans, id_container))
@@ -206,7 +206,7 @@ pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut Sytx, name: &str, k:
     }
 }
 
-pub fn find_tx<K: IndexType, P: Persistent>(db: &mut Sytx, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
+pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
     let persy = &db.structsy().structsy_impl.persy;
     if let Some(e) = persy.get_tx::<K, PersyId>(&mut db.tx().trans, name, k)? {
         Ok(map_entry_tx(persy, &mut db.tx().trans, e))
@@ -348,7 +348,7 @@ impl<'a, P: Persistent, K: IndexType> Iterator for UniqueRangeIterator<'a, K, P>
 }
 
 pub fn find_unique_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &'a mut Sytx,
+    db: &'a mut dyn Sytx,
     name: &str,
     r: R,
 ) -> SRes<UniqueRangeIterator<'a, K, P>> {
@@ -359,7 +359,7 @@ pub fn find_unique_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
 }
 
 pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &'a mut Sytx,
+    db: &'a mut dyn Sytx,
     name: &str,
     r: R,
 ) -> SRes<RangeIterator<'a, K, P>> {
