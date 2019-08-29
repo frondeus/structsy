@@ -1,5 +1,8 @@
 # Structsy
 [![build status](https://gitlab.com/tglman/structsy/badges/master/build.svg)](https://gitlab.com/tglman/structsy/commits/master)
+[![coverage report](https://gitlab.com/tglman/structsy/badges/master/coverage.svg)](https://gitlab.com/tglman/structsy/commits/master)
+
+
 
 *Structsy* is a simple, single file, embedded struct database for rust, with support of transactions.
 
