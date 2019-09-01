@@ -11,11 +11,11 @@ repository = "https://gitlab.com/tglman/structsy"
 gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
-syn = "0.15"
-quote = "0.6"
-proc-macro2 = "0.4"
-darling = "0.9"
-synstructure = "0.10"
+syn = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+darling = "0.10"
+synstructure = "0.12"
 
 [dev-dependencies]
 structsy = {path="../"}
