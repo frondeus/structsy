@@ -1,3 +1,34 @@
+//! Simple single file struct persistence manger
+//!
+//!
+//! # Example
+//!
+//! ```
+//! use structsy::{Structsy, StructsyError, StructsyTx};
+//! use structsy_derive::Persistent;
+//! # use structsy::SRes;
+//! # fn foo() -> SRes<()> {
+//! #[derive(Persistent)]
+//! struct MyData {
+//!     name: String,
+//!     address: String,
+//! }
+//! // ......
+//! let db = Structsy::open("my_data.db")?;
+//! db.define::<MyData>()?;
+//!
+//!  let my_data = MyData {
+//!    name: "Structsy".to_string(),
+//!    address: "https://gitlab.com/tglman/structsy".to_string(),
+//! };
+//! let mut tx = db.begin()?;
+//! tx.insert(&my_data)?;
+//! db.commit(tx)?;
+//! # Ok(())
+//! # }
+//!```
+//!
+//!
 pub use persy::ValueMode;
 use persy::{Config, IndexType, Persy, PersyError, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -144,11 +175,122 @@ impl<'a> Sytx for RefSytx<'a> {
     }
 }
 
+/// Transaction behaviour trait.
 pub trait StructsyTx: Sytx {
+    /// Persist a new struct instance.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// tx.insert(&Example{value:10})?;
+    /// structsy.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>>;
+
+    /// Update a persistent instance with a new value.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// let id = tx.insert(&Example{value:10})?;
+    /// tx.update(&id, &Example{value:20})?;
+    /// structsy.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()>;
+
+    /// Delete a persistent instance.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// let id = tx.insert(&Example{value:10})?;
+    /// tx.delete(&id)?;
+    /// structsy.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()>;
+
+    /// Read a persistent instance considering changes in transaction.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// let id = tx.insert(&Example{value:10})?;
+    /// let read = tx.read(&id)?;
+    /// assert_eq!(10,read.unwrap().value);
+    /// structsy.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>>;
+
+    /// Scan persistent instances of a struct considering changes in transaction.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// for (id, inst) in tx.scan::<Example>()? {
+    ///     // logic
+    /// }
+    /// structsy.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>>;
 }
 
@@ -294,11 +436,26 @@ fn tx_read<T: Persistent>(persy: &Persy, name: &str, tx: &mut Transaction, id: &
     }
 }
 
+/// Configuration builder for open/create a Structsy file.
+///
+///
+/// # Example
+/// ```
+/// use structsy::Structsy;
+/// # use structsy::SRes;
+/// # fn example() -> SRes<()> {
+/// let config = Structsy::config("path/to/file.stry");
+/// let config = config.create(false);
+/// let stry = Structsy::open(config)?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct StructsyConfig {
     create: bool,
     path: PathBuf,
 }
 impl StructsyConfig {
+    /// Set if the crate file if not exists
     pub fn create(mut self, create: bool) -> StructsyConfig {
         self.create = create;
         self
@@ -313,19 +470,64 @@ impl<T: AsRef<Path>> From<T> for StructsyConfig {
     }
 }
 
+/// Main API for persist structs with structsy
+///
+///
 impl Structsy {
+    /// Config builder for open and/or create a structsy file.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let config = Structsy::config("path/to/file.stry");
+    /// let config = config.create(false);
+    /// let stry = Structsy::open(config)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn config<C: AsRef<Path>>(path: C) -> StructsyConfig {
         let mut c = StructsyConfig::from(path);
         c.create = false;
         c
     }
 
+    /// Open a Structsy file, following the configuration as parameter, if the parameter is just a
+    /// path it will create the file if it not exists.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn open<C: Into<StructsyConfig>>(config: C) -> SRes<Structsy> {
         Ok(Structsy {
             structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
         })
     }
 
+    /// Every struct before use must be 'defined' calling this method.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Simple {
+    ///     name:String,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// stry.define::<Simple>()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn define<T: Persistent>(&self) -> SRes<bool> {
         self.structsy_impl.define::<T>(&self)
     }
@@ -361,6 +563,25 @@ impl Structsy {
         Ok(())
     }
 
+    /// Begin a new transaction needed to manipulate data.
+    ///
+    /// It return an instance of [`OwnedSytx`] to be used with the [`StructsyTx`] trait.
+    ///
+    /// [`OwnedSytx`]: struct.OwnedSytx.html
+    /// [`StructsyTx`]: trait.StructsyTx.html
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// //....
+    /// let mut tx = stry.begin()?;
+    /// // ... operate on tx.
+    /// stry.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn begin(&self) -> SRes<OwnedSytx> {
         Ok(OwnedSytx {
             structsy_impl: self.structsy_impl.clone(),
@@ -368,10 +589,53 @@ impl Structsy {
         })
     }
 
+    /// Read a persistent instance.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy ecc
+    /// let mut tx = structsy.begin()?;
+    /// let id = tx.insert(&Example{value:10})?;
+    /// structsy.commit(tx)?;
+    /// let read = structsy.read(&id)?;
+    /// assert_eq!(10,read.unwrap().value);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.structsy_impl.read(sref)
     }
 
+    /// Scan recors of a specific struct.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Simple {
+    ///     name:String,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// stry.define::<Simple>()?;
+    /// for (id, inst) in stry.scan::<Simple>()? {
+    ///     // logic here
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
         self.structsy_impl.check_defined::<T>()?;
         let name = T::get_description().name;
@@ -381,9 +645,27 @@ impl Structsy {
         })
     }
 
+    /// Commit a transaction
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// //....
+    /// let mut tx = stry.begin()?;
+    /// // ... operate on tx.
+    /// stry.commit(tx)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
         self.structsy_impl.commit(tx.trans)
     }
+
+    /// Check if a struct is defined
     pub fn is_defined<T: Persistent>(&self) -> SRes<bool> {
         self.structsy_impl.is_defined::<T>()
     }
