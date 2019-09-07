@@ -5,6 +5,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::vec::IntoIter;
 
+/// Trait implemented by all the values that can be directly indexed.
 pub trait IndexableValue {
     fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
     fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
@@ -215,6 +216,7 @@ pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K
     }
 }
 
+/// Iterator implementation for Range of indexed persistent types
 pub struct RangeIterator<'a, K: IndexType, P: Persistent> {
     structsy: Arc<StructsyImpl>,
     persy_iter: persy::TxIndexIter<'a, K, PersyId>,
@@ -286,6 +288,7 @@ impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
     }
 }
 
+/// Iterator implementation for Range of unique indexed persistent types
 pub struct UniqueRangeIterator<'a, K: IndexType, P: Persistent> {
     structsy: Arc<StructsyImpl>,
     persy_iter: persy::TxIndexIter<'a, K, PersyId>,

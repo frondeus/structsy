@@ -200,6 +200,7 @@ impl FieldType {
     }
 }
 
+/// Field metadata for internal use
 #[derive(PartialEq, Eq)]
 pub struct FieldDescription {
     pub(crate) position: u32,
@@ -269,6 +270,7 @@ impl InternalDescription {
     }
 }
 
+/// Struct metadata for internal use
 #[derive(PartialEq, Eq)]
 pub struct StructDescription {
     pub(crate) name: String,

@@ -2,6 +2,8 @@ use crate::{Persistent, Ref, SRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 use std::marker::PhantomData;
+
+/// Base trait implemented by all types that can be persisted inside a struct.
 pub trait PersistentEmbedded {
     fn write(&self, write: &mut dyn Write) -> SRes<()>;
     fn read(read: &mut dyn Read) -> SRes<Self>
