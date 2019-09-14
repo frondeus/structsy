@@ -10,6 +10,9 @@ repository = "https://gitlab.com/tglman/structsy"
 [badges]
 gitlab = { repository = "tglman/structsy", branch = "master" }
 
+[lib]
+proc-macro = true
+
 [dependencies]
 syn = "1.0"
 quote = "1.0"
@@ -17,8 +20,6 @@ proc-macro2 = "1.0"
 darling = "0.10"
 synstructure = "0.12"
 
-[dev-dependencies]
-structsy = {path="../"}
-[lib]
-proc-macro = true
+# [dev-dependencies]
+#structsy = {path="../"}
 

@@ -13,8 +13,8 @@ gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
 persy = "0.6"
-byteorder="1.3"
+byteorder ="1.3"
 
 [dev-dependencies]
-structsy-derive= { path="structsy-derive"}
-tempfile="3.0"
+structsy-derive = "0.1"
+tempfile = "3.0"
