@@ -550,12 +550,56 @@ impl Structsy {
         self.structsy_impl.define::<T>(&self)
     }
 
+    
+    /// Migrate an existing persistent struct to a new struct.
+    /// 
+    /// In structsy the name and order of the fields matter for the persistence, so each change
+    /// need to migrate existing data from existing struct layout to the new struct.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct PersonV0 {
+    ///     name:String,
+    /// }
+    ///
+    /// #[derive(Persistent)]
+    /// struct PersonV1 {
+    ///     name:String,
+    ///     surname:String,
+    /// }
+    ///
+    /// impl From<PersonV0> for PersonV1 {
+    ///     fn from(f: PersonV0)  -> Self {
+    ///         PersonV1 {
+    ///             name: f.name,
+    ///             surname: "Doe".to_string(),
+    ///         }
+    ///     }
+    /// }
+    ///
+    ///
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// stry.define::<PersonV0>()?;
+    /// stry.define::<PersonV1>()?;
+    /// stry.migrate::<PersonV0,PersonV1>()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// ```
+    ///
     pub fn migrate<S, D>(&self) -> SRes<()>
     where
         S: Persistent,
         D: Persistent,
         D: From<S>,
     {
+        self.structsy_impl.check_defined::<S>()?;
         self.structsy_impl.check_defined::<S>()?;
         if self.structsy_impl.is_referred_by_others::<S>()? {
             return Err(StructsyError::MigrationNotSupported(format!(

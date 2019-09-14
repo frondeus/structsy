@@ -4,7 +4,18 @@
 
 
 
-*Structsy* is a simple, single file, embedded struct database for rust, with support of transactions.
+*Structsy* is a simple, single file, embedded, struct database for rust, with support of transactions.
+
+## SCOPE
+
+This project is born with the scope to try new concepts for persist data with structs, 
+still being useful for small scale standalone applications.
+
+The first concept is implement the persistence behaviour with the use of derive macro, covering data persistence and indexing, taking inspiration from what serde does for serialization.
+  
+Another experimental concept is to define data access query with pure traits, of witch the implementation may be automatically generated, tacking inspiration from the code generation of [mockiato](https://github.com/mockiato/mockiato)
+
+The version 0.1 only support the basic persistence of struct, without any complex query support.
 
 ## COMPILING THE SOURCE 
 
