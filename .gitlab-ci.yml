@@ -14,6 +14,14 @@ generate_test_data:
     paths:
       - target/*
     expire_in: 30 minutes
+  only:
+    changes:
+      - Cargo.toml
+      - src/**/*
+      - tests/**/*
+      - structsy-derive/**/*
+      - benches/**/*
+      - examples/**/*
 
 # Run tests and generate coverage report
 coverage_report:
@@ -36,6 +44,12 @@ coverage_report:
       - target/cov/*
     expire_in: 30 minutes
   allow_failure: true
+  only:
+    changes:
+      - Cargo.toml
+      - src/**/*
+      - tests/**/*
+      - structsy-derive/**/*
 
 upload_report:
   image: "centos:latest"
@@ -43,3 +57,9 @@ upload_report:
   script:
     - bash <(curl -s https://codecov.io/bash) -Z
   allow_failure: true
+  only:
+    changes:
+      - Cargo.toml
+      - src/**/*
+      - tests/**/*
+      - structsy-derive/**/*
