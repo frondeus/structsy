@@ -13,7 +13,7 @@ still being useful for small scale standalone applications.
 
 The first concept is implement the persistence behaviour with the use of derive macro, covering data persistence and indexing, taking inspiration from what serde does for serialization.
   
-Another experimental concept is to define data access query with pure traits, of witch the implementation may be automatically generated, tacking inspiration from the code generation of [mockiato](https://github.com/mockiato/mockiato)
+Another experimental concept is to define data access query with pure traits, of which the implementation may be automatically generated, taking inspiration from the code generation of [mockiato](https://github.com/mockiato/mockiato)
 
 The version 0.1 only support the basic persistence of struct, without any complex query support.
 

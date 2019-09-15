@@ -84,7 +84,7 @@ struct StructsyImpl {
     definitions: Mutex<HashMap<String, InternalDescription>>,
 }
 
-/// Main API for persist structs with structsy.
+/// Main API to persist structs with structsy.
 ///
 ///
 #[derive(Clone)]
@@ -208,7 +208,7 @@ pub trait StructsyTx: Sytx {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// tx.insert(&Example{value:10})?;
     /// structsy.commit(tx)?;
@@ -230,7 +230,7 @@ pub trait StructsyTx: Sytx {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// tx.update(&id, &Example{value:20})?;
@@ -253,7 +253,7 @@ pub trait StructsyTx: Sytx {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// tx.delete(&id)?;
@@ -276,7 +276,7 @@ pub trait StructsyTx: Sytx {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// let read = tx.read(&id)?;
@@ -300,7 +300,7 @@ pub trait StructsyTx: Sytx {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// for (id, inst) in tx.scan::<Example>()? {
     ///     // logic
@@ -476,7 +476,7 @@ pub struct StructsyConfig {
     path: PathBuf,
 }
 impl StructsyConfig {
-    /// Set if the crate file if not exists
+    /// Set flag to create file if it does not exist
     pub fn create(mut self, create: bool) -> StructsyConfig {
         self.create = create;
         self
@@ -512,7 +512,7 @@ impl Structsy {
     }
 
     /// Open a Structsy file, following the configuration as parameter, if the parameter is just a
-    /// path it will create the file if it not exists.
+    /// path it will create the file if it does not exist.
     ///
     /// # Example
     /// ```
@@ -627,7 +627,7 @@ impl Structsy {
 
     /// Begin a new transaction needed to manipulate data.
     ///
-    /// It return an instance of [`OwnedSytx`] to be used with the [`StructsyTx`] trait.
+    /// Returns an instance of [`OwnedSytx`] to be used with the [`StructsyTx`] trait.
     ///
     /// [`OwnedSytx`]: struct.OwnedSytx.html
     /// [`StructsyTx`]: trait.StructsyTx.html
@@ -664,7 +664,7 @@ impl Structsy {
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy ecc
+    /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// structsy.commit(tx)?;
@@ -677,7 +677,7 @@ impl Structsy {
         self.structsy_impl.read(sref)
     }
 
-    /// Scan recors of a specific struct.
+    /// Scan records of a specific struct.
     ///
     ///
     /// # Example
@@ -927,7 +927,7 @@ mod test {
         }
     }
 
-    #[test()]
+    #[test]
     fn simple_basic_flow() {
         let db = Structsy::open("one.db").expect("can open the database");
         db.define::<ToTest>().expect("is define correctly");
