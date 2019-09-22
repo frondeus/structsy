@@ -24,5 +24,5 @@ struct Three {
     name: String,
 }
 
-#[test()]
+#[test]
 fn nothing() {}
