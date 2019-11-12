@@ -116,8 +116,7 @@ pub trait Persistent {
 }
 
 pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {
-    let persy = &db.structsy().structsy_impl.persy;
-    persy.create_index::<T, PersyId>(&mut db.tx().trans, name, mode)?;
+    db.tx().trans.create_index::<T, PersyId>(name, mode)?;
     Ok(())
 }
 
@@ -397,8 +396,7 @@ where
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
         let segment = T::get_description().name;
-        let persy = &self.structsy().structsy_impl.persy;
-        let id = persy.insert_record(self.tx().trans, &segment, &buff)?;
+        let id = self.tx().trans.insert_record(&segment, &buff)?;
         let id_ref = Ref {
             type_name: segment,
             raw_id: id,
@@ -416,8 +414,7 @@ where
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        let persy = &self.structsy().structsy_impl.persy;
-        persy.update_record(&mut self.tx().trans, &sref.type_name, &sref.raw_id, &buff)?;
+        self.tx().trans.update_record(&sref.type_name, &sref.raw_id, &buff)?;
         sct.put_indexes(self, &sref)?;
         Ok(())
     }
@@ -428,29 +425,26 @@ where
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        let persy = &self.structsy().structsy_impl.persy;
-        persy.delete_record(&mut self.tx().trans, &sref.type_name, &sref.raw_id)?;
+        self.tx().trans.delete_record(&sref.type_name, &sref.raw_id)?;
         Ok(())
     }
 
     fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.structsy().structsy_impl.check_defined::<T>()?;
-        let persy = &self.structsy().structsy_impl.persy;
-        tx_read(&persy, &sref.type_name, &mut self.tx().trans, &sref.raw_id)
+        tx_read(&sref.type_name, &mut self.tx().trans, &sref.raw_id)
     }
 
     fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
         self.structsy().structsy_impl.check_defined::<T>()?;
         let name = T::get_description().name;
-        let persy = &self.structsy().structsy_impl.persy;
         let implc = self.structsy().structsy_impl.clone();
-        let iter = persy.scan_tx(self.tx().trans, &name)?;
+        let iter = self.tx().trans.scan(&name)?;
         Ok(TxRecordIter::new(iter, implc))
     }
 }
 
-fn tx_read<T: Persistent>(persy: &Persy, name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {
-    if let Some(buff) = persy.read_record_tx(tx, name, id)? {
+fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {
+    if let Some(buff) = tx.read_record(name, id)? {
         Ok(Some(T::read(&mut Cursor::new(buff))?))
     } else {
         Ok(None)
@@ -550,9 +544,8 @@ impl Structsy {
         self.structsy_impl.define::<T>(&self)
     }
 
-    
     /// Migrate an existing persistent struct to a new struct.
-    /// 
+    ///
     /// In structsy the name and order of the fields matter for the persistence, so each change
     /// need to migrate existing data from existing struct layout to the new struct.
     ///
@@ -737,9 +730,9 @@ impl StructsyImpl {
     fn init_segment<P: AsRef<Path>>(path: P) -> SRes<()> {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
-        persy.create_segment(&mut tx, INTERNAL_SEGMENT_NAME)?;
-        let prep = persy.prepare_commit(tx)?;
-        persy.commit(prep)?;
+        tx.create_segment(INTERNAL_SEGMENT_NAME)?;
+        let prep = tx.prepare_commit()?;
+        prep.commit()?;
         Ok(())
     }
 
@@ -807,8 +800,8 @@ impl StructsyImpl {
                 let mut buff = Vec::new();
                 desc.write(&mut buff)?;
                 let mut tx = structsy.begin()?;
-                self.persy.insert_record(&mut tx.trans, INTERNAL_SEGMENT_NAME, &buff)?;
-                self.persy.create_segment(&mut tx.trans, &desc.name)?;
+                tx.trans.insert_record(INTERNAL_SEGMENT_NAME, &buff)?;
+                tx.trans.create_segment(&desc.name)?;
                 T::declare(&mut tx)?;
                 structsy.commit(tx)?;
                 x.insert(InternalDescription { desc, checked: true });
@@ -830,8 +823,8 @@ impl StructsyImpl {
         }
     }
     pub fn commit(&self, tx: Transaction) -> SRes<()> {
-        let to_finalize = self.persy.prepare_commit(tx)?;
-        self.persy.commit(to_finalize)?;
+        let to_finalize = tx.prepare_commit()?;
+        to_finalize.commit()?;
         Ok(())
     }
     pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
@@ -1006,5 +999,4 @@ mod test {
         assert_eq!(count, 1);
         fs::remove_file("one.db").expect("remove file works");
     }
-
 }
