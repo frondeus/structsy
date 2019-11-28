@@ -3,7 +3,7 @@ use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum FieldValueType {
     U8,
     U16,
@@ -23,7 +23,7 @@ pub enum FieldValueType {
     Embedded(StructDescription),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum FieldType {
     Value(FieldValueType),
     Option(FieldValueType),
@@ -201,7 +201,7 @@ impl FieldType {
 }
 
 /// Field metadata for internal use
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct FieldDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
@@ -271,17 +271,17 @@ impl InternalDescription {
 }
 
 /// Struct metadata for internal use
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct StructDescription {
     pub(crate) name: String,
     pub(crate) fields: Vec<FieldDescription>,
 }
 
 impl StructDescription {
-    pub fn new(name: &str, fields: Vec<FieldDescription>) -> StructDescription {
+    pub fn new(name: &str, fields: &[FieldDescription]) -> StructDescription {
         StructDescription {
             name: name.to_string(),
-            fields,
+            fields: Vec::from(fields),
         }
     }
     pub(crate) fn read(read: &mut dyn Read) -> SRes<StructDescription> {

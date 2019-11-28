@@ -141,17 +141,17 @@ fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
             let desc = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
                 (Some(x), Some(z)) => {
                     quote! {
-                        fields.push(structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed));
+                        structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed),
                     }
                 }
                 (Some(x), None) => {
                     quote! {
-                        fields.push(structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed));
+                        structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed),
                     }
                 }
                 (None, None) => {
                     quote! {
-                        fields.push(structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed));
+                        structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed),
                     }
                 }
                 (None, Some(_x)) => panic!(""),
@@ -176,9 +176,10 @@ fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
     let struct_name = name.to_string();
     let desc = quote! {
             fn get_description() -> structsy::StructDescription {
-                let mut fields = Vec::new();
-                #( #fields_meta )*
-                structsy::StructDescription::new(#struct_name,fields)
+                let fields  = [
+                    #( #fields_meta )*
+                ];
+                structsy::StructDescription::new(#struct_name,&fields)
             }
     };
     let serialization = quote! {

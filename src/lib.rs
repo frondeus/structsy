@@ -857,13 +857,11 @@ mod test {
             "ToTest"
         }
         fn get_description() -> StructDescription {
-            let mut fields = Vec::new();
-            fields.push(FieldDescription::new::<String>(0, "name", Some(ValueMode::CLUSTER)));
-            fields.push(FieldDescription::new::<u32>(1, "length", None));
-            StructDescription {
-                name: "ToTest".to_string(),
-                fields,
-            }
+            let fields: [FieldDescription; 2] = [
+                FieldDescription::new::<String>(0, "name", Some(ValueMode::CLUSTER)),
+                FieldDescription::new::<u32>(1, "length", None),
+            ];
+            StructDescription::new("ToTest", &fields)
         }
         fn write(&self, write: &mut dyn Write) -> SRes<()> {
             use super::PersistentEmbedded;
