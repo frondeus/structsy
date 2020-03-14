@@ -1,5 +1,5 @@
-use structsy::Ref;
-use structsy_derive::{Persistent, PersistentEmbedded};
+use structsy::{IterResult, Ref};
+use structsy_derive::{queries, Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
 struct One {
@@ -22,6 +22,11 @@ struct Two {
 #[derive(PersistentEmbedded)]
 struct Three {
     name: String,
+}
+
+#[structsy_derive::queries(One)]
+trait OneQuery {
+    fn simple(&self, first: String) -> IterResult<One>;
 }
 
 #[test]

@@ -8,9 +8,11 @@ extern crate proc_macro2;
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::{Span, TokenStream};
+use std::borrow::Borrow;
 use syn::Type::Path;
 use syn::{
-    AngleBracketedGenericArguments, DeriveInput, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
+    parse_macro_input, AngleBracketedGenericArguments, AttributeArgs, DeriveInput, FnArg, GenericArgument, Ident, Item,
+    Meta, NestedMeta, Pat, PathArguments, PathSegment, ReturnType, Signature, TraitItem, Type, TypePath,
 };
 
 #[derive(FromDeriveInput, Debug)]
@@ -41,7 +43,141 @@ struct PersistentAttr {
     #[darling(default)]
     mode: Option<IndexMode>,
 }
+enum Operation {
+    Equals(String),
+}
 
+fn extract_fields(s: &Signature) -> Vec<Operation> {
+    let mut res = Vec::new();
+    let mut inps = s.inputs.iter();
+    // Skip self checked in check_method
+    inps.next();
+    while let Some(FnArg::Typed(f)) = inps.next() {
+        if let Pat::Ident(ref i) = &*f.pat {
+            res.push(Operation::Equals(i.ident.to_string()))
+        }
+    }
+    res
+}
+
+fn check_method(s: &Signature, target_type: &str) {
+    if s.constness.is_some() {
+        panic!(" const methods not suppored: {:?}", s);
+    }
+    if s.asyncness.is_some() {
+        panic!(" async methods not suppored: {:?}", s);
+    }
+    if s.asyncness.is_some() {
+        panic!(" unsafe methods not suppored: {:?}", s);
+    }
+    if s.abi.is_some() {
+        panic!(" extern methods not suppored: {:?}", s);
+    }
+    if let ReturnType::Type(_, t) = &s.output {
+        if let Type::Path(ref p) = t.borrow() {
+            let last = p.path.segments.last().expect("expect return type");
+            let name = last.ident.to_string();
+            if name != "IterResult" && name != "FirstResult" {
+                panic!("only allowed return types are 'IterResult' and 'FirstResult' ");
+            }
+            if let PathArguments::AngleBracketed(ref a) = &last.arguments {
+                if let Some(GenericArgument::Type(t)) = a.args.first() {
+                    if let Type::Path(ref p) = t.borrow() {
+                        let last = p.path.segments.last().expect("expect return type");
+                        let name = last.ident.to_string();
+                        if name != target_type {
+                            panic!("the return type should be {}<{}> ", name, target_type);
+                        }
+                    }
+                }
+            }
+        } else {
+            panic!(" expected a return type");
+        }
+    } else {
+        panic!(" expected a return type");
+    }
+    if let Some(FnArg::Receiver(r)) = s.inputs.first() {
+        if r.reference.is_none() {
+            panic!("first argument of a method should be &self");
+        }
+    } else {
+        panic!("first argument of a method should be &self");
+    }
+    if s.inputs.len() < 2 {
+        panic!("function should have at least two arguments");
+    }
+    if !s.generics.params.is_empty() {
+        panic!("generics not supported");
+    }
+}
+
+fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenStream {
+    if let TraitItem::Method(m) = item {
+        check_method(&m.sig, target_type);
+        let type_ident = Ident::new(target_type, Span::call_site());
+        let fields = extract_fields(&m.sig);
+        let conditions = fields.into_iter().map(|f| match f {
+            Operation::Equals(f) => {
+                let par_ident = Ident::new(&f, Span::call_site());
+                let filter_ident = Ident::new(&format!("field_{}", f), Span::call_site());
+                quote! {
+                    .filter(move |(_id, data)|
+                        #type_ident::#filter_ident(data, #par_ident.clone())
+                    )
+                }
+            }
+        });
+
+        let sign = m.sig.clone();
+        quote! {
+            #sign {
+            let i = self
+                .scan::<#type_ident>()?
+                #( #conditions )*
+                .map(|(_id, data)| data);
+                Ok(structsy::StructsyIntoIter::new(structsy::StructsyIter::new(i)))
+            }
+        }
+    } else {
+        panic!("support only methods in a trait");
+    }
+}
+
+#[proc_macro_attribute]
+pub fn queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed: Item = syn::parse(original).unwrap();
+    let args: AttributeArgs = parse_macro_input!(args as AttributeArgs);
+    let expeted_type = if let Some(NestedMeta::Meta(Meta::Path(x))) = args.first() {
+        x.segments
+            .last()
+            .expect(" queries has the type as argument ")
+            .ident
+            .to_string()
+    } else {
+        panic!("queries expect the type as argument");
+    };
+    let name;
+    let mut methods = Vec::<proc_macro2::TokenStream>::new();
+    match parsed.clone() {
+        Item::Trait(tr) => {
+            name = tr.ident.clone();
+            for iten in tr.items {
+                methods.push(impl_trait_methods(iten, &expeted_type));
+            }
+        }
+        _ => panic!("not a trait"),
+    }
+
+    let gen = quote! {
+        #parsed
+
+        impl #name for structsy::Structsy {
+            #( #methods )*
+        }
+    };
+    gen.into()
+}
 #[proc_macro_derive(PersistentEmbedded, attributes(index))]
 pub fn persistent_embedded(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed: DeriveInput = syn::parse(input).unwrap();
@@ -125,7 +261,7 @@ struct FieldInfo {
     index_mode: Option<IndexMode>,
 }
 
-fn serializetion_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
+fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
     let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
         .iter()
         .enumerate()
@@ -295,14 +431,11 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                     }
                 }
             }).collect();
-
     let impls = if lookup_methods.is_empty() {
         quote! {}
     } else {
         quote! {
-            impl #name {
-                #( #lookup_methods )*
-            }
+            #( #lookup_methods )*
         }
     };
     let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
@@ -328,6 +461,48 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
             }
     };
     (indexes, impls)
+}
+
+fn allowed_filter_types(field: &FieldInfo) -> bool {
+    let t = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+        (Some(_), Some(z)) => z,
+        (Some(x), None) => x,
+        (None, None) => field.ty.clone(),
+        (None, Some(_x)) => panic!(""),
+    };
+    match t.to_string().as_str() {
+        "String" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" | "f32" | "f64"
+        | "bool" => true,
+        _ => false,
+    }
+}
+
+fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
+    let methods: Vec<TokenStream> = fields
+        .iter()
+        .filter(|x| allowed_filter_types(x))
+        .map(|field| {
+            let field_name = field.name.to_string();
+            let field_ident = field.name.clone();
+            let ty = field.ty.clone();
+            let rty = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+                (Some(x), Some(z)) => quote! {#ty<#x<#z>>},
+                (Some(x), None) => quote! {#ty<#x> },
+                (None, None) => quote! {#ty},
+                (None, Some(_x)) => panic!(""),
+            };
+            let method_ident = Ident::new(&format!("field_{}", field_name), Span::call_site());
+            quote! {
+                pub fn #method_ident(&self,p:#rty) -> bool {
+                    self.#field_ident == p
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        #( #methods )*
+    }
 }
 
 impl PersistentInfo {
@@ -361,8 +536,9 @@ impl PersistentInfo {
     fn to_tokens(&self) -> TokenStream {
         let name = &self.ident;
         let fields = self.field_infos();
-        let (desc, ser) = serializetion_tokens(name, &fields);
+        let (desc, ser) = serialization_tokens(name, &fields);
         let (indexes, impls) = indexes_tokens(name, &fields);
+        let filters = filter_tokens(&fields);
         let string_name = name.to_string();
         quote! {
 
@@ -378,14 +554,17 @@ impl PersistentInfo {
                 #indexes
             }
 
-            #impls
+            impl #name {
+                #impls
+                #filters
+            }
         }
     }
 
     fn to_embedded_tokens(&self) -> TokenStream {
         let name = &self.ident;
         let fields = self.field_infos();
-        let (desc, ser) = serializetion_tokens(name, &fields);
+        let (desc, ser) = serialization_tokens(name, &fields);
 
         for f in fields {
             if f.index_mode.is_some() {

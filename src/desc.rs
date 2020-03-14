@@ -111,20 +111,20 @@ macro_rules! impl_field_type {
     };
 }
 
-impl_field_type!(u8, (FieldValueType::U8));
-impl_field_type!(u16, (FieldValueType::U16));
-impl_field_type!(u32, (FieldValueType::U32));
-impl_field_type!(u64, (FieldValueType::U64));
-impl_field_type!(u128, (FieldValueType::U128));
-impl_field_type!(i8, (FieldValueType::I8));
-impl_field_type!(i16, (FieldValueType::I16));
-impl_field_type!(i32, (FieldValueType::I32));
-impl_field_type!(i64, (FieldValueType::I64));
-impl_field_type!(i128, (FieldValueType::I128));
-impl_field_type!(f32, (FieldValueType::F32));
-impl_field_type!(f64, (FieldValueType::F64));
-impl_field_type!(bool, (FieldValueType::Bool));
-impl_field_type!(String, (FieldValueType::String));
+impl_field_type!(u8, FieldValueType::U8);
+impl_field_type!(u16, FieldValueType::U16);
+impl_field_type!(u32, FieldValueType::U32);
+impl_field_type!(u64, FieldValueType::U64);
+impl_field_type!(u128, FieldValueType::U128);
+impl_field_type!(i8, FieldValueType::I8);
+impl_field_type!(i16, FieldValueType::I16);
+impl_field_type!(i32, FieldValueType::I32);
+impl_field_type!(i64, FieldValueType::I64);
+impl_field_type!(i128, FieldValueType::I128);
+impl_field_type!(f32, FieldValueType::F32);
+impl_field_type!(f64, FieldValueType::F64);
+impl_field_type!(bool, FieldValueType::Bool);
+impl_field_type!(String, FieldValueType::String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> FieldValueType {

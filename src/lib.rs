@@ -50,6 +50,60 @@ pub use index::{
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
+pub struct StructsyIter<T> {
+    iterator: Box<dyn Iterator<Item = T>>,
+}
+
+impl<T> StructsyIter<T> {
+    pub fn new<I>(iterator: I) -> StructsyIter<T>
+    where
+        I: Iterator<Item = T>,
+        I: 'static,
+    {
+        StructsyIter {
+            iterator: Box::new(iterator),
+        }
+    }
+}
+
+impl<T> Iterator for StructsyIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iterator.next()
+    }
+}
+
+pub struct StructsyIntoIter<T> {
+    iter: StructsyIter<T>,
+}
+impl<T> StructsyIntoIter<T> {
+    pub fn new(iter: StructsyIter<T>) -> StructsyIntoIter<T> {
+        StructsyIntoIter { iter }
+    }
+}
+
+impl<T> IntoIterator for StructsyIntoIter<T> {
+    type Item = T;
+    type IntoIter = StructsyIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter
+    }
+}
+
+pub struct StructsyInto<T> {
+    t: T,
+}
+
+impl<T> StructsyInto<T> {
+    pub fn into(self) -> T {
+        self.t
+    }
+}
+
+pub type IterResult<T> = Result<StructsyIntoIter<T>, StructsyError>;
+pub type FirstResult<T> = Result<StructsyInto<T>, StructsyError>;
+
 #[derive(Debug)]
 pub enum StructsyError {
     PersyError(PersyError),
@@ -121,7 +175,7 @@ pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMod
 }
 
 /// Reference to a record, can be used to load a record or to refer a record from another one.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Eq, Ord, PartialOrd)]
 pub struct Ref<T> {
     type_name: String,
     raw_id: PersyId,
@@ -135,6 +189,11 @@ impl<T: Persistent> Ref<T> {
             raw_id: persy_id,
             ph: PhantomData,
         }
+    }
+}
+impl<T> PartialEq for Ref<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_name == other.type_name && self.raw_id == other.raw_id
     }
 }
 
