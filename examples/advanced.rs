@@ -1,5 +1,5 @@
-use structsy::{IterResult, Ref, Structsy, StructsyError, StructsyIntoIter, StructsyIter, StructsyTx,};
-use structsy_derive::{Persistent, queries};
+use structsy::{IterResult, Ref, Structsy, StructsyError, StructsyIntoIter, StructsyIter, StructsyTx};
+use structsy_derive::{queries, Persistent};
 
 #[derive(Persistent, Debug, PartialEq)]
 struct MyData {
@@ -32,4 +32,3 @@ fn main() -> Result<(), StructsyError> {
 
     Ok(())
 }
-

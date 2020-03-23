@@ -310,4 +310,7 @@ impl StructDescription {
         }
         false
     }
+    pub(crate) fn get_field(&self, name: &str) -> Option<&FieldDescription> {
+        self.fields.iter().filter(|f| f.name == name).next()
+    }
 }

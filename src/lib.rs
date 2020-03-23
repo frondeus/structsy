@@ -47,6 +47,8 @@ pub use index::{
     find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx, find_unique_tx,
     IndexableValue, RangeIterator, UniqueRangeIterator,
 };
+mod filter;
+pub use filter::FilterBuilder;
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
