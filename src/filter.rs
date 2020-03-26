@@ -55,6 +55,38 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
     }
 }
 
+
+struct ConditionSingleFilter<V: PartialEq + 'static, T: Persistent + 'static> {
+    value: V,
+    access: fn(&T) -> &Vec<V>,
+}
+
+impl<V: PartialEq + 'static, T: Persistent + 'static> ConditionSingleFilter<V, T> {
+    fn new(access: fn(&T) -> &Vec<V>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(ConditionSingleFilter { access, value })
+    }
+}
+impl<V: PartialEq + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
+    type Target = T;
+    fn score(&self) -> u32 {
+        1
+    }
+    fn filter(
+        self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        Box::new(iter.filter(move |(_, x)| (self.access)(x).contains(&self.value)))
+    }
+    fn first(self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<T>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
 struct ConditionFilter<V: PartialEq + 'static, T: Persistent + 'static> {
     value: V,
     access: fn(&T) -> &V,
