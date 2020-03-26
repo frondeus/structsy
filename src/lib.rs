@@ -114,6 +114,7 @@ pub enum StructsyError {
     IOError,
     PoisonedLock,
     MigrationNotSupported(String),
+    InvalidId,
 }
 
 impl From<PersyError> for StructsyError {
@@ -197,6 +198,33 @@ impl<T> PartialEq for Ref<T> {
     fn eq(&self, other: &Self) -> bool {
         self.type_name == other.type_name && self.raw_id == other.raw_id
     }
+}
+
+impl<T:Persistent> std::fmt::Display for Ref<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result  {
+        write!(f, "{}@{}", self.type_name, self.raw_id)
+    }
+}
+impl<T:Persistent> std::str::FromStr for Ref<T> {
+    type Err = StructsyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(pos) = s.find("@")  {
+            let (ty,id) =s.split_at(pos);
+            if ty != T::get_name() {
+                Err(StructsyError::InvalidId)
+            } else {
+                Ok (Ref {
+                    type_name : T::get_name().to_string(),
+                    raw_id : id.parse().or(Err(StructsyError::InvalidId))?,
+                    ph: PhantomData,
+                })
+            }
+        }else {
+            Err(StructsyError::InvalidId)
+        }
+    }
+
 }
 
 /// Owned transation to use with [`StructsyTx`] trait
