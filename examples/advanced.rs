@@ -27,7 +27,7 @@ fn main() -> Result<(), StructsyError> {
 
     let to_find = "https://gitlab.com/tglman/structsy".to_string();
     let mut iter = db.search(to_find.clone())?.into_iter();
-    let data = iter.next().unwrap();
+    let (_id, data) = iter.next().unwrap();
     assert_eq!(data.address, to_find);
 
     Ok(())

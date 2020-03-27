@@ -1,6 +1,5 @@
-use structsy::{FilterBuilder, Ref, Structsy};
+use structsy::{FieldConditionType, FilterBuilder, Ref, Structsy};
 use structsy_derive::Persistent;
-
 #[derive(Persistent)]
 struct PersistentData {
     test_string: String,
@@ -14,7 +13,7 @@ struct PersistentData {
     test_i32: i32,
     test_i64: i64,
     test_i128: i128,
-    test_bool: bool,
+    //    test_bool: bool,
     test_f32: f32,
     test_f64: f64,
     test_option: Option<u8>,
@@ -45,7 +44,9 @@ fn test_condition_filter_builder() {
 
     builder.indexable_condition("test_f32", 1.0f32, |x| &x.test_f32);
     builder.indexable_condition("test_f64", 1.0f64, |x| &x.test_f64);
-    builder.simple_condition("test_bool", true, |x| &x.test_bool);
+    //builder.simple_condition("test_bool", true, |x| &x.test_bool);
+    PersistentData::field_test_vec_vec(&mut builder, Vec::<u8>::new());
+    PersistentData::field_test_vec_u8(&mut builder, 1u8);
     //builder.indexable_condition("test_vec",1u8, |x| &x.test_vec );
     // builder.indexable_condition("test_option",1u8, |x| &x.test_option );
     //builder.simple_condition("test_ref",Ref::new("__".parse().unwrap()), |x| &x.test_ref );

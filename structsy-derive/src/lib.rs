@@ -44,7 +44,7 @@ struct PersistentAttr {
     mode: Option<IndexMode>,
 }
 enum Operation {
-    Equals(String),
+    Equals(String, String),
 }
 
 fn extract_fields(s: &Signature) -> Vec<Operation> {
@@ -53,8 +53,18 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
     // Skip self checked in check_method
     inps.next();
     while let Some(FnArg::Typed(f)) = inps.next() {
-        if let Pat::Ident(ref i) = &*f.pat {
-            res.push(Operation::Equals(i.ident.to_string()))
+        let name = if let Pat::Ident(ref i) = &*f.pat {
+            Some(i.ident.to_string())
+        } else {
+            None
+        };
+        let ty = if let Type::Path(t) = &*f.ty {
+            Some(t.path.segments.last().unwrap().ident.to_string())
+        } else {
+            None
+        };
+        if let (Some(n),Some(t)) = (name,ty) {
+            res.push(Operation::Equals(n,t));
         }
     }
     res
@@ -118,25 +128,20 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenS
         let type_ident = Ident::new(target_type, Span::call_site());
         let fields = extract_fields(&m.sig);
         let conditions = fields.into_iter().map(|f| match f {
-            Operation::Equals(f) => {
+            Operation::Equals(f,ty) => {
                 let par_ident = Ident::new(&f, Span::call_site());
-                let filter_ident = Ident::new(&format!("field_{}", f), Span::call_site());
+                let filter_ident = Ident::new(&format!("field_{}_{}",f, ty.to_lowercase()), Span::call_site());
                 quote! {
-                    .filter(move |(_id, data)|
-                        #type_ident::#filter_ident(data, #par_ident.clone())
-                    )
+                    #type_ident::#filter_ident(&mut builder, #par_ident);
                 }
             }
         });
-
         let sign = m.sig.clone();
         quote! {
             #sign {
-            let i = self
-                .scan::<#type_ident>()?
-                #( #conditions )*
-                .map(|(_id, data)| data);
-                Ok(structsy::StructsyIntoIter::new(structsy::StructsyIter::new(i)))
+                let mut builder = structsy::FilterBuilder::<#type_ident>::new();
+                #( #conditions)*
+                Ok(structsy::StructsyIntoIter::new(self.clone(), builder))
             }
         }
     } else {
@@ -477,7 +482,7 @@ fn allowed_filter_types(field: &FieldInfo) -> bool {
     }
 }
 
-fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
+fn filter_tokens(name:&Ident,fields: &Vec<FieldInfo>) -> TokenStream {
     let methods: Vec<TokenStream> = fields
         .iter()
         .filter(|x| allowed_filter_types(x))
@@ -485,17 +490,37 @@ fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
             let field_name = field.name.to_string();
             let field_ident = field.name.clone();
             let ty = field.ty.clone();
-            let rty = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
-                (Some(x), Some(z)) => quote! {#ty<#x<#z>>},
-                (Some(x), None) => quote! {#ty<#x> },
-                (None, None) => quote! {#ty},
-                (None, Some(_x)) => panic!(""),
-            };
-            let method_ident = Ident::new(&format!("field_{}", field_name), Span::call_site());
-            quote! {
-                pub fn #method_ident(&self,p:#rty) -> bool {
-                    self.#field_ident == p
+            match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+                (Some(x), Some(z)) => {
+                    let method_ident = Ident::new(&format!("field_{}", field_name), Span::call_site());
+                    quote! {
+                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x<#z>>) {
+                        }
+                    }
+                },
+                (Some(x), None) => {
+                    let method_ident = Ident::new(&format!("field_{}_{}",field_name,ty.to_string().to_lowercase()), Span::call_site());
+                    let method_ident_contains = Ident::new(&format!("field_{}_{}",field_name,x.to_string().to_lowercase()), Span::call_site());
+                    let condition_method= Ident::new(&format!("indexable_{}_condition",ty.to_string().to_lowercase()), Span::call_site());
+                    let condition_method_contains= Ident::new(&format!("indexable_{}_single_condition",ty.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                            builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                        }
+                        pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                            builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                        }
+                    }
                 }
+                (None, None) => {
+                    let method_ident = Ident::new(&format!("field_{}_{}", field_name, ty.to_string().to_lowercase()), Span::call_site());
+                    quote! {
+                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
+                            builder.indexable_condition(#field_name,v, |x| &x.#field_ident);
+                        }
+                    }
+                }
+                (None, Some(_x)) => panic!(""),
             }
         })
         .collect();
@@ -538,7 +563,7 @@ impl PersistentInfo {
         let fields = self.field_infos();
         let (desc, ser) = serialization_tokens(name, &fields);
         let (indexes, impls) = indexes_tokens(name, &fields);
-        let filters = filter_tokens(&fields);
+        let filters = filter_tokens(name, &fields);
         let string_name = name.to_string();
         quote! {
 

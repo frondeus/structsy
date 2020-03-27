@@ -48,18 +48,18 @@ pub use index::{
     IndexableValue, RangeIterator, UniqueRangeIterator,
 };
 mod filter;
-pub use filter::FilterBuilder;
+pub use filter::{FieldConditionType, FilterBuilder};
 
 const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
-pub struct StructsyIter<T> {
-    iterator: Box<dyn Iterator<Item = T>>,
+pub struct StructsyIter<T: Persistent> {
+    iterator: Box<dyn Iterator<Item = (Ref<T>, T)>>,
 }
 
-impl<T> StructsyIter<T> {
+impl<T: Persistent> StructsyIter<T> {
     pub fn new<I>(iterator: I) -> StructsyIter<T>
     where
-        I: Iterator<Item = T>,
+        I: Iterator<Item = (Ref<T>, T)>,
         I: 'static,
     {
         StructsyIter {
@@ -68,28 +68,29 @@ impl<T> StructsyIter<T> {
     }
 }
 
-impl<T> Iterator for StructsyIter<T> {
-    type Item = T;
+impl<T: Persistent> Iterator for StructsyIter<T> {
+    type Item = (Ref<T>, T);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iterator.next()
     }
 }
 
-pub struct StructsyIntoIter<T> {
-    iter: StructsyIter<T>,
+pub struct StructsyIntoIter<T: Persistent + 'static> {
+    structsy: Structsy,
+    builder: FilterBuilder<T>,
 }
-impl<T> StructsyIntoIter<T> {
-    pub fn new(iter: StructsyIter<T>) -> StructsyIntoIter<T> {
-        StructsyIntoIter { iter }
+impl<T: Persistent> StructsyIntoIter<T> {
+    pub fn new(structsy: Structsy, builder: FilterBuilder<T>) -> StructsyIntoIter<T> {
+        StructsyIntoIter { builder, structsy }
     }
 }
 
-impl<T> IntoIterator for StructsyIntoIter<T> {
-    type Item = T;
+impl<T: Persistent> IntoIterator for StructsyIntoIter<T> {
+    type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<T>;
     fn into_iter(self) -> Self::IntoIter {
-        self.iter
+        StructsyIter::new(self.builder.finish(&self.structsy))
     }
 }
 
@@ -200,31 +201,30 @@ impl<T> PartialEq for Ref<T> {
     }
 }
 
-impl<T:Persistent> std::fmt::Display for Ref<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result  {
+impl<T: Persistent> std::fmt::Display for Ref<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}@{}", self.type_name, self.raw_id)
     }
 }
-impl<T:Persistent> std::str::FromStr for Ref<T> {
+impl<T: Persistent> std::str::FromStr for Ref<T> {
     type Err = StructsyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(pos) = s.find("@")  {
-            let (ty,id) =s.split_at(pos);
+        if let Some(pos) = s.find("@") {
+            let (ty, id) = s.split_at(pos);
             if ty != T::get_name() {
                 Err(StructsyError::InvalidId)
             } else {
-                Ok (Ref {
-                    type_name : T::get_name().to_string(),
-                    raw_id : id.parse().or(Err(StructsyError::InvalidId))?,
+                Ok(Ref {
+                    type_name: T::get_name().to_string(),
+                    raw_id: id.parse().or(Err(StructsyError::InvalidId))?,
                     ph: PhantomData,
                 })
             }
-        }else {
+        } else {
             Err(StructsyError::InvalidId)
         }
     }
-
 }
 
 /// Owned transation to use with [`StructsyTx`] trait
