@@ -1,5 +1,5 @@
 use structsy::{IterResult, Ref};
-use structsy_derive::{queries, Persistent, PersistentEmbedded};
+use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
 struct One {

@@ -1,4 +1,4 @@
-use structsy::{IterResult, Ref, Structsy, StructsyError, StructsyIntoIter, StructsyIter, StructsyTx};
+use structsy::{IterResult, Structsy, StructsyError, StructsyTx};
 use structsy_derive::{queries, Persistent};
 
 #[derive(Persistent, Debug, PartialEq)]

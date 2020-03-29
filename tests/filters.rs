@@ -1,4 +1,4 @@
-use structsy::{FieldConditionType, FilterBuilder, Ref, Structsy};
+use structsy::{FilterBuilder, Ref};
 use structsy_derive::Persistent;
 #[derive(Persistent)]
 struct PersistentData {

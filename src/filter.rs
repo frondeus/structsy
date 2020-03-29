@@ -1,4 +1,4 @@
-use crate::{index::find, FieldDescription, Persistent, Ref, StructDescription, Structsy};
+use crate::{index::find, Persistent, Ref, Structsy};
 use persy::IndexType;
 use std::marker::PhantomData;
 
@@ -167,13 +167,13 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }
     }
 
-    pub fn simple_condition<V: PartialEq + Clone + 'static>(&mut self, name: &str, value: V, access: fn(&T) -> &V) {
+    pub fn simple_condition<V: PartialEq + Clone + 'static>(&mut self, _name: &str, value: V, access: fn(&T) -> &V) {
         self.add(ConditionFilter::new(access, value))
     }
 
     pub fn indexable_vec_condition<V: IndexType + PartialEq + 'static>(
         &mut self,
-        name: &str,
+        _name: &str,
         value: Vec<V>,
         access: fn(&T) -> &Vec<V>,
     ) {
