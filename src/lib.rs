@@ -179,7 +179,7 @@ pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMod
 }
 
 /// Reference to a record, can be used to load a record or to refer a record from another one.
-#[derive(Debug, Eq, Ord, PartialOrd)]
+#[derive(Eq, Ord)]
 pub struct Ref<T> {
     type_name: String,
     raw_id: PersyId,
@@ -200,6 +200,30 @@ impl<T> PartialEq for Ref<T> {
         self.type_name == other.type_name && self.raw_id == other.raw_id
     }
 }
+impl<T> PartialOrd<Self> for Ref<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let c1 = self.type_name.cmp(&other.type_name);
+        if c1 == std::cmp::Ordering::Equal {
+            Some(self.raw_id.cmp(&other.raw_id))
+        } else {
+            Some(c1)
+        }
+    }
+}
+impl<T> Clone for Ref<T> {
+    fn clone(&self) -> Self {
+        Ref {
+            type_name: self.type_name.clone(),
+            raw_id: self.raw_id.clone(),
+            ph: PhantomData,
+        }
+    }
+}
+impl<T> std::fmt::Debug for Ref<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "type: {} id :{:?}", self.type_name, self.raw_id)
+    }
+}
 
 impl<T: Persistent> std::fmt::Display for Ref<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -210,8 +234,10 @@ impl<T: Persistent> std::str::FromStr for Ref<T> {
     type Err = StructsyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(pos) = s.find("@") {
-            let (ty, id) = s.split_at(pos);
+        let mut split = s.split_terminator("@");
+        let sty = split.next();
+        let sid = split.next();
+        if let (Some(ty), Some(id)) = (sty, sid) {
             if ty != T::get_name() {
                 Err(StructsyError::InvalidId)
             } else {
@@ -1085,5 +1111,53 @@ mod test {
         }
         assert_eq!(count, 1);
         fs::remove_file("one.db").expect("remove file works");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Persistent, Ref, SRes, StructDescription, Sytx};
+    use std::io::{Read, Write};
+
+    #[derive(Debug)]
+    struct Pers {}
+
+    impl Persistent for Pers {
+        fn get_name() -> &'static str {
+            "Pers"
+        }
+        fn get_description() -> StructDescription {
+            StructDescription::new("Pers", &Vec::new())
+        }
+        fn write(&self, _write: &mut dyn Write) -> SRes<()> {
+            Ok(())
+        }
+        fn read(_read: &mut dyn Read) -> SRes<Self>
+        where
+            Self: std::marker::Sized,
+        {
+            Ok(Pers {})
+        }
+        fn declare(_db: &mut dyn Sytx) -> SRes<()> {
+            Ok(())
+        }
+        fn put_indexes(&self, _tx: &mut dyn Sytx, _id: &Ref<Self>) -> SRes<()>
+        where
+            Self: std::marker::Sized,
+        {
+            Ok(())
+        }
+        fn remove_indexes(&self, _tx: &mut dyn Sytx, _id: &Ref<Self>) -> SRes<()>
+        where
+            Self: std::marker::Sized,
+        {
+            Ok(())
+        }
+    }
+    #[test]
+    pub fn test_id_display_parse() {
+        let id = Ref::<Pers>::new("s0c5a58".parse().unwrap());
+        let read: Ref<Pers> = format!("{}", &id).parse().unwrap();
+        assert_eq!(id, read);
     }
 }
