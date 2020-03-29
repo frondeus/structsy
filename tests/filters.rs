@@ -13,7 +13,7 @@ struct PersistentData {
     test_i32: i32,
     test_i64: i64,
     test_i128: i128,
-    //    test_bool: bool,
+    test_bool: bool,
     test_f32: f32,
     test_f64: f64,
     test_option: Option<u8>,
@@ -29,25 +29,26 @@ struct ReferedData {
 #[test]
 fn test_condition_filter_builder() {
     //let st = Structsy::open("abc").expect("structsy_can_open");
-    let mut builder = FilterBuilder::<PersistentData>::new();
-    builder.indexable_condition("test_string", String::from("aaa"), |x| &x.test_string);
-    builder.indexable_condition("test_u8", 1u8, |x| &x.test_u8);
-    builder.indexable_condition("test_u16", 1u16, |x| &x.test_u16);
-    builder.indexable_condition("test_u32", 1u32, |x| &x.test_u32);
-    builder.indexable_condition("test_u64", 1u64, |x| &x.test_u64);
-    builder.indexable_condition("test_u128", 1u128, |x| &x.test_u128);
-    builder.indexable_condition("test_i8", 1i8, |x| &x.test_i8);
-    builder.indexable_condition("test_i16", 1i16, |x| &x.test_i16);
-    builder.indexable_condition("test_i32", 1i32, |x| &x.test_i32);
-    builder.indexable_condition("test_i64", 1i64, |x| &x.test_i64);
-    builder.indexable_condition("test_i128", 1i128, |x| &x.test_i128);
-
-    builder.indexable_condition("test_f32", 1.0f32, |x| &x.test_f32);
-    builder.indexable_condition("test_f64", 1.0f64, |x| &x.test_f64);
+    let mut bilder = FilterBuilder::<PersistentData>::new();
+    PersistentData::field_test_string_string(&mut bilder, String::from("aaa"));
+    PersistentData::field_test_u8_u8(&mut bilder, 1u8);
+    PersistentData::field_test_u16_u16(&mut bilder, 1u16);
+    PersistentData::field_test_u32_u32(&mut bilder, 1u32);
+    PersistentData::field_test_u64_u64(&mut bilder, 1u64);
+    PersistentData::field_test_u128_u128(&mut bilder, 1u128);
+    PersistentData::field_test_i8_i8(&mut bilder, 1i8);
+    PersistentData::field_test_i16_i16(&mut bilder, 1i16);
+    PersistentData::field_test_i32_i32(&mut bilder, 1i32);
+    PersistentData::field_test_i64_i64(&mut bilder, 1i64);
+    PersistentData::field_test_i128_i128(&mut bilder, 1i128);
+    PersistentData::field_test_f32_f32(&mut bilder, 1.0f32);
+    PersistentData::field_test_f64_f64(&mut bilder, 1.0f64);
+    PersistentData::field_test_f64_f64(&mut bilder, 1.0f64);
+    PersistentData::field_test_bool_bool(&mut bilder, true);
     //builder.simple_condition("test_bool", true, |x| &x.test_bool);
-    PersistentData::field_test_vec_vec(&mut builder, Vec::<u8>::new());
-    PersistentData::field_test_vec_u8(&mut builder, 1u8);
-    //builder.indexable_condition("test_vec",1u8, |x| &x.test_vec );
-    // builder.indexable_condition("test_option",1u8, |x| &x.test_option );
-    //builder.simple_condition("test_ref",Ref::new("__".parse().unwrap()), |x| &x.test_ref );
+    PersistentData::field_test_vec_vec(&mut bilder, Vec::<u8>::new());
+    PersistentData::field_test_vec_u8(&mut bilder, 1u8);
+    PersistentData::field_test_option_u8(&mut bilder, 1u8);
+    PersistentData::field_test_option_option(&mut bilder, Some(1u8));
+    PersistentData::field_test_ref_ref(&mut bilder, "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap());
 }

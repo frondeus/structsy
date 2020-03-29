@@ -63,8 +63,8 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         } else {
             None
         };
-        if let (Some(n),Some(t)) = (name,ty) {
-            res.push(Operation::Equals(n,t));
+        if let (Some(n), Some(t)) = (name, ty) {
+            res.push(Operation::Equals(n, t));
         }
     }
     res
@@ -128,9 +128,9 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenS
         let type_ident = Ident::new(target_type, Span::call_site());
         let fields = extract_fields(&m.sig);
         let conditions = fields.into_iter().map(|f| match f {
-            Operation::Equals(f,ty) => {
+            Operation::Equals(f, ty) => {
                 let par_ident = Ident::new(&f, Span::call_site());
-                let filter_ident = Ident::new(&format!("field_{}_{}",f, ty.to_lowercase()), Span::call_site());
+                let filter_ident = Ident::new(&format!("field_{}_{}", f, ty.to_lowercase()), Span::call_site());
                 quote! {
                     #type_ident::#filter_ident(&mut builder, #par_ident);
                 }
@@ -469,20 +469,23 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
 }
 
 fn allowed_filter_types(field: &FieldInfo) -> bool {
-    let t = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
-        (Some(_), Some(z)) => z,
-        (Some(x), None) => x,
-        (None, None) => field.ty.clone(),
+    let (t, r) = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+        (Some(r), Some(z)) => (z, Some(r.clone())),
+        (Some(x), None) => (x, Some(field.ty.clone())),
+        (None, None) => (field.ty.clone(), None),
         (None, Some(_x)) => panic!(""),
     };
     match t.to_string().as_str() {
         "String" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" | "f32" | "f64"
         | "bool" => true,
-        _ => false,
+        _ => match r.map(|x| x.to_string()).unwrap_or(String::from("_")).as_str() {
+            "Ref" => true,
+            _ => false,
+        },
     }
 }
 
-fn filter_tokens(name:&Ident,fields: &Vec<FieldInfo>) -> TokenStream {
+fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
     let methods: Vec<TokenStream> = fields
         .iter()
         .filter(|x| allowed_filter_types(x))
@@ -497,26 +500,62 @@ fn filter_tokens(name:&Ident,fields: &Vec<FieldInfo>) -> TokenStream {
                         pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x<#z>>) {
                         }
                     }
-                },
+                }
                 (Some(x), None) => {
-                    let method_ident = Ident::new(&format!("field_{}_{}",field_name,ty.to_string().to_lowercase()), Span::call_site());
-                    let method_ident_contains = Ident::new(&format!("field_{}_{}",field_name,x.to_string().to_lowercase()), Span::call_site());
-                    let condition_method= Ident::new(&format!("indexable_{}_condition",ty.to_string().to_lowercase()), Span::call_site());
-                    let condition_method_contains= Ident::new(&format!("indexable_{}_single_condition",ty.to_string().to_lowercase()), Span::call_site());
-                    quote! {
-                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
-                            builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                    if ty.to_string() == "Ref" {
+                        let method_ident = Ident::new(
+                            &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
+                            Span::call_site(),
+                        );
+                        let condition_method = Ident::new("simple_condition", Span::call_site());
+                        quote! {
+                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
                         }
-                        pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
-                            builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                    } else {
+                        let method_ident = Ident::new(
+                            &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
+                            Span::call_site(),
+                        );
+                        let method_ident_contains = Ident::new(
+                            &format!("field_{}_{}", field_name, x.to_string().to_lowercase()),
+                            Span::call_site(),
+                        );
+                        let condition_method_name = if x.to_string() == "bool" {
+                            format!("simple_{}_condition", ty.to_string().to_lowercase())
+                        } else {
+                            format!("indexable_{}_condition", ty.to_string().to_lowercase())
+                        };
+                        let condition_method = Ident::new(&condition_method_name, Span::call_site());
+                        let condition_method_contains = Ident::new(
+                            &format!("indexable_{}_single_condition", ty.to_string().to_lowercase()),
+                            Span::call_site(),
+                        );
+                        quote! {
+                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                            pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                                builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                            }
                         }
                     }
                 }
                 (None, None) => {
-                    let method_ident = Ident::new(&format!("field_{}_{}", field_name, ty.to_string().to_lowercase()), Span::call_site());
+                    let method_ident = Ident::new(
+                        &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
+                        Span::call_site(),
+                    );
+                    let condition_method_name = if ty.to_string() == "bool" {
+                        "simple_condition"
+                    } else {
+                        "indexable_condition"
+                    };
+                    let condition_method = Ident::new(&condition_method_name, Span::call_site());
                     quote! {
                         pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
-                            builder.indexable_condition(#field_name,v, |x| &x.#field_ident);
+                            builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                         }
                     }
                 }
