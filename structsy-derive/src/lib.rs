@@ -527,11 +527,13 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                         } else {
                             format!("indexable_{}_condition", ty.to_string().to_lowercase())
                         };
+                        let condition_method_name_contains = if x.to_string() == "bool" {
+                            format!("simple_{}_single_condition", ty.to_string().to_lowercase())
+                        } else {
+                            format!("indexable_{}_single_condition", ty.to_string().to_lowercase())
+                        };
                         let condition_method = Ident::new(&condition_method_name, Span::call_site());
-                        let condition_method_contains = Ident::new(
-                            &format!("indexable_{}_single_condition", ty.to_string().to_lowercase()),
-                            Span::call_site(),
-                        );
+                        let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
                         quote! {
                             pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);

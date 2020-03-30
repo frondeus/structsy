@@ -19,6 +19,8 @@ struct PersistentData {
     test_option: Option<u8>,
     test_vec: Vec<u8>,
     test_ref: Ref<ReferedData>,
+    test_option_vec: Option<Vec<u8>>,
+    test_vec_bool: Vec<bool>,
 }
 
 #[derive(Persistent)]
@@ -45,10 +47,13 @@ fn test_condition_filter_builder() {
     PersistentData::field_test_f64_f64(&mut bilder, 1.0f64);
     PersistentData::field_test_f64_f64(&mut bilder, 1.0f64);
     PersistentData::field_test_bool_bool(&mut bilder, true);
-    //builder.simple_condition("test_bool", true, |x| &x.test_bool);
     PersistentData::field_test_vec_vec(&mut bilder, Vec::<u8>::new());
     PersistentData::field_test_vec_u8(&mut bilder, 1u8);
     PersistentData::field_test_option_u8(&mut bilder, 1u8);
     PersistentData::field_test_option_option(&mut bilder, Some(1u8));
     PersistentData::field_test_ref_ref(&mut bilder, "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap());
+    // PersistentData::field_test_option_vec_option(&mut bilder, Some(Vec::<u8>::new()));
+
+    PersistentData::field_test_vec_bool_vec(&mut bilder, Vec::<bool>::new());
+    PersistentData::field_test_vec_bool_bool(&mut bilder, true);
 }

@@ -181,6 +181,15 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(ConditionFilter::new(access, value))
     }
 
+    pub fn simple_vec_condition<V: PartialEq + Clone + 'static>(
+        &mut self,
+        _name: &str,
+        value: V,
+        access: fn(&T) -> &V,
+    ) {
+        self.add(ConditionFilter::new(access, value))
+    }
+
     pub fn simple_vec_single_condition<V: PartialEq + Clone + 'static>(
         &mut self,
         _name: &str,
@@ -217,6 +226,16 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     ) {
         self.indexable_option_condition(name, Some(value), access);
     }
+
+    pub fn simple_option_single_condition<V: IndexType + PartialEq + 'static>(
+        &mut self,
+        _name: &str,
+        value: V,
+        access: fn(&T) -> &Option<V>,
+    ) {
+        self.add(ConditionFilter::<Option<V>, T>::new(access, Some(value)));
+    }
+
     pub fn indexable_option_condition<V: IndexType + PartialEq + 'static>(
         &mut self,
         name: &str,
