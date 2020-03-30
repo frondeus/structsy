@@ -4,19 +4,25 @@ use std::marker::PhantomData;
 
 trait FilterBuilderStep {
     type Target;
-    fn score(&self) -> u32;
+    fn score(&mut self, _structsy: &Structsy) -> u32 {
+        std::u32::MAX
+    }
+    fn get_score(&self) -> u32 {
+        std::u32::MAX
+    }
     fn filter(
-        &self,
+        &mut self,
         structsy: &Structsy,
         iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
     ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
-    fn first(&self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
 }
 
 struct IndexFilter<V: IndexType + 'static, T: Persistent + 'static> {
     index_name: String,
     index_value: V,
     phantom: PhantomData<T>,
+    data: Option<Vec<(Ref<T>, T)>>,
 }
 
 impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
@@ -25,29 +31,40 @@ impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
             index_name,
             index_value,
             phantom: PhantomData,
+            data: None,
         })
     }
 }
 
 impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for IndexFilter<V, T> {
     type Target = T;
-    fn score(&self) -> u32 {
-        1
+    fn score(&mut self, structsy: &Structsy) -> u32 {
+        self.data = find(&structsy, &self.index_name, &self.index_value).ok();
+        self.get_score()
+    }
+    fn get_score(&self) -> u32 {
+        if let Some(x) = &self.data {
+            x.len() as u32
+        } else {
+            0
+        }
     }
     fn filter(
-        &self,
-        structsy: &Structsy,
+        &mut self,
+        _structsy: &Structsy,
         iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
     ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = find(&structsy, &self.index_name, &self.index_value) {
+        let data = std::mem::replace(&mut self.data, None);
+        if let Some(found) = data {
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
             Box::new(iter.filter(move |(r, _x)| to_filter.contains(r)))
         } else {
             iter
         }
     }
-    fn first(&self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = find(&structsy, &self.index_name, &self.index_value) {
+    fn first(&mut self, _structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let data = std::mem::replace(&mut self.data, None);
+        if let Some(found) = data {
             Box::new(found.into_iter())
         } else {
             Box::new(Vec::new().into_iter())
@@ -67,11 +84,8 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionSingleFil
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
     type Target = T;
-    fn score(&self) -> u32 {
-        1
-    }
     fn filter(
-        &self,
+        &mut self,
         _structsy: &Structsy,
         iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
     ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
@@ -79,7 +93,7 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         let access = self.access.clone();
         Box::new(iter.filter(move |(_, x)| (access)(x).contains(&value)))
     }
-    fn first(&self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
         if let Ok(found) = structsy.scan::<T>() {
             self.filter(structsy, Box::new(found))
         } else {
@@ -100,11 +114,8 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V,
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
-    fn score(&self) -> u32 {
-        1
-    }
     fn filter(
-        &self,
+        &mut self,
         _structsy: &Structsy,
         iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
     ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
@@ -113,7 +124,7 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         Box::new(iter.filter(move |(_, x)| *(access)(x) == val))
     }
 
-    fn first(&self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
         if let Ok(found) = structsy.scan::<T>() {
             self.filter(structsy, Box::new(found))
         } else {
@@ -136,9 +147,12 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn finish(mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
-        self.steps.sort_by_key(|x| x.score());
+        for x in &mut self.steps {
+            x.score(structsy);
+        }
+        self.steps.sort_by_key(|x| x.get_score());
         let mut res = None;
-        for s in self.steps.into_iter() {
+        for mut s in self.steps.into_iter() {
             res = Some(if let Some(prev) = res {
                 s.filter(structsy, prev)
             } else {
