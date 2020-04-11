@@ -3,7 +3,6 @@ use crate::{
     Persistent, Ref, Structsy,
 };
 use persy::IndexType;
-use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
 trait FilterBuilderStep {
@@ -433,7 +432,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             if let Some(v) = value {
                 self.add(IndexFilter::new(index_name, v));
             } else {
-                //TODO: index Check for  not present;
+                self.add(ConditionFilter::<Option<V>, T>::new(access, value));
             }
         } else {
             self.add(ConditionFilter::<Option<V>, T>::new(access, value));
@@ -468,48 +467,37 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }
     }
 
-    pub fn indexable_option_single_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &Option<V>)
+    pub fn indexable_option_single_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
     where
-        V: PartialOrd + 'static,
+        V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
-        let new_range = (
-            map_bound_option(range.start_bound()),
-            map_bound_option(range.end_bound()),
-        );
-        //self.indexable_range(name, new_range, access);
+        let start = map_bound_option(clone_bound_ref(&range.start_bound()));
+        let end = map_bound_option(clone_bound_ref(&range.end_bound()));
+        // This may support index in future, but it does not now
+        self.add(RangeConditionFilter::new(access, start, end));
     }
 
-    pub fn indexable_vec_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    pub fn indexable_vec_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
     where
-        V: PartialOrd + 'static,
+        V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
-        /*
-        if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, range))
-        } else {
-            self.add(RangeConditionFilter::new(access, range))
-        }
-        */
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        // This may support index in future, but it does not now
+        self.add(RangeConditionFilter::new(access, start, end))
     }
 
-    pub fn indexable_option_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    pub fn indexable_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
     where
-        V: PartialOrd + 'static,
+        V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
-        /*
-        if let Some(index_name) = Self::is_indexed(name) {
-            if let Some(v) = value {
-                self.add(IndexFilter::new(index_name, v));
-            } else {
-                //TODO: index Check for  not present;
-            }
-        } else {
-            self.add(ConditionFilter::<Option<V>, T>::new(access, value));
-        }
-        */
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        // This may support index in future, but it does not now
+        self.add(RangeConditionFilter::new(access, start, end))
     }
 }
 

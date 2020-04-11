@@ -600,10 +600,10 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                                 pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
                                     builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> + 'static>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> >(builder:&mut structsy::FilterBuilder<#name>,v:R){
                                     builder.#range_single_method(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_range_ident< R: std::ops::RangeBounds<#ty<#x>> + 'static>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                pub fn #method_range_ident< R: std::ops::RangeBounds<#ty<#x>>>(builder:&mut structsy::FilterBuilder<#name>,v:R){
                                     builder.#range_method(#field_name,v,|x|&x.#field_ident);
                                 }
                             }
