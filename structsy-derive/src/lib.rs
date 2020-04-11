@@ -11,8 +11,9 @@ use proc_macro2::{Span, TokenStream};
 use std::borrow::Borrow;
 use syn::Type::Path;
 use syn::{
-    parse_macro_input, AngleBracketedGenericArguments, AttributeArgs, DeriveInput, FnArg, GenericArgument, Ident, Item,
-    Meta, NestedMeta, Pat, PathArguments, PathSegment, ReturnType, Signature, TraitItem, Type, TypePath,
+    parse_macro_input, AngleBracketedGenericArguments, AttributeArgs, DeriveInput, FnArg, GenericArgument,
+    GenericParam, Ident, Item, Meta, NestedMeta, Pat, PathArguments, PathSegment, ReturnType, Signature, TraitItem,
+    Type, TypeParamBound, TypePath,
 };
 
 #[derive(FromDeriveInput, Debug)]
@@ -45,10 +46,30 @@ struct PersistentAttr {
 }
 enum Operation {
     Equals(String, String),
+    Range(String, String),
 }
 
 fn extract_fields(s: &Signature) -> Vec<Operation> {
     let mut res = Vec::new();
+    let mut mapping = Vec::new();
+    if s.generics.params.len() == 1 {
+        if let Some(GenericParam::Type(t)) = s.generics.params.first() {
+            if !t.bounds.is_empty() {
+                let name = t.ident.clone();
+                if let Some(TypeParamBound::Trait(bound)) = t.bounds.first() {
+                    if let Some(seg) = bound.path.segments.last() {
+                        if let PathArguments::AngleBracketed(a) = &seg.arguments {
+                            if let Some(GenericArgument::Type(Type::Path(tp))) = a.args.first() {
+                                if let Some(last_s) = tp.path.segments.first() {
+                                    mapping.push((name.to_string(), last_s.ident.to_string()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     let mut inps = s.inputs.iter();
     // Skip self checked in check_method
     inps.next();
@@ -63,8 +84,19 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         } else {
             None
         };
-        if let (Some(n), Some(t)) = (name, ty) {
-            res.push(Operation::Equals(n, t));
+        let mut range = false;
+        for (n, rn) in &mapping {
+            if let (Some(nam), Some(rt)) = (&name, &ty) {
+                if n == rt {
+                    res.push(Operation::Range(nam.clone(), rn.clone()));
+                    range = true;
+                }
+            }
+        }
+        if !range {
+            if let (Some(n), Some(t)) = (name, ty) {
+                res.push(Operation::Equals(n, t));
+            }
         }
     }
     res
@@ -117,8 +149,16 @@ fn check_method(s: &Signature, target_type: &str) {
     if s.inputs.len() < 2 {
         panic!("function should have at least two arguments");
     }
-    if !s.generics.params.is_empty() {
-        panic!("generics not supported");
+    let mut range = false;
+    if s.generics.params.len() == 1 {
+        if let Some(GenericParam::Type(t)) = s.generics.params.first() {
+            if !t.bounds.is_empty() {
+                range = true;
+            }
+        }
+    }
+    if !s.generics.params.is_empty() && !range {
+        panic!("generics not supported {:?}", s.generics.params.first());
     }
 }
 
@@ -130,7 +170,16 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenS
         let conditions = fields.into_iter().map(|f| match f {
             Operation::Equals(f, ty) => {
                 let par_ident = Ident::new(&f, Span::call_site());
-                let filter_ident = Ident::new(&format!("field_{}_{}", f, ty.to_lowercase()), Span::call_site());
+                let to_call = format!("field_{}_{}", f, ty.to_lowercase());
+                let filter_ident = Ident::new(&to_call, Span::call_site());
+                quote! {
+                    #type_ident::#filter_ident(&mut builder, #par_ident);
+                }
+            }
+            Operation::Range(f, ty) => {
+                let par_ident = Ident::new(&f, Span::call_site());
+                let to_call = format!("field_{}_{}_range", f, ty.to_lowercase());
+                let filter_ident = Ident::new(&to_call, Span::call_site());
                 quote! {
                     #type_ident::#filter_ident(&mut builder, #par_ident);
                 }
@@ -522,24 +571,41 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                             &format!("field_{}_{}", field_name, x.to_string().to_lowercase()),
                             Span::call_site(),
                         );
-                        let condition_method_name = if x.to_string() == "bool" {
-                            format!("simple_{}_condition", ty.to_string().to_lowercase())
-                        } else {
-                            format!("indexable_{}_condition", ty.to_string().to_lowercase())
-                        };
-                        let condition_method_name_contains = if x.to_string() == "bool" {
-                            format!("simple_{}_single_condition", ty.to_string().to_lowercase())
-                        } else {
-                            format!("indexable_{}_single_condition", ty.to_string().to_lowercase())
-                        };
-                        let condition_method = Ident::new(&condition_method_name, Span::call_site());
-                        let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
-                        quote! {
-                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
-                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                        if x.to_string() == "bool" {
+                            let condition_method_name = format!("simple_{}_condition", ty.to_string().to_lowercase());
+                            let condition_method_name_contains = format!("simple_{}_single_condition", ty.to_string().to_lowercase());
+                            let condition_method = Ident::new(&condition_method_name, Span::call_site());
+                            let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
+                            quote! {
+                                pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                    builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                                }
+                                pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                                    builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                                }
                             }
-                            pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
-                                builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                        } else {
+                            let condition_method_name = format!("indexable_{}_condition", ty.to_string().to_lowercase());
+                            let condition_method_name_contains = format!("indexable_{}_single_condition", ty.to_string().to_lowercase());
+                            let condition_method = Ident::new(&condition_method_name, Span::call_site());
+                            let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
+                            let range_single_method = Ident::new(&format!("indexable_{}_single_range", ty.to_string().to_lowercase()), Span::call_site());
+                            let method_range_single_ident = Ident::new(&format!("field_{}_{}_range", field_name, x.to_string().to_lowercase()),Span::call_site());
+                            let range_method = Ident::new(&format!("indexable_{}_range", ty.to_string().to_lowercase()), Span::call_site());
+                            let method_range_ident = Ident::new(&format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),Span::call_site());
+                            quote! {
+                                pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                    builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                                }
+                                pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                                    builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
+                                }
+                                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> + 'static>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                    builder.#range_single_method(#field_name,v,|x|&x.#field_ident);
+                                }
+                                pub fn #method_range_ident< R: std::ops::RangeBounds<#ty<#x>> + 'static>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                    builder.#range_method(#field_name,v,|x|&x.#field_ident);
+                                }
                             }
                         }
                     }
@@ -548,23 +614,35 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                     let method_ident = Ident::new(
                         &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
                         Span::call_site(),
-                    );
-                    let condition_method_name = if ty.to_string() == "bool" {
-                        "simple_condition"
+                        );
+                    if ty.to_string() == "bool" {
+                        let condition_method = Ident::new("simple_condition", Span::call_site());
+                        quote! {
+                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                        }
                     } else {
-                        "indexable_condition"
-                    };
-                    let condition_method = Ident::new(&condition_method_name, Span::call_site());
-                    quote! {
-                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
-                            builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                        let condition_method = Ident::new("indexable_condition", Span::call_site());
+
+                        let method_range_ident = Ident::new(
+                            &format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),
+                            Span::call_site(),
+                            );
+                        quote! {
+                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                            pub fn #method_range_ident< R: std::ops::RangeBounds<#ty>>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                builder.indexable_range(#field_name,v,|x|&x.#field_ident);
+                            }
                         }
                     }
                 }
                 (None, Some(_x)) => panic!(""),
             }
         })
-        .collect();
+    .collect();
 
     quote! {
         #( #methods )*

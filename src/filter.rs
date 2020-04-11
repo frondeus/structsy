@@ -1,6 +1,10 @@
-use crate::{index::find, Persistent, Ref, Structsy};
+use crate::{
+    index::{find, find_range},
+    Persistent, Ref, Structsy,
+};
 use persy::IndexType;
 use std::marker::PhantomData;
+use std::ops::{Bound, RangeBounds};
 
 trait FilterBuilderStep {
     type Target;
@@ -21,7 +25,6 @@ trait FilterBuilderStep {
 struct IndexFilter<V: IndexType + 'static, T: Persistent + 'static> {
     index_name: String,
     index_value: V,
-    phantom: PhantomData<T>,
     data: Option<Vec<(Ref<T>, T)>>,
 }
 
@@ -30,7 +33,6 @@ impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
         Box::new(IndexFilter {
             index_name,
             index_value,
-            phantom: PhantomData,
             data: None,
         })
     }
@@ -46,7 +48,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
         if let Some(x) = &self.data {
             x.len() as u32
         } else {
-            0
+            std::u32::MAX
         }
     }
     fn filter(
@@ -133,8 +135,191 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
     }
 }
 
+struct RangeSingleConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+    value_start: Bound<V>,
+    value_end: Bound<V>,
+    access: fn(&T) -> &Vec<V>,
+}
+
+fn clone_bound<X: Clone>(bound: &Bound<X>) -> Bound<X> {
+    match bound {
+        Bound::Included(x) => Bound::Included(x.clone()),
+        Bound::Excluded(x) => Bound::Excluded(x.clone()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
+
+fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
+    match bound {
+        Bound::Included(x) => Bound::Included((*x).clone()),
+        Bound::Excluded(x) => Bound::Excluded((*x).clone()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
+
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
+    fn new(
+        access: fn(&T) -> &Vec<V>,
+        value_start: Bound<V>,
+        value_end: Bound<V>,
+    ) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeSingleConditionFilter {
+            access,
+            value_start,
+            value_end,
+        })
+    }
+}
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleConditionFilter<V, T> {
+    type Target = T;
+    fn filter(
+        &mut self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        let access = self.access.clone();
+        Box::new(iter.filter(move |(_, x)| {
+            for el in (access)(x) {
+                if val.contains(el) {
+                    return true;
+                }
+            }
+            false
+        }))
+    }
+
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<T>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
+struct RangeConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+    value_start: Bound<V>,
+    value_end: Bound<V>,
+    access: fn(&T) -> &V,
+}
+
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFilter<V, T> {
+    fn new(access: fn(&T) -> &V, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeConditionFilter {
+            access,
+            value_start,
+            value_end,
+        })
+    }
+}
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeConditionFilter<V, T> {
+    type Target = T;
+    fn filter(
+        &mut self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        let access = self.access.clone();
+        Box::new(iter.filter(move |(_, x)| val.contains((access)(x))))
+    }
+
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<T>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
+struct RangeIndexFilter<V: IndexType + 'static, T: Persistent + 'static> {
+    index_name: String,
+    value_start: Bound<V>,
+    value_end: Bound<V>,
+    data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
+    score: Option<u32>,
+}
+
+impl<V: IndexType + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
+    fn new(index_name: String, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeIndexFilter {
+            index_name,
+            value_start,
+            value_end,
+            data: None,
+            score: None,
+        })
+    }
+}
+
+impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
+    type Target = T;
+    fn score(&mut self, structsy: &Structsy) -> u32 {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        if let Ok(iter) = find_range(&structsy, &self.index_name, val) {
+            let mut no_key = iter.map(|(r, e, _)| (r, e));
+            let mut i = 0;
+            let mut vec = Vec::new();
+            while let Some(el) = no_key.next() {
+                vec.push(el);
+                i += 1;
+                if i == 1000 {
+                    break;
+                }
+            }
+            self.score = Some(vec.len() as u32);
+            self.data = Some(Box::new(vec.into_iter().chain(no_key)));
+        }
+        self.get_score()
+    }
+    fn get_score(&self) -> u32 {
+        if let Some(x) = self.score {
+            x
+        } else {
+            std::u32::MAX
+        }
+    }
+    fn filter(
+        &mut self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let data = std::mem::replace(&mut self.data, None);
+        if let Some(found) = data {
+            let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
+            Box::new(iter.filter(move |(r, _x)| to_filter.contains(r)))
+        } else {
+            iter
+        }
+    }
+    fn first(&mut self, _structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let data = std::mem::replace(&mut self.data, None);
+        if let Some(found) = data {
+            Box::new(found.into_iter())
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
 pub struct FilterBuilder<T: Persistent + 'static> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
+}
+
+fn map_bound_option<T>(b: Bound<T>) -> Bound<Option<T>> {
+    match b {
+        Bound::Included(x) => Bound::Included(Some(x)),
+        Bound::Excluded(x) => Bound::Excluded(Some(x)),
+        Bound::Unbounded => Bound::Unbounded,
+    }
 }
 
 impl<T: Persistent + 'static> FilterBuilder<T> {
@@ -142,8 +327,17 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         FilterBuilder { steps: Vec::new() }
     }
 
-    fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
-        self.steps.push(filter);
+    fn is_indexed(name: &str) -> Option<String> {
+        let desc = T::get_description();
+        if let Some(f) = desc.get_field(name) {
+            if f.indexed.is_some() {
+                Some(format!("{}.{}", desc.name, f.name))
+            } else {
+                None
+            }
+        } else {
+            panic!("field with name:'{}' not found", name)
+        }
     }
 
     pub fn finish(mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
@@ -162,115 +356,160 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         res.expect("there is every time at least one element")
     }
 
-    pub fn indexable_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        name: &str,
-        value: V,
-        access: fn(&T) -> &V,
-    ) {
-        let desc = T::get_description();
-        if let Some(f) = desc.get_field(name) {
-            if f.indexed.is_some() {
-                let index_name = format!("{}.{}", desc.name, f.name);
-                self.add(IndexFilter::new(index_name, value))
-            } else {
-                self.add(ConditionFilter::new(access, value))
-            }
+    fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
+        self.steps.push(filter);
+    }
+
+    pub fn indexable_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(IndexFilter::new(index_name, value))
         } else {
-            panic!("field with name:'{}' not found", name)
+            self.add(ConditionFilter::new(access, value))
         }
     }
 
-    pub fn simple_condition<V: PartialEq + Clone + 'static>(&mut self, _name: &str, value: V, access: fn(&T) -> &V) {
+    pub fn simple_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: PartialEq + Clone + 'static,
+    {
         self.add(ConditionFilter::new(access, value))
     }
 
-    pub fn indexable_vec_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        _name: &str,
-        value: Vec<V>,
-        access: fn(&T) -> &Vec<V>,
-    ) {
+    pub fn indexable_vec_condition<V>(&mut self, _name: &str, value: Vec<V>, access: fn(&T) -> &Vec<V>)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
         //TODO: support lookup in index
         self.add(ConditionFilter::new(access, value))
     }
 
-    pub fn simple_vec_condition<V: PartialEq + Clone + 'static>(
-        &mut self,
-        _name: &str,
-        value: V,
-        access: fn(&T) -> &V,
-    ) {
+    pub fn simple_vec_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: PartialEq + Clone + 'static,
+    {
         self.add(ConditionFilter::new(access, value))
     }
 
-    pub fn simple_vec_single_condition<V: PartialEq + Clone + 'static>(
-        &mut self,
-        _name: &str,
-        value: V,
-        access: fn(&T) -> &Vec<V>,
-    ) {
+    pub fn simple_vec_single_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &Vec<V>)
+    where
+        V: PartialEq + Clone + 'static,
+    {
         self.add(ConditionSingleFilter::new(access, value))
     }
 
-    pub fn indexable_vec_single_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        name: &str,
-        value: V,
-        access: fn(&T) -> &Vec<V>,
-    ) {
-        let desc = T::get_description();
-        if let Some(f) = desc.get_field(name) {
-            if f.indexed.is_some() {
-                let index_name = format!("{}.{}", desc.name, f.name);
-                self.add(IndexFilter::new(index_name, value))
-            } else {
-                self.add(ConditionSingleFilter::new(access, value))
-            }
+    pub fn indexable_vec_single_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &Vec<V>)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(IndexFilter::new(index_name, value))
         } else {
-            panic!("field with name:'{}' not found", name)
+            self.add(ConditionSingleFilter::new(access, value))
         }
     }
 
-    pub fn indexable_option_single_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        name: &str,
-        value: V,
-        access: fn(&T) -> &Option<V>,
-    ) {
+    pub fn indexable_option_single_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &Option<V>)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
         self.indexable_option_condition(name, Some(value), access);
     }
 
-    pub fn simple_option_single_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        _name: &str,
-        value: V,
-        access: fn(&T) -> &Option<V>,
-    ) {
+    pub fn simple_option_single_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &Option<V>)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
         self.add(ConditionFilter::<Option<V>, T>::new(access, Some(value)));
     }
 
-    pub fn indexable_option_condition<V: IndexType + PartialEq + 'static>(
-        &mut self,
-        name: &str,
-        value: Option<V>,
-        access: fn(&T) -> &Option<V>,
-    ) {
-        let desc = T::get_description();
-        if let Some(f) = desc.get_field(name) {
-            if f.indexed.is_some() {
-                let index_name = format!("{}.{}", desc.name, f.name);
-                if let Some(v) = value {
-                    self.add(IndexFilter::new(index_name, v));
-                } else {
-                    //TODO: index Check for  not present;
-                }
+    pub fn indexable_option_condition<V>(&mut self, name: &str, value: Option<V>, access: fn(&T) -> &Option<V>)
+    where
+        V: IndexType + PartialEq + 'static,
+    {
+        if let Some(index_name) = Self::is_indexed(name) {
+            if let Some(v) = value {
+                self.add(IndexFilter::new(index_name, v));
             } else {
-                self.add(ConditionFilter::<Option<V>, T>::new(access, value));
+                //TODO: index Check for  not present;
             }
         } else {
-            panic!("field with name:'{}' not found", name)
+            self.add(ConditionFilter::<Option<V>, T>::new(access, value));
         }
+    }
+
+    pub fn indexable_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: IndexType + PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(RangeIndexFilter::new(index_name, start, end))
+        } else {
+            self.add(RangeConditionFilter::new(access, start, end))
+        }
+    }
+
+    pub fn indexable_vec_single_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &Vec<V>)
+    where
+        V: IndexType + PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(RangeIndexFilter::new(index_name, start, end))
+        } else {
+            self.add(RangeSingleConditionFilter::new(access, start, end))
+        }
+    }
+
+    pub fn indexable_option_single_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &Option<V>)
+    where
+        V: PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        let new_range = (
+            map_bound_option(range.start_bound()),
+            map_bound_option(range.end_bound()),
+        );
+        //self.indexable_range(name, new_range, access);
+    }
+
+    pub fn indexable_vec_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        /*
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(RangeIndexFilter::new(index_name, range))
+        } else {
+            self.add(RangeConditionFilter::new(access, range))
+        }
+        */
+    }
+
+    pub fn indexable_option_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        /*
+        if let Some(index_name) = Self::is_indexed(name) {
+            if let Some(v) = value {
+                self.add(IndexFilter::new(index_name, v));
+            } else {
+                //TODO: index Check for  not present;
+            }
+        } else {
+            self.add(ConditionFilter::<Option<V>, T>::new(access, value));
+        }
+        */
     }
 }
 

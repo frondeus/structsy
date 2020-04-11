@@ -56,4 +56,26 @@ fn test_condition_filter_builder() {
 
     PersistentData::field_test_vec_bool_vec(&mut bilder, Vec::<bool>::new());
     PersistentData::field_test_vec_bool_bool(&mut bilder, true);
+
+    PersistentData::field_test_string_string_range(&mut bilder, String::from("aaa")..String::from("b"));
+    PersistentData::field_test_u8_u8_range(&mut bilder, 1u8..2u8);
+    PersistentData::field_test_u16_u16_range(&mut bilder, 1u16..2u16);
+    PersistentData::field_test_u32_u32_range(&mut bilder, 1u32..2u32);
+    PersistentData::field_test_u64_u64_range(&mut bilder, 1u64..2u64);
+    PersistentData::field_test_u128_u128_range(&mut bilder, 1u128..2u128);
+    PersistentData::field_test_i8_i8_range(&mut bilder, 1i8..2i8);
+    PersistentData::field_test_i16_i16_range(&mut bilder, 1i16..2i16);
+    PersistentData::field_test_i32_i32_range(&mut bilder, 1i32..2i32);
+    PersistentData::field_test_i64_i64_range(&mut bilder, 1i64..2i64);
+    PersistentData::field_test_i128_i128_range(&mut bilder, 1i128..2i128);
+    PersistentData::field_test_f32_f32_range(&mut bilder, 1.0f32..2.0f32);
+    PersistentData::field_test_f64_f64_range(&mut bilder, 1.0f64..2.0f64);
+    PersistentData::field_test_f64_f64_range(&mut bilder, 1.0f64..2.0);
+    PersistentData::field_test_vec_vec_range(&mut bilder, Vec::<u8>::new()..Vec::<u8>::new());
+    PersistentData::field_test_vec_u8_range(&mut bilder, 1u8..2u8);
+    PersistentData::field_test_option_u8_range(&mut bilder, 1u8..2u8);
+    PersistentData::field_test_option_option_range(&mut bilder, Some(1u8)..Some(2u8));
+    let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
+    let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
+    //PersistentData::field_test_ref_ref_range(&mut bilder,first..second);
 }
