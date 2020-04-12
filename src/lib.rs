@@ -23,7 +23,7 @@
 //! };
 //! let mut tx = db.begin()?;
 //! tx.insert(&my_data)?;
-//! db.commit(tx)?;
+//! tx.commit()?;
 //! # Ok(())
 //! # }
 //!```
@@ -272,9 +272,14 @@ pub struct ImplRef {
     structsy_impl: Arc<StructsyImpl>,
 }
 
-/// Base transaction trait for internal use.
 pub trait Sytx {
+    /// Internal Use Only
+    ///
+    #[doc(hidden)]
     fn tx(&mut self) -> TxRef;
+    /// Internal Use Only
+    ///
+    #[doc(hidden)]
     fn structsy(&self) -> ImplRef;
 }
 
@@ -288,6 +293,13 @@ impl Sytx for OwnedSytx {
         }
     }
 }
+impl StructsyTx for OwnedSytx {
+    fn commit(self) -> SRes<()> {
+        let prepared = self.trans.prepare_commit()?;
+        prepared.commit()?;
+        Ok(())
+    }
+}
 
 impl<'a> Sytx for RefSytx<'a> {
     fn tx(&mut self) -> TxRef {
@@ -299,9 +311,14 @@ impl<'a> Sytx for RefSytx<'a> {
         }
     }
 }
+impl<'a> StructsyTx for RefSytx<'a> {
+    fn commit(self) -> SRes<()> {
+        panic!("")
+    }
+}
 
 /// Transaction behaviour trait.
-pub trait StructsyTx: Sytx {
+pub trait StructsyTx: Sytx + Sized {
     /// Persist a new struct instance.
     ///
     /// # Example
@@ -318,11 +335,24 @@ pub trait StructsyTx: Sytx {
     /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// tx.insert(&Example{value:10})?;
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
-    fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>>;
+    fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let mut buff = Vec::new();
+        sct.write(&mut buff)?;
+        let segment = T::get_description().name;
+        let id = self.tx().trans.insert_record(&segment, &buff)?;
+        let id_ref = Ref {
+            type_name: segment,
+            raw_id: id,
+            ph: PhantomData,
+        };
+        sct.put_indexes(self, &id_ref)?;
+        Ok(id_ref)
+    }
 
     /// Update a persistent instance with a new value.
     ///
@@ -341,11 +371,22 @@ pub trait StructsyTx: Sytx {
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// tx.update(&id, &Example{value:20})?;
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
-    fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()>;
+    fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let mut buff = Vec::new();
+        sct.write(&mut buff)?;
+        let old = self.read::<T>(sref)?;
+        if let Some(old_rec) = old {
+            old_rec.remove_indexes(self, &sref)?;
+        }
+        self.tx().trans.update_record(&sref.type_name, &sref.raw_id, &buff)?;
+        sct.put_indexes(self, &sref)?;
+        Ok(())
+    }
 
     /// Delete a persistent instance.
     ///
@@ -364,11 +405,19 @@ pub trait StructsyTx: Sytx {
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
     /// tx.delete(&id)?;
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
-    fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()>;
+    fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let old = self.read::<T>(sref)?;
+        if let Some(old_rec) = old {
+            old_rec.remove_indexes(self, &sref)?;
+        }
+        self.tx().trans.delete_record(&sref.type_name, &sref.raw_id)?;
+        Ok(())
+    }
 
     /// Read a persistent instance considering changes in transaction.
     ///
@@ -388,11 +437,14 @@ pub trait StructsyTx: Sytx {
     /// let id = tx.insert(&Example{value:10})?;
     /// let read = tx.read(&id)?;
     /// assert_eq!(10,read.unwrap().value);
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
-    fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>>;
+    fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        structsy::tx_read(&sref.type_name, &mut self.tx().trans, &sref.raw_id)
+    }
 
     /// Scan persistent instances of a struct considering changes in transaction.
     ///
@@ -412,11 +464,35 @@ pub trait StructsyTx: Sytx {
     /// for (id, inst) in tx.scan::<Example>()? {
     ///     // logic
     /// }
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
-    fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>>;
+    fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
+        self.structsy().structsy_impl.check_defined::<T>()?;
+        let name = T::get_description().name;
+        let implc = self.structsy().structsy_impl.clone();
+        let iter = self.tx().trans.scan(&name)?;
+        Ok(TxRecordIter::new(iter, implc))
+    }
+
+    /// Commit a transaction
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// //....
+    /// let mut tx = stry.begin()?;
+    /// // ... operate on tx.
+    /// tx.commit()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn commit(self) -> SRes<()>;
 }
 
 /// Iterator for record instances
@@ -654,11 +730,11 @@ impl Structsy {
             tx.insert(&D::from(record))?;
             count += 1;
             if count % batch == 0 {
-                self.commit(tx)?;
+                tx.commit()?;
                 tx = self.begin()?;
             }
         }
-        self.commit(tx)?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -670,14 +746,14 @@ impl Structsy {
     /// [`StructsyTx`]: trait.StructsyTx.html
     /// # Example
     /// ```
-    /// use structsy::Structsy;
+    /// use structsy::{Structsy,StructsyTx};
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// let stry = Structsy::open("path/to/file.stry")?;
     /// //....
     /// let mut tx = stry.begin()?;
     /// // ... operate on tx.
-    /// stry.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```
@@ -704,7 +780,7 @@ impl Structsy {
     /// //.. open structsy etc.
     /// let mut tx = structsy.begin()?;
     /// let id = tx.insert(&Example{value:10})?;
-    /// structsy.commit(tx)?;
+    /// tx.commit()?;
     /// let read = structsy.read(&id)?;
     /// assert_eq!(10,read.unwrap().value);
     /// # Ok(())
@@ -755,6 +831,7 @@ impl Structsy {
     /// # Ok(())
     /// # }
     /// ```
+    #[deprecated]
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
         self.structsy_impl.commit(tx.trans)
     }
@@ -895,7 +972,7 @@ mod test {
             count += 1;
         }
         assert_eq!(count, 1);
-        db.commit(tx).expect("tx committed correctly");
+        tx.commit().expect("tx committed correctly");
 
         let looked_up = ToTest::find_by_name(&db, &"new".to_string())
             .map(|x| x.into_iter())

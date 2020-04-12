@@ -220,7 +220,7 @@ pub struct RangeIterator<'a, K: IndexType, P: Persistent> {
 impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
     fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> RangeIterator<'a, K, P> {
         RangeIterator {
-            structsy: structsy,
+            structsy,
             persy_iter: iter,
             iter: None,
         }
@@ -292,7 +292,7 @@ pub struct UniqueRangeIterator<'a, K: IndexType, P: Persistent> {
 impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
     fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> UniqueRangeIterator<'a, K, P> {
         UniqueRangeIterator {
-            structsy: structsy,
+            structsy,
             persy_iter: iter,
             phantom: PhantomData,
         }

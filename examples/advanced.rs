@@ -23,7 +23,7 @@ fn main() -> Result<(), StructsyError> {
     };
     let mut tx = db.begin()?;
     let _id = tx.insert(&my_data)?;
-    db.commit(tx)?;
+    tx.commit()?;
 
     let to_find = "https://gitlab.com/tglman/structsy".to_string();
     let mut iter = db.search(to_find.clone())?.into_iter();

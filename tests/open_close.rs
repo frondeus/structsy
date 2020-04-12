@@ -20,7 +20,7 @@ fn save_close_open_read() {
         };
         let mut tx = db.begin().expect("transaction started");
         id = tx.insert(&data).expect("data saved correctly");
-        db.commit(tx).expect("trasaction is committed");
+        tx.commit().expect("trasaction is committed");
     }
     {
         let config = Structsy::config(file).create(false);

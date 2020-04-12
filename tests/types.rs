@@ -57,7 +57,7 @@ fn test_persist_all_values() {
         val_emb: Embed { val_u8: 50 },
     };
     let id = tx.insert(&all).expect("inserted correctly");
-    db.commit(tx).expect("committed correctly");
+    tx.commit().expect("committed correctly");
     let read_all = db.read(&id).expect("read correctly").expect("is a record");
     assert_eq!(all, read_all);
     let read_ref = db

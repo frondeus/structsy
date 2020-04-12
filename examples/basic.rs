@@ -18,7 +18,7 @@ fn main() -> Result<(), StructsyError> {
     };
     let mut tx = db.begin()?;
     let id = tx.insert(&my_data)?;
-    db.commit(tx)?;
+    tx.commit()?;
 
     let to_find = "Structsy".to_string();
     let iter = MyData::find_by_name(&db, &to_find)?;
@@ -27,7 +27,7 @@ fn main() -> Result<(), StructsyError> {
 
     let mut tx = db.begin()?;
     tx.delete(&id)?;
-    db.commit(tx)?;
+    tx.commit()?;
 
     let iter = MyData::find_by_name(&db, &to_find)?;
     assert_eq!(None, iter.iter().next());

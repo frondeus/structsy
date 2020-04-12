@@ -33,7 +33,7 @@ pub fn basic_query() {
         db.define::<Basic>()?;
         let mut tx = db.begin()?;
         tx.insert(&Basic::new("aaa"))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicQuery::by_name(db, "aaa".to_string())?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
@@ -48,7 +48,7 @@ pub fn basic_range_query() {
         tx.insert(&Basic::new("aaa"))?;
         tx.insert(&Basic::new("bbb"))?;
         tx.insert(&Basic::new("ccc"))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicQuery::by_range(db, "aaa".to_string().."bbb".to_string())?
             .into_iter()
             .count();
@@ -95,7 +95,7 @@ pub fn basic_vec_query() {
         let mut tx = db.begin()?;
         let data = vec!["aaa".to_string()];
         tx.insert(&BasicVec::new(&data))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicVecQuery::by_name(db, data)?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
@@ -113,7 +113,7 @@ pub fn basic_vec_range_query() {
         tx.insert(&BasicVec::new(&dataa))?;
         tx.insert(&BasicVec::new(&datab))?;
         tx.insert(&BasicVec::new(&datac))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicVecQuery::by_range(db, dataa.clone()..datab.clone())?
             .into_iter()
             .count();
@@ -149,7 +149,7 @@ pub fn basic_vec_sinble_range_query() {
         tx.insert(&BasicVec::new(&dataa))?;
         tx.insert(&BasicVec::new(&datab))?;
         tx.insert(&BasicVec::new(&datac))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicVecQuery::by_single_range(db, aaa.clone()..bbb.clone())?
             .into_iter()
             .count();
@@ -196,7 +196,7 @@ pub fn basic_option_query() {
         let mut tx = db.begin()?;
         let data = Some("aaa".to_string());
         tx.insert(&BasicOption::new(data.clone()))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicOptionQuery::by_name(db, data)?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
@@ -211,7 +211,7 @@ pub fn basic_option_none_query() {
         let data = Some("aaa".to_string());
         tx.insert(&BasicOption::new(data.clone()))?;
         tx.insert(&BasicOption::new(None))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicOptionQuery::by_name(db, data)?.into_iter().count();
         assert_eq!(count, 1);
         let count = BasicOptionQuery::by_name(db, None)?.into_iter().count();
@@ -231,7 +231,7 @@ pub fn basic_option_range_query() {
         tx.insert(&BasicOption::new(dataa.clone()))?;
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(datac.clone()))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicOptionQuery::by_range(db, dataa.clone()..datab.clone())?
             .into_iter()
             .count();
@@ -267,7 +267,7 @@ pub fn basic_option_range_single_query() {
         tx.insert(&BasicOption::new(dataa.clone()))?;
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(datac.clone()))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let count = BasicOptionQuery::by_single_range(db, aaa.clone()..bbb.clone())?
             .into_iter()
             .count();
@@ -299,7 +299,7 @@ pub fn basic_option_range_none_query() {
         tx.insert(&BasicOption::new(dataa.clone()))?;
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(None))?;
-        db.commit(tx)?;
+        tx.commit()?;
         let result = BasicOptionQuery::by_range(db, dataa.clone()..None)?
             .into_iter()
             .collect::<Vec<_>>();
