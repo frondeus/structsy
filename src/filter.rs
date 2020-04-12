@@ -383,6 +383,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }
     }
 
+    pub(crate) fn merge(&mut self, other: FilterBuilder<T>) {
+        self.steps.extend(other.steps);
+    }
+
     pub fn finish(mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
         for x in &mut self.steps {
             x.score(structsy);

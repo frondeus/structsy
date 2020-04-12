@@ -3,6 +3,14 @@ use structsy::{IterResult, SRes, Structsy, StructsyTx};
 use structsy_derive::{queries, Persistent};
 use tempfile::tempdir;
 
+fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
+    let dir = tempdir().expect("can make a tempdir");
+    let file = dir.path().join(format!("{}.stry", name));
+
+    let db = Structsy::open(&file).expect("can open just create");
+    test(&db).expect("test is fine");
+}
+
 #[derive(Persistent)]
 struct Basic {
     name: String,
@@ -17,14 +25,6 @@ impl Basic {
 trait BasicQuery {
     fn by_name(&self, name: String) -> IterResult<Basic>;
     fn by_range<R: RangeBounds<String>>(&self, name: R) -> IterResult<Basic>;
-}
-
-fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
-    let dir = tempdir().expect("can make a tempdir");
-    let file = dir.path().join(format!("{}.stry", name));
-
-    let db = Structsy::open(&file).expect("can open just create");
-    test(&db).expect("test is fine");
 }
 
 #[test]
@@ -332,6 +332,44 @@ pub fn basic_option_range_none_query() {
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, None);
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+struct TwoFields {
+    name: String,
+    surname: String,
+}
+impl TwoFields {
+    fn new(name: &str, surname: &str) -> TwoFields {
+        TwoFields {
+            name: name.to_string(),
+            surname: surname.to_string(),
+        }
+    }
+}
+
+#[queries(TwoFields)]
+trait TwoFieldsQuery {
+    fn by_name(&self, name: String) -> IterResult<TwoFields>;
+    fn by_surname(&self, surname: String) -> IterResult<TwoFields>;
+}
+
+#[test]
+pub fn two_fileds_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<TwoFields>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&TwoFields::new("aaa", "bbb"))?;
+        tx.insert(&TwoFields::new("aaa", "ccc"))?;
+        tx.insert(&TwoFields::new("zzz", "bbb"))?;
+        tx.commit()?;
+        let count = TwoFieldsQuery::by_name(db, "aaa".to_string())?
+            .by_surname("ccc".to_string())
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
         Ok(())
     });
 }

@@ -1,6 +1,6 @@
 use crate::{
-    InternalDescription, Persistent, RecordIter, Ref, SRes, StructDescription, Structsy, StructsyConfig, StructsyError,
-    StructsyTx, StructsyQuery, filter::FilterBuilder,StructsyIntoIter,
+    filter::FilterBuilder, InternalDescription, Persistent, RecordIter, Ref, SRes, StructDescription, Structsy,
+    StructsyConfig, StructsyError, StructsyIntoIter, StructsyQuery, StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -170,17 +170,17 @@ impl StructsyImpl {
     }
 }
 
-impl StructsyQuery for Structsy {
-    fn new_filter<T:Persistent>(&self) -> FilterBuilder<T> {
+impl<T: Persistent> StructsyQuery<T> for Structsy {
+    fn new_filter(&self) -> FilterBuilder<T> {
         FilterBuilder::new()
     }
-    fn into_iter<T:Persistent>(&self, filter:FilterBuilder<T>) -> StructsyIntoIter<T> {
+    fn into_iter(&self, filter: FilterBuilder<T>) -> StructsyIntoIter<T> {
         StructsyIntoIter::new(self.clone(), filter)
     }
-/*
-    fn new_embedded_filter<T:Persistent>() -> FilterBuilder<T>{
-    }
-*/
+    /*
+        fn new_embedded_filter<T:Persistent>() -> FilterBuilder<T>{
+        }
+    */
 }
 
 pub(crate) fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {

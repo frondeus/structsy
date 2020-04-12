@@ -34,7 +34,7 @@ use persy::{IndexType, PersyError, PersyId, Transaction};
 use std::io::{Cursor, Error as IOError, Read, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 mod format;
 pub use format::PersistentEmbedded;
 mod desc;
@@ -76,11 +76,14 @@ impl<T: Persistent> Iterator for StructsyIter<T> {
 
 pub struct StructsyIntoIter<T: Persistent + 'static> {
     structsy: Structsy,
-    builder: FilterBuilder<T>,
+    builder: Mutex<Option<FilterBuilder<T>>>,
 }
 impl<T: Persistent> StructsyIntoIter<T> {
     pub fn new(structsy: Structsy, builder: FilterBuilder<T>) -> StructsyIntoIter<T> {
-        StructsyIntoIter { builder, structsy }
+        StructsyIntoIter {
+            builder: Mutex::new(Some(builder)),
+            structsy,
+        }
     }
 }
 
@@ -88,7 +91,30 @@ impl<T: Persistent> IntoIterator for StructsyIntoIter<T> {
     type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<T>;
     fn into_iter(self) -> Self::IntoIter {
-        StructsyIter::new(self.builder.finish(&self.structsy))
+        //TODO: This is not clean it can produce not clear beahviour find better way
+        let mut locked = self.builder.lock().expect("should never fail");
+        let value = std::mem::replace(&mut *locked, None);
+        if let Some(val) = value {
+            StructsyIter::new(val.finish(&self.structsy))
+        } else {
+            StructsyIter::new(Vec::new().into_iter())
+        }
+    }
+}
+
+impl<T: Persistent> StructsyQuery<T> for StructsyIntoIter<T> {
+    fn new_filter(&self) -> FilterBuilder<T> {
+        FilterBuilder::new()
+    }
+    fn into_iter(&self, filter: FilterBuilder<T>) -> StructsyIntoIter<T> {
+        let mut locked = self.builder.lock().expect("should never fail");
+        let value = std::mem::replace(&mut *locked, None);
+        if let Some(mut val) = value {
+            val.merge(filter);
+            StructsyIntoIter::new(self.structsy.clone(), val)
+        } else {
+            StructsyIntoIter::new(self.structsy.clone(), filter)
+        }
     }
 }
 
@@ -317,9 +343,9 @@ impl<'a> StructsyTx for RefSytx<'a> {
     }
 }
 /// Trait used in query definition, used by `structsy_derive`
-pub trait StructsyQuery {
-    fn new_filter<T:Persistent>(&self) -> FilterBuilder<T>;
-    fn into_iter<T:Persistent>(&self, filter:FilterBuilder<T>) -> StructsyIntoIter<T>;
+pub trait StructsyQuery<T: Persistent> {
+    fn new_filter(&self) -> FilterBuilder<T>;
+    fn into_iter(&self, filter: FilterBuilder<T>) -> StructsyIntoIter<T>;
     //fn new_embedded_filter<T:PersistentEmbedded>(&self) -> FilterBuilder<T>;
 }
 
@@ -851,8 +877,8 @@ impl Structsy {
 #[cfg(test)]
 mod test {
     use super::{
-        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, RangeIterator, Ref, SRes,
-        StructDescription, Structsy, StructsyTx, Sytx, IterResult,
+        find, find_range, find_range_tx, find_tx, FieldDescription, IterResult, Persistent, RangeIterator, Ref, SRes,
+        StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;
@@ -927,15 +953,13 @@ mod test {
             find_range_tx(st, "ToTest.name", range)
         }
     }
-
     trait ToTestQueries {
         fn all(&self) -> IterResult<ToTest>;
     }
 
-    impl <Q: super::StructsyQuery >  ToTestQueries for Q {
-
+    impl<Q: super::StructsyQuery<ToTest>> ToTestQueries for Q {
         fn all(&self) -> IterResult<ToTest> {
-            let builder = super::StructsyQuery::new_filter::<ToTest>(self);
+            let builder = super::StructsyQuery::new_filter(self);
             Ok(super::StructsyQuery::into_iter(self, builder))
         }
     }
