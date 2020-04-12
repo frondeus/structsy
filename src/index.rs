@@ -1,4 +1,4 @@
-use crate::{tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
+use crate::{structsy::tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
 use persy::{IndexType, PersyId, Transaction, Value};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
