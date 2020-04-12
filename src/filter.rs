@@ -140,22 +140,6 @@ struct RangeSingleConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent
     access: fn(&T) -> &Vec<V>,
 }
 
-fn clone_bound<X: Clone>(bound: &Bound<X>) -> Bound<X> {
-    match bound {
-        Bound::Included(x) => Bound::Included(x.clone()),
-        Bound::Excluded(x) => Bound::Excluded(x.clone()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
-
-fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
-    match bound {
-        Bound::Included(x) => Bound::Included((*x).clone()),
-        Bound::Excluded(x) => Bound::Excluded((*x).clone()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
-
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
     fn new(
         access: fn(&T) -> &Vec<V>,
@@ -309,14 +293,74 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Rang
     }
 }
 
+struct RangeOptionConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+    value_start: Bound<V>,
+    value_end: Bound<V>,
+    access: fn(&T) -> &Option<V>,
+    include_none: bool,
+}
+
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionConditionFilter<V, T> {
+    fn new(
+        access: fn(&T) -> &Option<V>,
+        value_start: Bound<V>,
+        value_end: Bound<V>,
+        include_none: bool,
+    ) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeOptionConditionFilter {
+            access,
+            value_start,
+            value_end,
+            include_none,
+        })
+    }
+}
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
+    type Target = T;
+    fn filter(
+        &mut self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        let access = self.access.clone();
+        let include_none = self.include_none;
+        Box::new(iter.filter(move |(_, x)| {
+            if let Some(z) = (access)(x) {
+                val.contains(z)
+            } else {
+                include_none
+            }
+        }))
+    }
+
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<T>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
 pub struct FilterBuilder<T: Persistent + 'static> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
 }
 
-fn map_bound_option<T>(b: Bound<T>) -> Bound<Option<T>> {
-    match b {
-        Bound::Included(x) => Bound::Included(Some(x)),
-        Bound::Excluded(x) => Bound::Excluded(Some(x)),
+fn clone_bound<X: Clone>(bound: &Bound<X>) -> Bound<X> {
+    match bound {
+        Bound::Included(x) => Bound::Included(x.clone()),
+        Bound::Excluded(x) => Bound::Excluded(x.clone()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
+
+fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
+    match bound {
+        Bound::Included(x) => Bound::Included((*x).clone()),
+        Bound::Excluded(x) => Bound::Excluded((*x).clone()),
         Bound::Unbounded => Bound::Unbounded,
     }
 }
@@ -472,10 +516,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
-        let start = map_bound_option(clone_bound_ref(&range.start_bound()));
-        let end = map_bound_option(clone_bound_ref(&range.end_bound()));
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
-        self.add(RangeConditionFilter::new(access, start, end));
+        self.add(RangeOptionConditionFilter::new(access, start, end, false))
     }
 
     pub fn indexable_vec_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
@@ -489,15 +533,32 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(RangeConditionFilter::new(access, start, end))
     }
 
-    pub fn indexable_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    pub fn indexable_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
     where
         V: PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
+        R: RangeBounds<Option<V>>,
     {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
+        let (start, none_end) = match range.start_bound() {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
+        let (end, none_start) = match range.end_bound() {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
         // This may support index in future, but it does not now
-        self.add(RangeConditionFilter::new(access, start, end))
+        self.add(RangeOptionConditionFilter::new(
+            access,
+            start,
+            end,
+            none_end || none_start,
+        ))
     }
 }
 
