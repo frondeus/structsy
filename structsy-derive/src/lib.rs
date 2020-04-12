@@ -188,9 +188,9 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenS
         let sign = m.sig.clone();
         quote! {
             #sign {
-                let mut builder = structsy::FilterBuilder::<#type_ident>::new();
+                let mut builder = structsy::StructsyQuery::new_filter::<#type_ident>(self);
                 #( #conditions)*
-                Ok(structsy::StructsyIntoIter::new(self.clone(), builder))
+                Ok(structsy::StructsyQuery::into_iter(self, builder))
             }
         }
     } else {
@@ -226,7 +226,7 @@ pub fn queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream)
     let gen = quote! {
         #parsed
 
-        impl #name for structsy::Structsy {
+        impl <Q: structsy::StructsyQuery>  #name for Q {
             #( #methods )*
         }
     };

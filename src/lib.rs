@@ -316,6 +316,12 @@ impl<'a> StructsyTx for RefSytx<'a> {
         panic!("")
     }
 }
+/// Trait used in query definition, used by `structsy_derive`
+pub trait StructsyQuery {
+    fn new_filter<T:Persistent>(&self) -> FilterBuilder<T>;
+    fn into_iter<T:Persistent>(&self, filter:FilterBuilder<T>) -> StructsyIntoIter<T>;
+    //fn new_embedded_filter<T:PersistentEmbedded>(&self) -> FilterBuilder<T>;
+}
 
 /// Transaction behaviour trait.
 pub trait StructsyTx: Sytx + Sized {
@@ -846,7 +852,7 @@ impl Structsy {
 mod test {
     use super::{
         find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, RangeIterator, Ref, SRes,
-        StructDescription, Structsy, StructsyTx, Sytx,
+        StructDescription, Structsy, StructsyTx, Sytx, IterResult,
     };
     use persy::ValueMode;
     use std::fs;
@@ -919,6 +925,18 @@ mod test {
             range: R,
         ) -> SRes<RangeIterator<'a, String, Self>> {
             find_range_tx(st, "ToTest.name", range)
+        }
+    }
+
+    trait ToTestQueries {
+        fn all(&self) -> IterResult<ToTest>;
+    }
+
+    impl <Q: super::StructsyQuery >  ToTestQueries for Q {
+
+        fn all(&self) -> IterResult<ToTest> {
+            let builder = super::StructsyQuery::new_filter::<ToTest>(self);
+            Ok(super::StructsyQuery::into_iter(self, builder))
         }
     }
 
@@ -1001,12 +1019,6 @@ mod test {
         assert_eq!(count, 1);
         fs::remove_file("one.db").expect("remove file works");
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{Persistent, Ref, SRes, StructDescription, Sytx};
-    use std::io::{Read, Write};
 
     #[derive(Debug)]
     struct Pers {}
