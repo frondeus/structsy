@@ -373,3 +373,41 @@ pub fn two_fileds_query() {
         Ok(())
     });
 }
+
+#[derive(Persistent)]
+struct TestDefault {
+    name: String,
+}
+impl TestDefault {
+    fn new(name: &str) -> TestDefault {
+        TestDefault {
+            name: name.to_string(),
+        }
+    }
+}
+
+#[queries(TestDefault)]
+trait TestDefaultQuery {
+    fn by_name(&self, name: String) -> IterResult<TestDefault>;
+
+    fn find_anto(&self) -> IterResult<TestDefault> {
+        self.by_name("anto".to_string())
+    }
+}
+
+#[test]
+pub fn test_default_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<TestDefault>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&TestDefault::new("aaa"))?;
+        tx.insert(&TestDefault::new("anto"))?;
+        tx.insert(&TestDefault::new("zzz"))?;
+        tx.commit()?;
+        let count = TestDefaultQuery::find_anto(db)?
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}

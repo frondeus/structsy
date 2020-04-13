@@ -162,36 +162,40 @@ fn check_method(s: &Signature, target_type: &str) {
     }
 }
 
-fn impl_trait_methods(item: TraitItem, target_type: &str) -> proc_macro2::TokenStream {
+fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2::TokenStream> {
     if let TraitItem::Method(m) = item {
-        check_method(&m.sig, target_type);
-        let type_ident = Ident::new(target_type, Span::call_site());
-        let fields = extract_fields(&m.sig);
-        let conditions = fields.into_iter().map(|f| match f {
-            Operation::Equals(f, ty) => {
-                let par_ident = Ident::new(&f, Span::call_site());
-                let to_call = format!("field_{}_{}", f, ty.to_lowercase());
-                let filter_ident = Ident::new(&to_call, Span::call_site());
-                quote! {
-                    #type_ident::#filter_ident(&mut builder, #par_ident);
+        if m.default.is_some() {
+            None
+        } else {
+            check_method(&m.sig, target_type);
+            let type_ident = Ident::new(target_type, Span::call_site());
+            let fields = extract_fields(&m.sig);
+            let conditions = fields.into_iter().map(|f| match f {
+                Operation::Equals(f, ty) => {
+                    let par_ident = Ident::new(&f, Span::call_site());
+                    let to_call = format!("field_{}_{}", f, ty.to_lowercase());
+                    let filter_ident = Ident::new(&to_call, Span::call_site());
+                    quote! {
+                        #type_ident::#filter_ident(&mut builder, #par_ident);
+                    }
                 }
-            }
-            Operation::Range(f, ty) => {
-                let par_ident = Ident::new(&f, Span::call_site());
-                let to_call = format!("field_{}_{}_range", f, ty.to_lowercase());
-                let filter_ident = Ident::new(&to_call, Span::call_site());
-                quote! {
-                    #type_ident::#filter_ident(&mut builder, #par_ident);
+                Operation::Range(f, ty) => {
+                    let par_ident = Ident::new(&f, Span::call_site());
+                    let to_call = format!("field_{}_{}_range", f, ty.to_lowercase());
+                    let filter_ident = Ident::new(&to_call, Span::call_site());
+                    quote! {
+                        #type_ident::#filter_ident(&mut builder, #par_ident);
+                    }
                 }
-            }
-        });
-        let sign = m.sig.clone();
-        quote! {
-            #sign {
-                let mut builder = structsy::StructsyQuery::new_filter(self);
-                #( #conditions)*
-                Ok(structsy::StructsyQuery::into_iter(self, builder))
-            }
+            });
+            let sign = m.sig.clone();
+            Some(quote! {
+                #sign {
+                    let mut builder = structsy::StructsyQuery::new_filter(self);
+                    #( #conditions)*
+                    Ok(structsy::StructsyQuery::into_iter(self, builder))
+                }
+            })
         }
     } else {
         panic!("support only methods in a trait");
@@ -217,7 +221,9 @@ pub fn queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream)
         Item::Trait(tr) => {
             name = tr.ident.clone();
             for iten in tr.items {
-                methods.push(impl_trait_methods(iten, &expeted_type));
+                if let Some(meth_impl) = impl_trait_methods(iten, &expeted_type) {
+                    methods.push(meth_impl);
+                }
             }
         }
         _ => panic!("not a trait"),
@@ -665,7 +671,7 @@ impl PersistentInfo {
                 if let Some(ty) = get_type_ident(&f.ty) {
                     Some(FieldInfo {
                         name: field,
-                        ty: ty,
+                        ty,
                         template_ty: sub,
                         sub_template_ty: subsub,
                         index_mode: f.mode.clone(),
