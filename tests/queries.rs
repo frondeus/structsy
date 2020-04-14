@@ -23,8 +23,8 @@ impl Basic {
 
 #[queries(Basic)]
 trait BasicQuery {
-    fn by_name(&self, name: String) -> IterResult<Basic>;
-    fn by_range<R: RangeBounds<String>>(&self, name: R) -> IterResult<Basic>;
+    fn by_name(self, name: String) -> IterResult<Basic>;
+    fn by_range<R: RangeBounds<String>>(self, name: R) -> IterResult<Basic>;
 }
 
 #[test]
@@ -34,7 +34,7 @@ pub fn basic_query() {
         let mut tx = db.begin()?;
         tx.insert(&Basic::new("aaa"))?;
         tx.commit()?;
-        let count = BasicQuery::by_name(db, "aaa".to_string())?.into_iter().count();
+        let count = db.query::<Basic>().by_name("aaa".to_string())?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -49,17 +49,23 @@ pub fn basic_range_query() {
         tx.insert(&Basic::new("bbb"))?;
         tx.insert(&Basic::new("ccc"))?;
         tx.commit()?;
-        let count = BasicQuery::by_range(db, "aaa".to_string().."bbb".to_string())?
+        let count = db
+            .query::<Basic>()
+            .by_range("aaa".to_string().."bbb".to_string())?
             .into_iter()
             .count();
         assert_eq!(count, 1);
-        let result = BasicQuery::by_range(db, "aaa".to_string().."ccc".to_string())?
+        let result = db
+            .query::<Basic>()
+            .by_range("aaa".to_string().."ccc".to_string())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, "aaa".to_string());
         assert_eq!(result[1].1.name, "bbb".to_string());
-        let result = BasicQuery::by_range(db, "aaa".to_string()..="ccc".to_string())?
+        let result = db
+            .query::<Basic>()
+            .by_range("aaa".to_string()..="ccc".to_string())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
@@ -82,10 +88,10 @@ impl BasicVec {
 
 #[queries(BasicVec)]
 trait BasicVecQuery {
-    fn by_singe_name(&self, names: String) -> IterResult<BasicVec>;
-    fn by_name(&self, names: Vec<String>) -> IterResult<BasicVec>;
-    fn by_single_range<R: RangeBounds<String>>(&self, names: R) -> IterResult<BasicVec>;
-    fn by_range<R: RangeBounds<Vec<String>>>(&self, names: R) -> IterResult<BasicVec>;
+    fn by_singe_name(self, names: String) -> IterResult<BasicVec>;
+    fn by_name(self, names: Vec<String>) -> IterResult<BasicVec>;
+    fn by_single_range<R: RangeBounds<String>>(self, names: R) -> IterResult<BasicVec>;
+    fn by_range<R: RangeBounds<Vec<String>>>(self, names: R) -> IterResult<BasicVec>;
 }
 
 #[test]
@@ -96,7 +102,7 @@ pub fn basic_vec_query() {
         let data = vec!["aaa".to_string()];
         tx.insert(&BasicVec::new(&data))?;
         tx.commit()?;
-        let count = BasicVecQuery::by_name(db, data)?.into_iter().count();
+        let count = db.query::<BasicVec>().by_name(data)?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -114,17 +120,23 @@ pub fn basic_vec_range_query() {
         tx.insert(&BasicVec::new(&datab))?;
         tx.insert(&BasicVec::new(&datac))?;
         tx.commit()?;
-        let count = BasicVecQuery::by_range(db, dataa.clone()..datab.clone())?
+        let count = db
+            .query::<BasicVec>()
+            .by_range(dataa.clone()..datab.clone())?
             .into_iter()
             .count();
         assert_eq!(count, 1);
-        let result = BasicVecQuery::by_range(db, dataa.clone()..datac.clone())?
+        let result = db
+            .query::<BasicVec>()
+            .by_range(dataa.clone()..datac.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.names[0], "aaa".to_string());
         assert_eq!(result[1].1.names[0], "bbb".to_string());
-        let result = BasicVecQuery::by_range(db, dataa.clone()..=datac.clone())?
+        let result = db
+            .query::<BasicVec>()
+            .by_range(dataa.clone()..=datac.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
@@ -150,17 +162,23 @@ pub fn basic_vec_sinble_range_query() {
         tx.insert(&BasicVec::new(&datab))?;
         tx.insert(&BasicVec::new(&datac))?;
         tx.commit()?;
-        let count = BasicVecQuery::by_single_range(db, aaa.clone()..bbb.clone())?
+        let count = db
+            .query::<BasicVec>()
+            .by_single_range(aaa.clone()..bbb.clone())?
             .into_iter()
             .count();
         assert_eq!(count, 1);
-        let result = BasicVecQuery::by_single_range(db, aaa.clone()..ccc.clone())?
+        let result = db
+            .query::<BasicVec>()
+            .by_single_range(aaa.clone()..ccc.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.names[0], "aaa".to_string());
         assert_eq!(result[1].1.names[0], "bbb".to_string());
-        let result = BasicVecQuery::by_single_range(db, aaa.clone()..=ccc.clone())?
+        let result = db
+            .query::<BasicVec>()
+            .by_single_range(aaa.clone()..=ccc.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
@@ -183,10 +201,10 @@ impl BasicOption {
 
 #[queries(BasicOption)]
 trait BasicOptionQuery {
-    fn by_singe_name(&self, name: String) -> IterResult<BasicOption>;
-    fn by_name(&self, name: Option<String>) -> IterResult<BasicOption>;
-    fn by_single_range<R: RangeBounds<String>>(&self, name: R) -> IterResult<BasicOption>;
-    fn by_range<R: RangeBounds<Option<String>>>(&self, name: R) -> IterResult<BasicOption>;
+    fn by_singe_name(self, name: String) -> IterResult<BasicOption>;
+    fn by_name(self, name: Option<String>) -> IterResult<BasicOption>;
+    fn by_single_range<R: RangeBounds<String>>(self, name: R) -> IterResult<BasicOption>;
+    fn by_range<R: RangeBounds<Option<String>>>(self, name: R) -> IterResult<BasicOption>;
 }
 
 #[test]
@@ -197,7 +215,7 @@ pub fn basic_option_query() {
         let data = Some("aaa".to_string());
         tx.insert(&BasicOption::new(data.clone()))?;
         tx.commit()?;
-        let count = BasicOptionQuery::by_name(db, data)?.into_iter().count();
+        let count = db.query::<BasicOption>().by_name(data)?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -212,9 +230,9 @@ pub fn basic_option_none_query() {
         tx.insert(&BasicOption::new(data.clone()))?;
         tx.insert(&BasicOption::new(None))?;
         tx.commit()?;
-        let count = BasicOptionQuery::by_name(db, data)?.into_iter().count();
+        let count = db.query::<BasicOption>().by_name(data)?.into_iter().count();
         assert_eq!(count, 1);
-        let count = BasicOptionQuery::by_name(db, None)?.into_iter().count();
+        let count = db.query::<BasicOption>().by_name(None)?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -232,17 +250,23 @@ pub fn basic_option_range_query() {
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(datac.clone()))?;
         tx.commit()?;
-        let count = BasicOptionQuery::by_range(db, dataa.clone()..datab.clone())?
+        let count = db
+            .query::<BasicOption>()
+            .by_range(dataa.clone()..datab.clone())?
             .into_iter()
             .count();
         assert_eq!(count, 1);
-        let result = BasicOptionQuery::by_range(db, dataa.clone()..datac.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(dataa.clone()..datac.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, Some("bbb".to_string()));
-        let result = BasicOptionQuery::by_range(db, dataa.clone()..=datac.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(dataa.clone()..=datac.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
@@ -268,17 +292,23 @@ pub fn basic_option_range_single_query() {
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(datac.clone()))?;
         tx.commit()?;
-        let count = BasicOptionQuery::by_single_range(db, aaa.clone()..bbb.clone())?
+        let count = db
+            .query::<BasicOption>()
+            .by_single_range(aaa.clone()..bbb.clone())?
             .into_iter()
             .count();
         assert_eq!(count, 1);
-        let result = BasicOptionQuery::by_single_range(db, aaa.clone()..ccc.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_single_range(aaa.clone()..ccc.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, Some("bbb".to_string()));
-        let result = BasicOptionQuery::by_single_range(db, aaa.clone()..=ccc.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_single_range(aaa.clone()..=ccc.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
@@ -300,33 +330,43 @@ pub fn basic_option_range_none_query() {
         tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(None))?;
         tx.commit()?;
-        let result = BasicOptionQuery::by_range(db, dataa.clone()..None)?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(dataa.clone()..None)?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, Some("bbb".to_string()));
         assert_eq!(result[2].1.name, None);
-        let result = BasicOptionQuery::by_range(db, dataa.clone()..=None)?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(dataa.clone()..=None)?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, Some("bbb".to_string()));
         assert_eq!(result[2].1.name, None);
-        let result = BasicOptionQuery::by_range(db, datab.clone()..=None)?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(datab.clone()..=None)?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, Some("bbb".to_string()));
         assert_eq!(result[1].1.name, None);
-        let result = BasicOptionQuery::by_range(db, None..=dataa.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(None..=dataa.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, Some("aaa".to_string()));
         assert_eq!(result[1].1.name, None);
-        let result = BasicOptionQuery::by_range(db, None..datab.clone())?
+        let result = db
+            .query::<BasicOption>()
+            .by_range(None..datab.clone())?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
@@ -352,8 +392,8 @@ impl TwoFields {
 
 #[queries(TwoFields)]
 trait TwoFieldsQuery {
-    fn by_name(&self, name: String) -> IterResult<TwoFields>;
-    fn by_surname(&self, surname: String) -> IterResult<TwoFields>;
+    fn by_name(self, name: String) -> IterResult<TwoFields>;
+    fn by_surname(self, surname: String) -> IterResult<TwoFields>;
 }
 
 #[test]
@@ -365,7 +405,9 @@ pub fn two_fileds_query() {
         tx.insert(&TwoFields::new("aaa", "ccc"))?;
         tx.insert(&TwoFields::new("zzz", "bbb"))?;
         tx.commit()?;
-        let count = TwoFieldsQuery::by_name(db, "aaa".to_string())?
+        let count = db
+            .query::<TwoFields>()
+            .by_name("aaa".to_string())?
             .by_surname("ccc".to_string())
             .into_iter()
             .count();
@@ -380,17 +422,15 @@ struct TestDefault {
 }
 impl TestDefault {
     fn new(name: &str) -> TestDefault {
-        TestDefault {
-            name: name.to_string(),
-        }
+        TestDefault { name: name.to_string() }
     }
 }
 
 #[queries(TestDefault)]
-trait TestDefaultQuery {
-    fn by_name(&self, name: String) -> IterResult<TestDefault>;
+trait TestDefaultQuery: Sized {
+    fn by_name(self, name: String) -> IterResult<TestDefault>;
 
-    fn find_anto(&self) -> IterResult<TestDefault> {
+    fn find_anto(self) -> IterResult<TestDefault> {
         self.by_name("anto".to_string())
     }
 }
@@ -404,9 +444,7 @@ pub fn test_default_query() {
         tx.insert(&TestDefault::new("anto"))?;
         tx.insert(&TestDefault::new("zzz"))?;
         tx.commit()?;
-        let count = TestDefaultQuery::find_anto(db)?
-            .into_iter()
-            .count();
+        let count = db.query::<TestDefault>().find_anto()?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });

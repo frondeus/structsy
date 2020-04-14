@@ -26,8 +26,8 @@ struct Three {
 
 #[structsy_derive::queries(One)]
 trait OneQuery {
-    fn simple(&self, first: String) -> IterResult<One>;
-    fn range<R: std::ops::RangeBounds<String>>(&self, first: R) -> IterResult<One>;
+    fn simple(self, first: String) -> IterResult<One>;
+    fn range<R: std::ops::RangeBounds<String>>(self, first: R) -> IterResult<One>;
 }
 
 #[test]

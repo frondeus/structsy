@@ -10,7 +10,7 @@ struct MyData {
 
 #[queries(MyData)]
 trait MyDataQuery {
-    fn search(&self, address: String) -> IterResult<MyData>;
+    fn search(self, address: String) -> IterResult<MyData>;
 }
 
 fn main() -> Result<(), StructsyError> {
@@ -26,7 +26,7 @@ fn main() -> Result<(), StructsyError> {
     tx.commit()?;
 
     let to_find = "https://gitlab.com/tglman/structsy".to_string();
-    let mut iter = db.search(to_find.clone())?.into_iter();
+    let mut iter = db.query::<MyData>().search(to_find.clone())?.into_iter();
     let (_id, data) = iter.next().unwrap();
     assert_eq!(data.address, to_find);
 

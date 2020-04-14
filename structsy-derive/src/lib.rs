@@ -140,11 +140,11 @@ fn check_method(s: &Signature, target_type: &str) {
         panic!(" expected a return type");
     }
     if let Some(FnArg::Receiver(r)) = s.inputs.first() {
-        if r.reference.is_none() {
-            panic!("first argument of a method should be &self");
+        if r.reference.is_some() {
+            panic!("first argument of a method should be \"self\"");
         }
     } else {
-        panic!("first argument of a method should be &self");
+        panic!("first argument of a method should be \"self\"");
     }
     if s.inputs.len() < 2 {
         panic!("function should have at least two arguments");
@@ -188,12 +188,15 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
                     }
                 }
             });
-            let sign = m.sig.clone();
+            let mut sign = m.sig.clone();
+            if let Some(f) = sign.inputs.first_mut() {
+                *f = syn::parse_str::<FnArg>("mut self").expect("mut self parse correctly");
+            }
             Some(quote! {
                 #sign {
-                    let mut builder = structsy::StructsyQuery::new_filter(self);
+                    let mut builder = structsy::filter_builder(&mut self);
                     #( #conditions)*
-                    Ok(structsy::StructsyQuery::into_iter(self, builder))
+                    Ok(self)
                 }
             })
         }
@@ -232,7 +235,7 @@ pub fn queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream)
     let gen = quote! {
         #parsed
 
-        impl <Q: structsy::StructsyQuery<#expeted_type_ident>>  #name for Q {
+        impl #name for structsy::StructsyQuery<#expeted_type_ident> {
             #( #methods )*
         }
     };
