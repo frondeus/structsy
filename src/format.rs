@@ -1,7 +1,6 @@
 use crate::{Persistent, Ref, SRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
-use std::marker::PhantomData;
 
 /// Base trait implemented by all types that can be persisted inside a struct.
 pub trait PersistentEmbedded {
@@ -102,11 +101,7 @@ impl<T: Persistent> PersistentEmbedded for Ref<T> {
 
     fn read(read: &mut dyn Read) -> SRes<Ref<T>> {
         let s_id = String::read(read)?;
-        Ok(Ref {
-            type_name: T::get_description().name.clone(),
-            raw_id: s_id.parse()?,
-            ph: PhantomData,
-        })
+        Ok(Ref::new(s_id.parse()?))
     }
 }
 
