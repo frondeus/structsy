@@ -51,6 +51,7 @@ mod structsy;
 use crate::structsy::StructsyImpl;
 mod id;
 pub use crate::id::Ref;
+mod embedded_filter;
 
 pub struct StructsyIter<T: Persistent> {
     iterator: Box<dyn Iterator<Item = (Ref<T>, T)>>,
@@ -224,6 +225,10 @@ impl<'a> StructsyTx for RefSytx<'a> {
     fn commit(self) -> SRes<()> {
         panic!("")
     }
+}
+
+pub struct EmbeddedFilter<T: PersistentEmbedded + 'static> {
+    builder: embedded_filter::EmbeddedFilterBuilder<T>,
 }
 
 pub struct StructsyQuery<T: Persistent + 'static> {
@@ -767,6 +772,11 @@ impl Structsy {
         StructsyQuery {
             structsy: self.clone(),
             builder: FilterBuilder::new(),
+        }
+    }
+    pub fn embedded_filter<T: PersistentEmbedded>() -> EmbeddedFilter<T> {
+        EmbeddedFilter {
+            builder: embedded_filter::EmbeddedFilterBuilder::new(),
         }
     }
 }
