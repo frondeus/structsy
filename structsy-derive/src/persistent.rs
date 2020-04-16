@@ -75,7 +75,7 @@ impl PersistentInfo {
         let fields = self.field_infos();
         let (desc, ser) = serialization_tokens(name, &fields);
         let (indexes, impls) = indexes_tokens(name, &fields);
-        let filters = filter_tokens(name, &fields);
+        let filters = filter_tokens(name, &fields, false);
         let string_name = name.to_string();
         quote! {
 
@@ -102,6 +102,7 @@ impl PersistentInfo {
         let name = &self.ident;
         let fields = self.field_infos();
         let (desc, ser) = serialization_tokens(name, &fields);
+        let filters = filter_tokens(name, &fields, true);
 
         for f in fields {
             if f.index_mode.is_some() {
@@ -115,6 +116,10 @@ impl PersistentInfo {
             }
             impl structsy::PersistentEmbedded for #name {
                 #ser
+            }
+
+            impl #name {
+                #filters
             }
         }
     }
@@ -397,7 +402,16 @@ fn allowed_filter_types(field: &FieldInfo) -> bool {
     }
 }
 
-fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
+fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenStream {
+    let mode;
+    let filter_builder;
+    if embedded {
+        mode = "simple".to_string();
+        filter_builder = quote!{structsy::EmbeddedFilterBuilder};
+    } else {
+        mode = "indexable".to_string();
+        filter_builder = quote!{structsy::FilterBuilder};
+    }
     let methods: Vec<TokenStream> = fields
         .iter()
         .filter(|x| allowed_filter_types(x))
@@ -409,7 +423,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                 (Some(x), Some(z)) => {
                     let method_ident = Ident::new(&format!("field_{}", field_name), Span::call_site());
                     quote! {
-                        pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x<#z>>) {
+                        pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty<#x<#z>>) {
                         }
                     }
                 }
@@ -421,7 +435,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                         );
                         let condition_method = Ident::new("simple_condition", Span::call_site());
                         quote! {
-                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                            pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty<#x>){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                             }
                         }
@@ -440,33 +454,33 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                             let condition_method = Ident::new(&condition_method_name, Span::call_site());
                             let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
                             quote! {
-                                pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty<#x>){
                                     builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                                pub fn #method_ident_contains(builder:&mut #filter_builder<#name>,v:#x){
                                     builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
                                 }
                             }
                         } else {
-                            let condition_method_name = format!("indexable_{}_condition", ty.to_string().to_lowercase());
-                            let condition_method_name_contains = format!("indexable_{}_single_condition", ty.to_string().to_lowercase());
+                            let condition_method_name = format!("{}_{}_condition",mode, ty.to_string().to_lowercase());
+                            let condition_method_name_contains = format!("{}_{}_single_condition",mode, ty.to_string().to_lowercase());
                             let condition_method = Ident::new(&condition_method_name, Span::call_site());
                             let condition_method_contains = Ident::new(&condition_method_name_contains,Span::call_site());
-                            let range_single_method = Ident::new(&format!("indexable_{}_single_range", ty.to_string().to_lowercase()), Span::call_site());
+                            let range_single_method = Ident::new(&format!("{}_{}_single_range",mode, ty.to_string().to_lowercase()), Span::call_site());
                             let method_range_single_ident = Ident::new(&format!("field_{}_{}_range", field_name, x.to_string().to_lowercase()),Span::call_site());
-                            let range_method = Ident::new(&format!("indexable_{}_range", ty.to_string().to_lowercase()), Span::call_site());
+                            let range_method = Ident::new(&format!("{}_{}_range",mode, ty.to_string().to_lowercase()), Span::call_site());
                             let method_range_ident = Ident::new(&format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),Span::call_site());
                             quote! {
-                                pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty<#x>){
+                                pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty<#x>){
                                     builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_ident_contains(builder:&mut structsy::FilterBuilder<#name>,v:#x){
+                                pub fn #method_ident_contains(builder:&mut #filter_builder<#name>,v:#x){
                                     builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> >(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> >(builder:&mut #filter_builder<#name>,v:R){
                                     builder.#range_single_method(#field_name,v,|x|&x.#field_ident);
                                 }
-                                pub fn #method_range_ident< R: std::ops::RangeBounds<#ty<#x>>>(builder:&mut structsy::FilterBuilder<#name>,v:R){
+                                pub fn #method_range_ident< R: std::ops::RangeBounds<#ty<#x>>>(builder:&mut #filter_builder<#name>,v:R){
                                     builder.#range_method(#field_name,v,|x|&x.#field_ident);
                                 }
                             }
@@ -481,23 +495,24 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
                     if ty.to_string() == "bool" {
                         let condition_method = Ident::new("simple_condition", Span::call_site());
                         quote! {
-                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
+                            pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                             }
                         }
                     } else {
-                        let condition_method = Ident::new("indexable_condition", Span::call_site());
+                        let condition_method = Ident::new(&format!("{}_condition",mode), Span::call_site());
+                        let range_method = Ident::new(&format!("{}_range",mode), Span::call_site());
 
                         let method_range_ident = Ident::new(
                             &format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),
                             Span::call_site(),
                             );
                         quote! {
-                            pub fn #method_ident(builder:&mut structsy::FilterBuilder<#name>,v:#ty){
+                            pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);
                             }
-                            pub fn #method_range_ident< R: std::ops::RangeBounds<#ty>>(builder:&mut structsy::FilterBuilder<#name>,v:R){
-                                builder.indexable_range(#field_name,v,|x|&x.#field_ident);
+                            pub fn #method_range_ident< R: std::ops::RangeBounds<#ty>>(builder:&mut #filter_builder<#name>,v:R){
+                                builder.#range_method(#field_name,v,|x|&x.#field_ident);
                             }
                         }
                     }
@@ -511,3 +526,4 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
         #( #methods )*
     }
 }
+

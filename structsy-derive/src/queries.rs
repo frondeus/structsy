@@ -155,7 +155,7 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             }
             Some(quote! {
                 #sign {
-                    let mut builder = structsy::filter_builder(&mut self);
+                    let mut builder = self.filter_builder();
                     #( #conditions)*
                     Ok(self)
                 }
@@ -166,7 +166,7 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
     }
 }
 
-pub fn persistent_queries(parsed: Item, args: AttributeArgs) -> proc_macro2::TokenStream {
+pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded:bool) -> proc_macro2::TokenStream {
     let expeted_type = if let Some(NestedMeta::Meta(Meta::Path(x))) = args.first() {
         x.segments
             .last()
@@ -190,6 +190,15 @@ pub fn persistent_queries(parsed: Item, args: AttributeArgs) -> proc_macro2::Tok
         _ => panic!("not a trait"),
     }
     let expeted_type_ident = Ident::new(&expeted_type, Span::call_site());
+    if embedded {
+    quote! {
+        #parsed
+
+        impl #name for structsy::EmbeddedFilter<#expeted_type_ident> {
+            #( #methods )*
+        }
+    }
+    } else {
     quote! {
         #parsed
 
@@ -197,4 +206,6 @@ pub fn persistent_queries(parsed: Item, args: AttributeArgs) -> proc_macro2::Tok
             #( #methods )*
         }
     }
+    }
 }
+

@@ -3,7 +3,7 @@ use std::ops::{Bound, RangeBounds};
 
 trait EmbeddedFilterBuilderStep {
     type Target;
-    fn filter(&mut self, to_filter: &Self::Target) -> bool;
+    fn filter(&self, to_filter: &Self::Target) -> bool;
 }
 
 struct ConditionFilter<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> {
@@ -20,7 +20,7 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
     for ConditionFilter<V, T>
 {
     type Target = T;
-    fn filter(&mut self, to_filter: &Self::Target) -> bool {
+    fn filter(&self, to_filter: &Self::Target) -> bool {
         *(self.access)(to_filter) == self.value
     }
 }
@@ -40,7 +40,7 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
     for ConditionSingleFilter<V, T>
 {
     type Target = T;
-    fn filter(&mut self, to_filter: &Self::Target) -> bool {
+    fn filter(&self, to_filter: &Self::Target) -> bool {
         (self.access)(to_filter).contains(&self.value)
     }
 }
@@ -69,7 +69,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
 {
     type Target = T;
 
-    fn filter(&mut self, to_filter: &Self::Target) -> bool {
+    fn filter(&self, to_filter: &Self::Target) -> bool {
         (self.value_start.clone(), self.value_end.clone()).contains((self.access)(to_filter))
     }
 }
@@ -98,7 +98,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
 {
     type Target = T;
 
-    fn filter(&mut self, to_filter: &Self::Target) -> bool {
+    fn filter(&self, to_filter: &Self::Target) -> bool {
         for el in (self.access)(to_filter) {
             if (self.value_start.clone(), self.value_end.clone()).contains(el) {
                 return true;
@@ -134,7 +134,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     for RangeOptionConditionFilter<V, T>
 {
     type Target = T;
-    fn filter(&mut self, to_filter: &Self::Target) -> bool {
+    fn filter(&self, to_filter: &Self::Target) -> bool {
         if let Some(z) = (self.access)(to_filter) {
             (self.value_start.clone(), self.value_end.clone()).contains(z)
         } else {
@@ -143,16 +143,8 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
-pub struct EmbeddedFilterBuilder<T: PersistentEmbedded + 'static> {
+pub struct EmbeddedFilterBuilder<T: PersistentEmbedded> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
-}
-
-fn clone_bound<X: Clone>(bound: &Bound<X>) -> Bound<X> {
-    match bound {
-        Bound::Included(x) => Bound::Included(x.clone()),
-        Bound::Excluded(x) => Bound::Excluded(x.clone()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
 }
 
 fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
@@ -168,6 +160,14 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder { steps: Vec::new() }
     }
 
+    pub(crate) fn filter(&self, i: &T) -> bool {
+        for filter in &self.steps {
+            if !filter.filter(i) {
+                return false;
+            }
+        }
+        true
+    }
     fn add(&mut self, filter: Box<dyn EmbeddedFilterBuilderStep<Target = T>>) {
         self.steps.push(filter);
     }
@@ -179,6 +179,12 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         self.add(ConditionFilter::new(access, value))
     }
 
+    pub fn simple_option_condition<V>(&mut self, _name: &str, value: Option<V>, access: fn(&T) -> &Option<V>)
+    where
+        V: PartialEq + Clone + 'static,
+    {
+        self.add(ConditionFilter::<Option<V>, T>::new(access, value));
+    }
     pub fn simple_vec_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
     where
         V: PartialEq + Clone + 'static,
@@ -200,7 +206,17 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         self.add(ConditionFilter::<Option<V>, T>::new(access, Some(value)));
     }
 
-    pub fn simple_vec_single_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &Vec<V>)
+    pub fn simple_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: Clone + PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        self.add(RangeConditionFilter::new(access, start, end))
+    }
+
+    pub fn simple_vec_single_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Vec<V>)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
@@ -210,7 +226,7 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         self.add(RangeSingleConditionFilter::new(access, start, end))
     }
 
-    pub fn simpl_option_single_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
+    pub fn simple_option_single_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,

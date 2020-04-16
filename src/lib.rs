@@ -46,12 +46,13 @@ pub use index::{
     IndexableValue, RangeIterator, UniqueRangeIterator,
 };
 mod filter;
-pub use filter::{FieldConditionType, FilterBuilder};
+pub use filter::FilterBuilder;
 mod structsy;
 use crate::structsy::StructsyImpl;
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
+pub use embedded_filter::EmbeddedFilterBuilder;
 
 pub struct StructsyIter<T: Persistent> {
     iterator: Box<dyn Iterator<Item = (Ref<T>, T)>>,
@@ -227,8 +228,17 @@ impl<'a> StructsyTx for RefSytx<'a> {
     }
 }
 
-pub struct EmbeddedFilter<T: PersistentEmbedded + 'static> {
-    builder: embedded_filter::EmbeddedFilterBuilder<T>,
+pub struct EmbeddedFilter<T: PersistentEmbedded> {
+    builder: EmbeddedFilterBuilder<T>,
+}
+
+impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
+    pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
+        &mut self.builder
+    }
+    pub(crate) fn filter(&self, i: &T) -> bool {
+        self.builder.filter(i)
+    }
 }
 
 pub struct StructsyQuery<T: Persistent + 'static> {
@@ -236,8 +246,10 @@ pub struct StructsyQuery<T: Persistent + 'static> {
     builder: FilterBuilder<T>,
 }
 
-pub fn filter_builder<T: Persistent>(query: &mut StructsyQuery<T>) -> &mut FilterBuilder<T> {
-    &mut query.builder
+impl<T: Persistent + 'static> StructsyQuery<T> {
+    pub fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
+    }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {
@@ -774,7 +786,7 @@ impl Structsy {
             builder: FilterBuilder::new(),
         }
     }
-    pub fn embedded_filter<T: PersistentEmbedded>() -> EmbeddedFilter<T> {
+    pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {
         EmbeddedFilter {
             builder: embedded_filter::EmbeddedFilterBuilder::new(),
         }
@@ -866,7 +878,7 @@ mod test {
 
     impl ToTestQueries for super::StructsyQuery<ToTest> {
         fn all(mut self) -> IterResult<ToTest> {
-            let _builder = super::filter_builder(&mut self);
+            let _builder = self.filter_builder();
             Ok(self)
         }
     }
