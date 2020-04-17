@@ -1,6 +1,6 @@
 use std::ops::RangeBounds;
-use structsy::{IterResult, SRes, Structsy, StructsyTx};
-use structsy_derive::{queries, Persistent};
+use structsy::{EmbeddedFilter, EmbeddedResult, IterResult, SRes, Structsy, StructsyTx};
+use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
@@ -445,6 +445,53 @@ pub fn test_default_query() {
         tx.insert(&TestDefault::new("zzz"))?;
         tx.commit()?;
         let count = db.query::<TestDefault>().find_anto()?.into_iter().count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+struct WithEmbedded {
+    embedded: Embedded,
+}
+
+#[derive(PersistentEmbedded)]
+struct Embedded {
+    name: String,
+}
+impl WithEmbedded {
+    fn new(name: &str) -> WithEmbedded {
+        WithEmbedded {
+            embedded: Embedded { name: name.to_string() },
+        }
+    }
+}
+
+#[queries(WithEmbedded)]
+trait WithEmbeddedQuery {
+    fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> IterResult<WithEmbedded>;
+}
+
+#[embedded_queries(Embedded)]
+trait EmbeddedQuery {
+    fn by_name(self, name: String) -> EmbeddedResult<Embedded>;
+}
+
+#[test]
+pub fn test_embeeded_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<WithEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&WithEmbedded::new("aaa"))?;
+        tx.insert(&WithEmbedded::new("anto"))?;
+        tx.insert(&WithEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string())?;
+        let count = db
+            .query::<WithEmbedded>()
+            .embedded(embedded_filter)?
+            .into_iter()
+            .count();
         assert_eq!(count, 1);
         Ok(())
     });

@@ -1,9 +1,10 @@
 use crate::{
     index::{find, find_range},
-    Persistent, Ref, Structsy,
+    EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 use persy::IndexType;
 use std::ops::{Bound, RangeBounds};
+use std::rc::Rc;
 
 trait FilterBuilderStep {
     type Target;
@@ -21,7 +22,7 @@ trait FilterBuilderStep {
     fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
 }
 
-struct IndexFilter<V: IndexType + 'static, T: Persistent + 'static> {
+struct IndexFilter<V: IndexType, T: Persistent> {
     index_name: String,
     index_value: V,
     data: Option<Vec<(Ref<T>, T)>>,
@@ -73,7 +74,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
     }
 }
 
-struct ConditionSingleFilter<V: PartialEq + Clone + 'static, T: Persistent + 'static> {
+struct ConditionSingleFilter<V: PartialEq + Clone, T: Persistent> {
     value: V,
     access: fn(&T) -> &Vec<V>,
 }
@@ -103,7 +104,7 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
     }
 }
 
-struct ConditionFilter<V: PartialEq + Clone + 'static, T: Persistent + 'static> {
+struct ConditionFilter<V: PartialEq + Clone, T: Persistent> {
     value: V,
     access: fn(&T) -> &V,
 }
@@ -134,7 +135,7 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
     }
 }
 
-struct RangeSingleConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+struct RangeSingleConditionFilter<V: PartialOrd + Clone, T: Persistent> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &Vec<V>,
@@ -183,7 +184,7 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
     }
 }
 
-struct RangeConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+struct RangeConditionFilter<V: PartialOrd + Clone, T: Persistent> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &V,
@@ -221,7 +222,7 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
     }
 }
 
-struct RangeIndexFilter<V: IndexType + 'static, T: Persistent + 'static> {
+struct RangeIndexFilter<V: IndexType, T: Persistent> {
     index_name: String,
     value_start: Bound<V>,
     value_end: Bound<V>,
@@ -293,7 +294,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Rang
     }
 }
 
-struct RangeOptionConditionFilter<V: PartialOrd + Clone + 'static, T: Persistent + 'static> {
+struct RangeOptionConditionFilter<V: PartialOrd + Clone, T: Persistent> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &Option<V>,
@@ -345,7 +346,41 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
     }
 }
 
-pub struct FilterBuilder<T: Persistent + 'static> {
+pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: Persistent> {
+    filter: Rc<EmbeddedFilter<V>>,
+    access: fn(&T) -> &V,
+}
+
+impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
+    fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter {
+            filter: Rc::new(filter),
+            access,
+        })
+    }
+}
+
+impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFilter<V, T> {
+    type Target = T;
+    fn filter(
+        &mut self,
+        _structsy: &Structsy,
+        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
+    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        let filter = self.filter.clone();
+        let access = self.access;
+        Box::new(iter.filter(move |(_, x)| filter.filter((access)(x))))
+    }
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<T>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+}
+
+pub struct FilterBuilder<T: Persistent> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
 }
 
@@ -560,8 +595,11 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             none_end || none_start,
         ))
     }
-}
 
-pub trait FieldConditionType<T: Persistent, V, F> {
-    fn add_to_filter(&self, filter_builder: &mut FilterBuilder<T>, v: V);
+    pub fn simple_persistent_embedded<V>(&mut self, _name: &str, filter: EmbeddedFilter<V>, access: fn(&T) -> &V)
+    where
+        V: PersistentEmbedded + 'static,
+    {
+        self.add(EmbeddedFieldFilter::new(filter, access))
+    }
 }

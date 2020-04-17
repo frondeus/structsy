@@ -32,7 +32,7 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         }
     }
     let mut inps = s.inputs.iter();
-    // Skip self checked in check_method
+    // Skip self argument checked in check_method
     inps.next();
     while let Some(FnArg::Typed(f)) = inps.next() {
         let name = if let Pat::Ident(ref i) = &*f.pat {
@@ -80,8 +80,8 @@ fn check_method(s: &Signature, target_type: &str) {
         if let Type::Path(ref p) = t.borrow() {
             let last = p.path.segments.last().expect("expect return type");
             let name = last.ident.to_string();
-            if name != "IterResult" && name != "FirstResult" {
-                panic!("only allowed return types are 'IterResult' and 'FirstResult' ");
+            if name != "IterResult" && name != "FirstResult" && name!="EmbeddedResult" {
+                panic!("only allowed return types are 'IterResult' and 'FirstResult' and EmbeddedResult ");
             }
             if let PathArguments::AngleBracketed(ref a) = &last.arguments {
                 if let Some(GenericArgument::Type(t)) = a.args.first() {

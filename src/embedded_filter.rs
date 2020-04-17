@@ -1,4 +1,4 @@
-use crate::PersistentEmbedded;
+use crate::{EmbeddedFilter, PersistentEmbedded};
 use std::ops::{Bound, RangeBounds};
 
 trait EmbeddedFilterBuilderStep {
@@ -143,6 +143,26 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
+pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: PersistentEmbedded> {
+    filter: EmbeddedFilter<V>,
+    access: fn(&T) -> &V,
+}
+
+impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedFieldFilter<V, T> {
+    fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter { filter: filter, access })
+    }
+}
+
+impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
+    for EmbeddedFieldFilter<V, T>
+{
+    type Target = T;
+    fn filter(&self, to_filter: &Self::Target) -> bool {
+        self.filter.filter((self.access)(to_filter))
+    }
+}
+
 pub struct EmbeddedFilterBuilder<T: PersistentEmbedded> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
 }
@@ -274,5 +294,12 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
             end,
             none_end || none_start,
         ))
+    }
+
+    pub fn simple_persistent_embedded<V>(&mut self, _name: &str, filter: EmbeddedFilter<V>, access: fn(&T) -> &V)
+    where
+        V: PersistentEmbedded + 'static,
+    {
+        self.add(EmbeddedFieldFilter::new(filter, access))
     }
 }

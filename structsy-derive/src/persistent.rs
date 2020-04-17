@@ -385,7 +385,7 @@ fn get_type_ident(ty: &syn::Type) -> Option<Ident> {
     }
 }
 
-fn allowed_filter_types(field: &FieldInfo) -> bool {
+fn is_simple_type(field: &FieldInfo) -> bool {
     let (t, r) = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
         (Some(r), Some(z)) => (z, Some(r.clone())),
         (Some(x), None) => (x, Some(field.ty.clone())),
@@ -395,7 +395,7 @@ fn allowed_filter_types(field: &FieldInfo) -> bool {
     match t.to_string().as_str() {
         "String" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" | "f32" | "f64"
         | "bool" => true,
-        _ => match r.map(|x| x.to_string()).unwrap_or(String::from("_")).as_str() {
+        _ => match r.map(|x| x.to_string()).unwrap_or(String::from("")).as_str() {
             "Ref" => true,
             _ => false,
         },
@@ -414,8 +414,8 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
     }
     let methods: Vec<TokenStream> = fields
         .iter()
-        .filter(|x| allowed_filter_types(x))
         .map(|field| {
+            let is_simple = is_simple_type(field);
             let field_name = field.name.to_string();
             let field_ident = field.name.clone();
             let ty = field.ty.clone();
@@ -428,7 +428,18 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                     }
                 }
                 (Some(x), None) => {
-                    if ty.to_string() == "Ref" {
+                    if !is_simple {
+                        let method_ident = Ident::new(
+                            &format!("field_{}_embeddedfilter", field_name),
+                            Span::call_site(),
+                        );
+                        let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
+                        quote! {
+                            pub fn #method_ident(builder:&mut #filter_builder<#name>,v:structsy::EmbeddedFilter<#x>){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                        }
+                    } else if ty.to_string() == "Ref" {
                         let method_ident = Ident::new(
                             &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
                             Span::call_site(),
@@ -492,7 +503,18 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                         &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
                         Span::call_site(),
                         );
-                    if ty.to_string() == "bool" {
+                    if !is_simple {
+                        let method_ident = Ident::new(
+                            &format!("field_{}_embeddedfilter", field_name),
+                            Span::call_site(),
+                        );
+                        let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
+                        quote! {
+                            pub fn #method_ident(builder:&mut #filter_builder<#name>,v:structsy::EmbeddedFilter<#ty>){
+                                builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                        }
+                    } else if ty.to_string() == "bool" {
                         let condition_method = Ident::new("simple_condition", Span::call_site());
                         quote! {
                             pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty){

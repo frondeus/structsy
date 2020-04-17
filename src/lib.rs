@@ -89,6 +89,7 @@ impl<T> StructsyInto<T> {
 }
 
 pub type IterResult<T> = Result<StructsyQuery<T>, StructsyError>;
+pub type EmbeddedResult<T> = Result<EmbeddedFilter<T>, StructsyError>;
 pub type FirstResult<T> = Result<StructsyInto<T>, StructsyError>;
 
 #[derive(Debug)]
@@ -233,6 +234,11 @@ pub struct EmbeddedFilter<T: PersistentEmbedded> {
 }
 
 impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
+    pub fn new() -> EmbeddedFilter<T> {
+        EmbeddedFilter {
+            builder: EmbeddedFilterBuilder::new(),
+        }
+    }
     pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }

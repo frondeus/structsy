@@ -1,4 +1,4 @@
-use structsy::{EmbeddedFilterBuilder, FilterBuilder, Ref};
+use structsy::{EmbeddedFilter, EmbeddedFilterBuilder, FilterBuilder, Ref};
 use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
@@ -22,6 +22,7 @@ struct PersistentData {
     test_ref: Ref<ReferedData>,
     test_option_vec: Option<Vec<u8>>,
     test_vec_bool: Vec<bool>,
+    test_embedded: EmbeddedData,
 }
 
 #[derive(Persistent)]
@@ -79,6 +80,7 @@ fn test_condition_filter_builder() {
     let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     //PersistentData::field_test_ref_ref_range(&mut bilder,first..second);
+    PersistentData::field_test_embedded_embeddedfilter(&mut bilder, EmbeddedFilter::<EmbeddedData>::new());
 }
 
 #[derive(PersistentEmbedded)]
@@ -102,7 +104,11 @@ struct EmbeddedData {
     test_ref: Ref<ReferedData>,
     test_option_vec: Option<Vec<u8>>,
     test_vec_bool: Vec<bool>,
+    test_other_embedded: OtherEmbedded,
 }
+
+#[derive(PersistentEmbedded)]
+pub struct OtherEmbedded {}
 
 #[test]
 fn test_embeddd_condition_filter_builder() {
@@ -154,4 +160,5 @@ fn test_embeddd_condition_filter_builder() {
     let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     //EmbeddedData::field_test_ref_ref_range(&mut bilder,first..second);
+    EmbeddedData::field_test_other_embedded_embeddedfilter(&mut bilder, EmbeddedFilter::<OtherEmbedded>::new());
 }

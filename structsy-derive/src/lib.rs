@@ -17,7 +17,7 @@ pub fn queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream)
 pub fn embedded_queries(args: proc_macro::TokenStream, original: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed: Item = syn::parse(original).unwrap();
     let args: AttributeArgs = parse_macro_input!(args as AttributeArgs);
-    let gen = persistent_queries(parsed, args, false);
+    let gen = persistent_queries(parsed, args, true);
     gen.into()
 }
 
