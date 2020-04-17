@@ -7,7 +7,7 @@ use std::ops::{Bound, RangeBounds};
 use std::rc::Rc;
 
 trait FilterBuilderStep {
-    type Target;
+    type Target: Persistent + 'static;
     fn score(&mut self, _structsy: &Structsy) -> u32 {
         std::u32::MAX
     }
@@ -19,7 +19,14 @@ trait FilterBuilderStep {
         structsy: &Structsy,
         iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
     ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
+
+    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+        if let Ok(found) = structsy.scan::<Self::Target>() {
+            self.filter(structsy, Box::new(found))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
 }
 
 struct IndexFilter<V: IndexType, T: Persistent> {
@@ -95,13 +102,6 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         let access = self.access.clone();
         Box::new(iter.filter(move |(_, x)| (access)(x).contains(&value)))
     }
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
-    }
 }
 
 struct ConditionFilter<V: PartialEq + Clone, T: Persistent> {
@@ -124,14 +124,6 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         let val = self.value.clone();
         let access = self.access.clone();
         Box::new(iter.filter(move |(_, x)| *(access)(x) == val))
-    }
-
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
     }
 }
 
@@ -174,14 +166,6 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
             false
         }))
     }
-
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
-    }
 }
 
 struct RangeConditionFilter<V: PartialOrd + Clone, T: Persistent> {
@@ -211,14 +195,6 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         let val = (b1, b2);
         let access = self.access.clone();
         Box::new(iter.filter(move |(_, x)| val.contains((access)(x))))
-    }
-
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
     }
 }
 
@@ -336,14 +312,6 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
             }
         }))
     }
-
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
-    }
 }
 
 pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: Persistent> {
@@ -370,13 +338,6 @@ impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> FilterBuilderStep
         let filter = self.filter.clone();
         let access = self.access;
         Box::new(iter.filter(move |(_, x)| filter.filter((access)(x))))
-    }
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
-        if let Ok(found) = structsy.scan::<T>() {
-            self.filter(structsy, Box::new(found))
-        } else {
-            Box::new(Vec::new().into_iter())
-        }
     }
 }
 
