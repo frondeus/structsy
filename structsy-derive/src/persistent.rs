@@ -444,10 +444,25 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                             &format!("field_{}_{}", field_name, ty.to_string().to_lowercase()),
                             Span::call_site(),
                         );
-                        let condition_method = Ident::new("simple_condition", Span::call_site());
+                        let method_ident_range = Ident::new(
+                            &format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),
+                            Span::call_site(),
+                        );
+                        let method_ident_query = Ident::new(
+                            &format!("field_{}_structsyquery", field_name),
+                            Span::call_site(),
+                        );
+                        let range_method = Ident::new("ref_range", Span::call_site());
+                        let condition_method = Ident::new("ref_condition", Span::call_site());
                         quote! {
                             pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty<#x>){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                            pub fn #method_ident_range< R: std::ops::RangeBounds<#ty<#x>>>(builder:&mut #filter_builder<#name>,v:R){
+                                builder.#range_method(#field_name,v,|x|&x.#field_ident);
+                            }
+                            pub fn #method_ident_query(builder:&mut #filter_builder<#name>,v:structsy::StructsyQuery<#x>){
+                                builder.ref_query(#field_name,v,|x|&x.#field_ident);
                             }
                         }
                     } else {

@@ -597,10 +597,27 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     {
         self.add(EmbeddedFieldFilter::new(filter, access))
     }
-    pub fn simple_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>)
+    pub fn ref_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>)
     where
         V: Persistent + 'static,
     {
         self.add(QueryFilter::new(query, access))
+    }
+
+    pub fn ref_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: PartialEq + Clone + 'static,
+    {
+        self.add(ConditionFilter::new(access, value))
+    }
+
+    pub fn ref_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: Clone + PartialOrd + 'static,
+        R: RangeBounds<V>,
+    {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        self.add(RangeConditionFilter::new(access, start, end))
     }
 }

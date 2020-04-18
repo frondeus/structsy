@@ -79,7 +79,7 @@ fn test_condition_filter_builder() {
     PersistentData::field_test_option_option_range(&mut bilder, Some(1u8)..Some(2u8));
     let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
-    //PersistentData::field_test_ref_ref_range(&mut bilder,first..second);
+    PersistentData::field_test_ref_ref_range(&mut bilder, first..second);
     PersistentData::field_test_embedded_embeddedfilter(&mut bilder, EmbeddedFilter::<EmbeddedData>::new());
 }
 
@@ -159,6 +159,6 @@ fn test_embeddd_condition_filter_builder() {
     EmbeddedData::field_test_option_option_range(&mut bilder, Some(1u8)..Some(2u8));
     let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
-    //EmbeddedData::field_test_ref_ref_range(&mut bilder,first..second);
+    EmbeddedData::field_test_ref_ref_range(&mut bilder, first..second);
     EmbeddedData::field_test_other_embedded_embeddedfilter(&mut bilder, EmbeddedFilter::<OtherEmbedded>::new());
 }
