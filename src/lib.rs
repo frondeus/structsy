@@ -256,6 +256,9 @@ impl<T: Persistent + 'static> StructsyQuery<T> {
     pub fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
     }
+    pub(crate) fn builder(self) -> FilterBuilder<T> {
+        self.builder
+    }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {

@@ -1,10 +1,24 @@
 use crate::{
     index::{find, find_range},
-    EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy,
+    EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery,
 };
 use persy::IndexType;
+use persy::PersyId;
 use std::ops::{Bound, RangeBounds};
 use std::rc::Rc;
+
+pub struct Prev {
+    id: PersyId,
+    prev: Option<Box<Prev>>,
+}
+
+impl Prev {
+    fn new(id: PersyId, prev: Option<Box<Prev>>) -> Prev {
+        Prev { id, prev }
+    }
+}
+
+type FIter<P> = Box<dyn Iterator<Item = (Ref<P>, P, Option<Box<Prev>>)>>;
 
 trait FilterBuilderStep {
     type Target: Persistent + 'static;
@@ -14,15 +28,11 @@ trait FilterBuilderStep {
     fn get_score(&self) -> u32 {
         std::u32::MAX
     }
-    fn filter(
-        &mut self,
-        structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>;
+    fn filter(&mut self, structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target>;
 
-    fn first(&mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn first(&mut self, structsy: &Structsy) -> FIter<Self::Target> {
         if let Ok(found) = structsy.scan::<Self::Target>() {
-            self.filter(structsy, Box::new(found))
+            self.filter(structsy, Box::new(found.map(|(id, r)| (id, r, None))))
         } else {
             Box::new(Vec::new().into_iter())
         }
@@ -58,23 +68,19 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
             std::u32::MAX
         }
     }
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let data = std::mem::replace(&mut self.data, None);
         if let Some(found) = data {
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
-            Box::new(iter.filter(move |(r, _x)| to_filter.contains(r)))
+            Box::new(iter.filter(move |(r, _x, _)| to_filter.contains(r)))
         } else {
             iter
         }
     }
-    fn first(&mut self, _structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn first(&mut self, _structsy: &Structsy) -> FIter<Self::Target> {
         let data = std::mem::replace(&mut self.data, None);
         if let Some(found) = data {
-            Box::new(found.into_iter())
+            Box::new(found.into_iter().map(|(id, r)| (id, r, None)))
         } else {
             Box::new(Vec::new().into_iter())
         }
@@ -93,14 +99,10 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionSingleFil
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, __structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let value = self.value.clone();
         let access = self.access.clone();
-        Box::new(iter.filter(move |(_, x)| (access)(x).contains(&value)))
+        Box::new(iter.filter(move |(_, x, _)| (access)(x).contains(&value)))
     }
 }
 
@@ -116,14 +118,10 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V,
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let val = self.value.clone();
         let access = self.access.clone();
-        Box::new(iter.filter(move |(_, x)| *(access)(x) == val))
+        Box::new(iter.filter(move |(_, x, _)| *(access)(x) == val))
     }
 }
 
@@ -148,16 +146,12 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleCondit
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleConditionFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let b1 = clone_bound(&self.value_start);
         let b2 = clone_bound(&self.value_end);
         let val = (b1, b2);
         let access = self.access.clone();
-        Box::new(iter.filter(move |(_, x)| {
+        Box::new(iter.filter(move |(_, x, _)| {
             for el in (access)(x) {
                 if val.contains(el) {
                     return true;
@@ -185,16 +179,12 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFil
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeConditionFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let b1 = clone_bound(&self.value_start);
         let b2 = clone_bound(&self.value_end);
         let val = (b1, b2);
         let access = self.access.clone();
-        Box::new(iter.filter(move |(_, x)| val.contains((access)(x))))
+        Box::new(iter.filter(move |(_, x, _)| val.contains((access)(x))))
     }
 }
 
@@ -247,23 +237,19 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Rang
             std::u32::MAX
         }
     }
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let data = std::mem::replace(&mut self.data, None);
         if let Some(found) = data {
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
-            Box::new(iter.filter(move |(r, _x)| to_filter.contains(r)))
+            Box::new(iter.filter(move |(r, _x, _)| to_filter.contains(r)))
         } else {
             iter
         }
     }
-    fn first(&mut self, _structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn first(&mut self, _structsy: &Structsy) -> FIter<Self::Target> {
         let data = std::mem::replace(&mut self.data, None);
         if let Some(found) = data {
-            Box::new(found.into_iter())
+            Box::new(found.into_iter().map(|(id, r)| (id, r, None)))
         } else {
             Box::new(Vec::new().into_iter())
         }
@@ -294,17 +280,13 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionCondit
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let b1 = clone_bound(&self.value_start);
         let b2 = clone_bound(&self.value_end);
         let val = (b1, b2);
         let access = self.access.clone();
         let include_none = self.include_none;
-        Box::new(iter.filter(move |(_, x)| {
+        Box::new(iter.filter(move |(_, x, _)| {
             if let Some(z) = (access)(x) {
                 val.contains(z)
             } else {
@@ -330,14 +312,55 @@ impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> EmbeddedFieldFilt
 
 impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFilter<V, T> {
     type Target = T;
-    fn filter(
-        &mut self,
-        _structsy: &Structsy,
-        iter: Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>>,
-    ) -> Box<dyn Iterator<Item = (Ref<Self::Target>, Self::Target)>> {
+    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
         let filter = self.filter.clone();
         let access = self.access;
-        Box::new(iter.filter(move |(_, x)| filter.filter((access)(x))))
+        Box::new(iter.filter(move |(_, x, _)| filter.filter((access)(x))))
+    }
+}
+
+pub struct QueryFilter<V: Persistent + 'static, T: Persistent> {
+    query: Option<StructsyQuery<V>>,
+    access: fn(&T) -> &Ref<V>,
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
+    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(QueryFilter {
+            query: Some(query),
+            access,
+        })
+    }
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for QueryFilter<V, T> {
+    type Target = T;
+    fn filter(&mut self, structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
+        let query = std::mem::replace(&mut self.query, None);
+        let access = self.access;
+        let st = structsy.clone();
+        let nested_filter = iter.filter_map(move |(pre_id, x, prev)| {
+            let id = (access)(&x);
+            if let Some(r) = st.read(&id).unwrap_or(None) {
+                Some((id.clone(), r, Some(Box::new(Prev::new(pre_id.raw_id, prev)))))
+            } else {
+                None
+            }
+        });
+        let st = structsy.clone();
+        Box::new(
+            query
+                .unwrap()
+                .builder()
+                .check(structsy, Box::new(nested_filter))
+                .filter_map(move |(_, _, prev)| {
+                    let pre = prev.unwrap();
+                    let sid = Ref::new(pre.id);
+                    let rec = st.read(&sid).unwrap_or(None);
+                    let pp = pre.prev;
+                    rec.map(move |r: T| (sid, r, pp))
+                }),
+        )
     }
 }
 
@@ -379,6 +402,14 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }
     }
 
+    pub fn check(self, structsy: &Structsy, to_check: FIter<T>) -> FIter<T> {
+        let mut res = to_check;
+        for mut s in self.steps.into_iter() {
+            res = s.filter(structsy, res)
+        }
+        res
+    }
+
     pub fn finish(mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
         for x in &mut self.steps {
             x.score(structsy);
@@ -392,7 +423,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 s.first(structsy)
             });
         }
-        res.expect("there is every time at least one element")
+        Box::new(
+            res.expect("there is every time at least one element")
+                .map(|(id, r, _)| (id, r)),
+        )
     }
 
     fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
@@ -562,5 +596,11 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         V: PersistentEmbedded + 'static,
     {
         self.add(EmbeddedFieldFilter::new(filter, access))
+    }
+    pub fn simple_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>)
+    where
+        V: Persistent + 'static,
+    {
+        self.add(QueryFilter::new(query, access))
     }
 }
