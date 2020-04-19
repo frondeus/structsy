@@ -496,3 +496,54 @@ pub fn test_embeeded_query() {
         Ok(())
     });
 }
+
+#[derive(PersistentEmbedded)]
+struct NestedEmbedded {
+    embedded: Embedded,
+}
+
+#[derive(Persistent)]
+struct RootEmbedded {
+    nested: NestedEmbedded,
+}
+
+impl RootEmbedded {
+    fn new(name: &str) -> RootEmbedded {
+        RootEmbedded {
+            nested: NestedEmbedded {
+                embedded: Embedded { name: name.to_string() },
+            },
+        }
+    }
+}
+
+#[embedded_queries(NestedEmbedded)]
+trait NestedEmbeddedQuery {
+    fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> EmbeddedResult<NestedEmbedded>;
+}
+
+#[queries(RootEmbedded)]
+trait RootEmbeddedQuery {
+    fn embedded(self, nested: EmbeddedFilter<NestedEmbedded>) -> IterResult<RootEmbedded>;
+}
+
+#[test]
+pub fn test_nested_embeeded_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<RootEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&RootEmbedded::new("aaa"))?;
+        tx.insert(&RootEmbedded::new("anto"))?;
+        tx.insert(&RootEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string())?;
+        let nested_embedded_filter = Structsy::embedded_filter::<NestedEmbedded>().embedded(embedded_filter)?;
+        let count = db
+            .query::<RootEmbedded>()
+            .embedded(nested_embedded_filter)?
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}

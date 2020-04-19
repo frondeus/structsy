@@ -1,6 +1,6 @@
 use std::ops::RangeBounds;
-use structsy::{IterResult, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
-use structsy_derive::{queries, Persistent};
+use structsy::{EmbeddedFilter, EmbeddedResult, IterResult, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
+use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
     let dir = tempdir().expect("can make a tempdir");
@@ -64,6 +64,54 @@ fn test_ref() {
         assert_eq!(count, 2);
         let other_query = db.query::<Other>().by_name("aaa".to_string())?;
         let count = db.query::<Basic>().by_other_query(other_query).into_iter().count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+struct Parent {
+    emb: Emb,
+}
+
+impl Parent {
+    fn new(other: Ref<Other>) -> Parent {
+        Parent { emb: Emb { other } }
+    }
+}
+
+#[derive(PersistentEmbedded)]
+struct Emb {
+    other: Ref<Other>,
+}
+
+#[queries(Parent)]
+trait ParentQuery {
+    fn by_emb(self, emb: EmbeddedFilter<Emb>) -> IterResult<Parent>;
+}
+
+#[embedded_queries(Emb)]
+trait EmbQuery {
+    fn by_other(self, other: StructsyQuery<Other>) -> EmbeddedResult<Emb>;
+}
+
+#[test]
+fn test_embedded_ref() {
+    structsy_inst("basic_query", |db| {
+        db.define::<Parent>()?;
+        db.define::<Other>()?;
+
+        let mut tx = db.begin()?;
+        let insa = tx.insert(&Other::new("aaa"))?;
+        let insb = tx.insert(&Other::new("bbb"))?;
+        let insc = tx.insert(&Other::new("ccc"))?;
+        tx.insert(&Parent::new(insa.clone()))?;
+        tx.insert(&Parent::new(insb.clone()))?;
+        tx.insert(&Parent::new(insc))?;
+        tx.commit()?;
+        let other_query = db.query::<Other>().by_name("aaa".to_string())?;
+        let emb_filter = Structsy::embedded_filter::<Emb>().by_other(other_query)?;
+        let count = db.query::<Parent>().by_emb(emb_filter).into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
