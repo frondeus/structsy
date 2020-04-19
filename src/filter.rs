@@ -1,24 +1,61 @@
 use crate::{
+    embedded_filter::Source,
     index::{find, find_range},
     EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery,
 };
 use persy::IndexType;
-use persy::PersyId;
+use std::any::Any;
 use std::ops::{Bound, RangeBounds};
 use std::rc::Rc;
 
-pub struct Prev {
-    id: PersyId,
-    prev: Option<Box<Prev>>,
+pub(crate) struct PrevInst<T> {
+    id: Ref<T>,
+    record: Rc<T>,
+    prev: Option<Box<dyn Any>>,
 }
 
-impl Prev {
-    fn new(id: PersyId, prev: Option<Box<Prev>>) -> Prev {
-        Prev { id, prev }
+impl<T: 'static> PrevInst<T> {
+    fn new(id: Ref<T>, record: Rc<T>, prev: Option<Box<dyn Any>>) -> PrevInst<T> {
+        PrevInst { id, record, prev }
+    }
+    fn extract(prev: Option<Box<dyn Any>>) -> Option<(Ref<T>, T, Option<Box<dyn Any>>)> {
+        if let Some(b) = prev {
+            if let Ok(pre) = b.downcast::<PrevInst<T>>() {
+                let PrevInst { id, record, prev } = *pre;
+                if let Ok(rec) = Rc::try_unwrap(record) {
+                    Some((id, rec, prev))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
-type FIter<P> = Box<dyn Iterator<Item = (Ref<P>, P, Option<Box<Prev>>)>>;
+pub(crate) struct Provider<T, P> {
+    inst: Rc<T>,
+    access: fn(&T) -> &P,
+}
+
+impl<T, P> Provider<T, P> {
+    pub(crate) fn new(x: Rc<T>, access: fn(&T) -> &P) -> Provider<T, P> {
+        Provider {
+            inst: x,
+            access: access,
+        }
+    }
+}
+impl<T, P> Source<P> for Provider<T, P> {
+    fn source(&self) -> &P {
+        (self.access)(&self.inst)
+    }
+}
+
+pub(crate) type FIter<P> = Box<dyn Iterator<Item = (Ref<P>, P, Option<Box<dyn Any>>)>>;
 
 trait FilterBuilderStep {
     type Target: Persistent + 'static;
@@ -297,14 +334,14 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 }
 
 pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: Persistent> {
-    filter: Rc<EmbeddedFilter<V>>,
+    filter: Option<EmbeddedFilter<V>>,
     access: fn(&T) -> &V,
 }
 
 impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
     fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(EmbeddedFieldFilter {
-            filter: Rc::new(filter),
+            filter: Some(filter),
             access,
         })
     }
@@ -312,10 +349,18 @@ impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> EmbeddedFieldFilt
 
 impl<V: PersistentEmbedded + 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFilter<V, T> {
     type Target = T;
-    fn filter(&mut self, _structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
-        let filter = self.filter.clone();
+    fn filter(&mut self, structsy: &Structsy, iter: FIter<Self::Target>) -> FIter<Self::Target> {
+        let filter = std::mem::replace(&mut self.filter, None);
         let access = self.access;
-        Box::new(iter.filter(move |(_, x, _)| filter.filter((access)(x))))
+        let nested_filter = Box::new(iter.filter_map(move |(id, x, prev)| {
+            let rcx = Rc::new(x);
+            let provider = Provider::new(rcx.clone(), access);
+            let new_prev: Box<dyn Any> = Box::new(PrevInst::new(id, rcx, prev));
+            let prov: Box<dyn Source<V>> = Box::new(provider);
+            Some((prov, Some(new_prev)))
+        }));
+        let filterd = filter.expect("the filter is here").filter(structsy, nested_filter);
+        Box::new(filterd.map(|(_, prev)| prev).filter_map(PrevInst::<T>::extract))
     }
 }
 
@@ -340,26 +385,21 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
         let access = self.access;
         let st = structsy.clone();
         let nested_filter = iter.filter_map(move |(pre_id, x, prev)| {
-            let id = (access)(&x);
+            let id = (access)(&x).clone();
             if let Some(r) = st.read(&id).unwrap_or(None) {
-                Some((id.clone(), r, Some(Box::new(Prev::new(pre_id.raw_id, prev)))))
+                let new_prev: Box<dyn Any> = Box::new(PrevInst::new(pre_id, Rc::new(x), prev));
+                Some((id.clone(), r, Some(new_prev)))
             } else {
                 None
             }
         });
-        let st = structsy.clone();
         Box::new(
             query
                 .unwrap()
                 .builder()
                 .check(structsy, Box::new(nested_filter))
-                .filter_map(move |(_, _, prev)| {
-                    let pre = prev.unwrap();
-                    let sid = Ref::new(pre.id);
-                    let rec = st.read(&sid).unwrap_or(None);
-                    let pp = pre.prev;
-                    rec.map(move |r: T| (sid, r, pp))
-                }),
+                .map(|(_, _, prev)| prev)
+                .filter_map(PrevInst::<T>::extract),
         )
     }
 }

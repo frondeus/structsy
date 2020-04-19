@@ -52,6 +52,7 @@ use crate::structsy::StructsyImpl;
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
+use embedded_filter::EIter;
 pub use embedded_filter::EmbeddedFilterBuilder;
 
 pub struct StructsyIter<T: Persistent> {
@@ -242,8 +243,8 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
-    pub(crate) fn filter(&self, i: &T) -> bool {
-        self.builder.filter(i)
+    pub(crate) fn filter(self, structsy: &Structsy, i: EIter<T>) -> EIter<T> {
+        self.builder.filter(structsy, i)
     }
 }
 
