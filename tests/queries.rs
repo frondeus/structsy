@@ -24,6 +24,7 @@ impl Basic {
 #[queries(Basic)]
 trait BasicQuery {
     fn by_name(self, name: String) -> IterResult<Basic>;
+    fn by_name_str(self, name: &str) -> IterResult<Basic>;
     fn by_range<R: RangeBounds<String>>(self, name: R) -> IterResult<Basic>;
 }
 
@@ -35,6 +36,8 @@ pub fn basic_query() {
         tx.insert(&Basic::new("aaa"))?;
         tx.commit()?;
         let count = db.query::<Basic>().by_name("aaa".to_string())?.into_iter().count();
+        assert_eq!(count, 1);
+        let count = db.query::<Basic>().by_name_str("aaa")?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });

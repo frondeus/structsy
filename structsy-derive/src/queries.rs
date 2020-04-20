@@ -42,6 +42,17 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         };
         let ty = if let Type::Path(t) = &*f.ty {
             Some(t.path.segments.last().unwrap().ident.to_string())
+        } else if let Type::Reference(t) = &*f.ty {
+            if let Type::Path(nt) = &*t.elem {
+                let last = nt.path.segments.last().unwrap().ident.to_string();
+                if last == "str" {
+                    Some(last )
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
             None
         };

@@ -538,6 +538,16 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                         }
                     } else {
                         let condition_method = Ident::new(&format!("{}_condition",mode), Span::call_site());
+                        let addtional = if ty.to_string() == "String" {    
+                        let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
+                        quote! {
+                            pub fn #method_str_ident(builder:&mut #filter_builder<#name>,v:&str){
+                                builder.#condition_method(#field_name,v.to_string(),|x|&x.#field_ident);
+                            }
+                        }
+                        } else {
+                            quote!{}
+                        };
                         let range_method = Ident::new(&format!("{}_range",mode), Span::call_site());
 
                         let method_range_ident = Ident::new(
@@ -551,6 +561,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                             pub fn #method_range_ident< R: std::ops::RangeBounds<#ty>>(builder:&mut #filter_builder<#name>,v:R){
                                 builder.#range_method(#field_name,v,|x|&x.#field_ident);
                             }
+                            #addtional
                         }
                     }
                 }
