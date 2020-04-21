@@ -212,6 +212,12 @@ impl StructsyTx for OwnedSytx {
         prepared.commit()?;
         Ok(())
     }
+
+    fn prepare_commit(self) -> SRes<Prepared> {
+        Ok(Prepared {
+            prepared: self.trans.prepare_commit()?,
+        })
+    }
 }
 
 impl<'a> Sytx for RefSytx<'a> {
@@ -226,7 +232,10 @@ impl<'a> Sytx for RefSytx<'a> {
 }
 impl<'a> StructsyTx for RefSytx<'a> {
     fn commit(self) -> SRes<()> {
-        panic!("")
+        unreachable!();
+    }
+    fn prepare_commit(self) -> SRes<Prepared> {
+        unreachable!();
     }
 }
 
@@ -267,6 +276,24 @@ impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     type IntoIter = StructsyIter<T>;
     fn into_iter(self) -> Self::IntoIter {
         StructsyIter::new(self.builder.finish(&self.structsy))
+    }
+}
+///
+/// Transaction prepared state ready to be committed if the second phase is considered successful
+///
+pub struct Prepared {
+    prepared: persy::TransactionFinalize,
+}
+impl Prepared {
+    /// Commit all the prepared changes
+    pub fn commit(self) -> SRes<()> {
+        self.prepared.commit()?;
+        Ok(())
+    }
+    /// Rollback all the prepared changes
+    pub fn rollback(self) -> SRes<()> {
+        self.prepared.rollback()?;
+        Ok(())
     }
 }
 
@@ -442,6 +469,25 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn commit(self) -> SRes<()>;
+
+    /// Prepare Commit a transaction
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// //....
+    /// let mut tx = stry.begin()?;
+    /// // ... operate on tx.
+    /// let prepared = tx.prepare_commit()?;
+    /// prepared.commit()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn prepare_commit(self) -> SRes<Prepared>;
 }
 
 /// Iterator for record instances
