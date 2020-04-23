@@ -1,10 +1,10 @@
 use proc_macro2::Span;
+use quote::quote;
 use std::borrow::Borrow;
 use syn::{
     AttributeArgs, FnArg, GenericArgument, GenericParam, Ident, Item, Meta, NestedMeta, Pat, PathArguments, ReturnType,
     Signature, TraitItem, Type, TypeParamBound,
 };
-use quote::quote;
 enum Operation {
     Equals(String, String),
     Range(String, String),
@@ -12,25 +12,38 @@ enum Operation {
 
 fn extract_fields(s: &Signature) -> Vec<Operation> {
     let mut res = Vec::new();
-    let mut mapping = Vec::new();
-    if s.generics.params.len() == 1 {
-        if let Some(GenericParam::Type(t)) = s.generics.params.first() {
-            if !t.bounds.is_empty() {
-                let name = t.ident.clone();
-                if let Some(TypeParamBound::Trait(bound)) = t.bounds.first() {
-                    if let Some(seg) = bound.path.segments.last() {
-                        if let PathArguments::AngleBracketed(a) = &seg.arguments {
-                            if let Some(GenericArgument::Type(Type::Path(tp))) = a.args.first() {
-                                if let Some(last_s) = tp.path.segments.first() {
-                                    mapping.push((name.to_string(), last_s.ident.to_string()));
+    let mapping = s
+        .generics
+        .params
+        .iter()
+        .filter(|p| if let GenericParam::Type(_) = p { true } else { false })
+        .filter_map(|p| {
+            if let GenericParam::Type(t) = p {
+                if !t.bounds.is_empty() {
+                    let name = t.ident.clone();
+                    if let Some(TypeParamBound::Trait(bound)) = t.bounds.first() {
+                        if let Some(seg) = bound.path.segments.last() {
+                            if let PathArguments::AngleBracketed(a) = &seg.arguments {
+                                if let Some(GenericArgument::Type(Type::Path(tp))) = a.args.first() {
+                                    if let Some(last_s) = tp.path.segments.first() {
+                                        return Some((name.to_string(), last_s.ident.to_string()));
+                                    }
+                                } else if let Some(GenericArgument::Type(Type::Reference(re))) = a.args.first() {
+                                    if let Type::Path(tp) = &*re.elem {
+                                        if let Some(last_s) = tp.path.segments.first() {
+                                            return Some((name.to_string(), last_s.ident.to_string()));
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-    }
+            None
+        })
+        .collect::<Vec<_>>();
+
     let mut inps = s.inputs.iter();
     // Skip self argument checked in check_method
     inps.next();
@@ -46,7 +59,7 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
             if let Type::Path(nt) = &*t.elem {
                 let last = nt.path.segments.last().unwrap().ident.to_string();
                 if last == "str" {
-                    Some(last )
+                    Some(last)
                 } else {
                     None
                 }
@@ -91,7 +104,7 @@ fn check_method(s: &Signature, target_type: &str) {
         if let Type::Path(ref p) = t.borrow() {
             let last = p.path.segments.last().expect("expect return type");
             let name = last.ident.to_string();
-            if name != "IterResult" && name != "FirstResult" && name!="EmbeddedResult" {
+            if name != "IterResult" && name != "FirstResult" && name != "EmbeddedResult" {
                 panic!("only allowed return types are 'IterResult' and 'FirstResult' and EmbeddedResult ");
             }
             if let PathArguments::AngleBracketed(ref a) = &last.arguments {
@@ -121,16 +134,23 @@ fn check_method(s: &Signature, target_type: &str) {
     if s.inputs.len() < 2 {
         panic!("function should have at least two arguments");
     }
-    let mut range = false;
-    if s.generics.params.len() == 1 {
-        if let Some(GenericParam::Type(t)) = s.generics.params.first() {
-            if !t.bounds.is_empty() {
-                range = true;
+    let not_suported = s
+        .generics
+        .params
+        .iter()
+        .filter(|x| {
+            if let GenericParam::Type(t) = x {
+                if !t.bounds.is_empty() {
+                    return false;
+                }
+            } else if let GenericParam::Lifetime(_) = x {
+                return false;
             }
-        }
-    }
-    if !s.generics.params.is_empty() && !range {
-        panic!("generics not supported {:?}", s.generics.params.first());
+            true
+        })
+        .collect::<Vec<_>>();
+    if !not_suported.is_empty() {
+        panic!("generics not supported {:?}", not_suported);
     }
 }
 
@@ -177,7 +197,7 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
     }
 }
 
-pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded:bool) -> proc_macro2::TokenStream {
+pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded: bool) -> proc_macro2::TokenStream {
     let expeted_type = if let Some(NestedMeta::Meta(Meta::Path(x))) = args.first() {
         x.segments
             .last()
@@ -202,21 +222,20 @@ pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded:bool) -> p
     }
     let expeted_type_ident = Ident::new(&expeted_type, Span::call_site());
     if embedded {
-    quote! {
-        #parsed
+        quote! {
+            #parsed
 
-        impl #name for structsy::EmbeddedFilter<#expeted_type_ident> {
-            #( #methods )*
+            impl #name for structsy::EmbeddedFilter<#expeted_type_ident> {
+                #( #methods )*
+            }
         }
-    }
     } else {
-    quote! {
-        #parsed
+        quote! {
+            #parsed
 
-        impl #name for structsy::StructsyQuery<#expeted_type_ident> {
-            #( #methods )*
+            impl #name for structsy::StructsyQuery<#expeted_type_ident> {
+                #( #methods )*
+            }
         }
-    }
     }
 }
-

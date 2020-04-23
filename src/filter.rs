@@ -43,10 +43,7 @@ pub(crate) struct Provider<T, P> {
 
 impl<T, P> Provider<T, P> {
     pub(crate) fn new(x: Rc<T>, access: fn(&T) -> &P) -> Provider<T, P> {
-        Provider {
-            inst: x,
-            access: access,
-        }
+        Provider { inst: x, access }
     }
 }
 impl<T, P> Source<P> for Provider<T, P> {
@@ -560,6 +557,27 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        if let Some(index_name) = Self::is_indexed(name) {
+            self.add(RangeIndexFilter::new(index_name, start, end))
+        } else {
+            self.add(RangeConditionFilter::new(access, start, end))
+        }
+    }
+
+    pub fn indexable_range_str<'a, R>(&mut self, name: &str, range: R, access: fn(&T) -> &String)
+    where
+        R: RangeBounds<&'a str>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(x) => Bound::Included(x.to_string()),
+            Bound::Excluded(x) => Bound::Excluded(x.to_string()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => Bound::Included(x.to_string()),
+            Bound::Excluded(x) => Bound::Excluded(x.to_string()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
         if let Some(index_name) = Self::is_indexed(name) {
             self.add(RangeIndexFilter::new(index_name, start, end))
         } else {

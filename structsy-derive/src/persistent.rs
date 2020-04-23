@@ -1,9 +1,9 @@
 use darling::ast::Data;
 use darling::{FromDeriveInput, FromField, FromMeta};
 use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use syn::Type::Path;
 use syn::{AngleBracketedGenericArguments, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath};
-use quote::quote;
 
 #[derive(FromDeriveInput, Debug)]
 #[darling(attributes(index))]
@@ -402,15 +402,15 @@ fn is_simple_type(field: &FieldInfo) -> bool {
     }
 }
 
-fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenStream {
+fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> TokenStream {
     let mode;
     let filter_builder;
     if embedded {
         mode = "simple".to_string();
-        filter_builder = quote!{structsy::EmbeddedFilterBuilder};
+        filter_builder = quote! {structsy::EmbeddedFilterBuilder};
     } else {
         mode = "indexable".to_string();
-        filter_builder = quote!{structsy::FilterBuilder};
+        filter_builder = quote! {structsy::FilterBuilder};
     }
     let methods: Vec<TokenStream> = fields
         .iter()
@@ -539,21 +539,26 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
                     } else {
                         let condition_method = Ident::new(&format!("{}_condition",mode), Span::call_site());
                         let addtional = if ty.to_string() == "String" {    
-                        let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
-                        quote! {
-                            pub fn #method_str_ident(builder:&mut #filter_builder<#name>,v:&str){
-                                builder.#condition_method(#field_name,v.to_string(),|x|&x.#field_ident);
+                            let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
+                            let method_str_ident_range = Ident::new(&format!("field_{}_str_range", field_name), Span::call_site());
+                            let range_method = Ident::new(&format!("{}_range_str",mode), Span::call_site());
+                            quote! {
+                                pub fn #method_str_ident(builder:&mut #filter_builder<#name>,v:&str){
+                                    builder.#condition_method(#field_name,v.to_string(),|x|&x.#field_ident);
+                                }
+                                pub fn #method_str_ident_range<'a,R: std::ops::RangeBounds<&'a str>>(builder:&mut #filter_builder<#name>,v:R){
+                                    builder.#range_method(#field_name,v,|x|&x.#field_ident);
+                                }
                             }
-                        }
                         } else {
                             quote!{}
                         };
                         let range_method = Ident::new(&format!("{}_range",mode), Span::call_site());
-
                         let method_range_ident = Ident::new(
                             &format!("field_{}_{}_range", field_name, ty.to_string().to_lowercase()),
                             Span::call_site(),
                             );
+
                         quote! {
                             pub fn #method_ident(builder:&mut #filter_builder<#name>,v:#ty){
                                 builder.#condition_method(#field_name,v,|x|&x.#field_ident);
@@ -574,4 +579,3 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>,embedded:bool) -> TokenSt
         #( #methods )*
     }
 }
-

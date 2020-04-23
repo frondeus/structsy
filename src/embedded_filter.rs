@@ -37,10 +37,7 @@ pub(crate) struct EmbProvider<T, P> {
 
 impl<T, P> EmbProvider<T, P> {
     pub(crate) fn new(x: Rc<Box<dyn Source<T>>>, access: fn(&T) -> &P) -> EmbProvider<T, P> {
-        EmbProvider {
-            inst: x,
-            access: access,
-        }
+        EmbProvider { inst: x, access }
     }
 }
 impl<T, P> Source<P> for EmbProvider<T, P> {
@@ -357,6 +354,23 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
     {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        self.add(RangeConditionFilter::new(access, start, end))
+    }
+
+    pub fn simple_range_str<'a, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &String)
+    where
+        R: RangeBounds<&'a str>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(x) => Bound::Included(x.to_string()),
+            Bound::Excluded(x) => Bound::Excluded(x.to_string()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => Bound::Included(x.to_string()),
+            Bound::Excluded(x) => Bound::Excluded(x.to_string()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
         self.add(RangeConditionFilter::new(access, start, end))
     }
 
