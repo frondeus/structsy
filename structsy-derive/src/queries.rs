@@ -6,8 +6,8 @@ use syn::{
     Signature, TraitItem, Type, TypeParamBound,
 };
 enum Operation {
-    Equals(String, String),
-    Range(String, String),
+    Equals(String, String, Option<String>),
+    Range(String, String, Option<String>),
 }
 
 fn extract_fields(s: &Signature) -> Vec<Operation> {
@@ -26,12 +26,19 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
                             if let PathArguments::AngleBracketed(a) = &seg.arguments {
                                 if let Some(GenericArgument::Type(Type::Path(tp))) = a.args.first() {
                                     if let Some(last_s) = tp.path.segments.first() {
-                                        return Some((name.to_string(), last_s.ident.to_string()));
+                                        if let PathArguments::AngleBracketed(lp) = &last_s.arguments {
+                                            if let Some(GenericArgument::Type(Type::Path(pt))) = lp.args.first() {
+                                                let last_pt = pt.path.segments.last().map(|x| x.ident.to_string());
+                                                return Some((name.to_string(), last_s.ident.to_string(), last_pt));
+                                            }
+                                        } else {
+                                            return Some((name.to_string(), last_s.ident.to_string(), None));
+                                        }
                                     }
                                 } else if let Some(GenericArgument::Type(Type::Reference(re))) = a.args.first() {
                                     if let Type::Path(tp) = &*re.elem {
                                         if let Some(last_s) = tp.path.segments.first() {
-                                            return Some((name.to_string(), last_s.ident.to_string()));
+                                            return Some((name.to_string(), last_s.ident.to_string(), None));
                                         }
                                     }
                                 }
@@ -54,12 +61,22 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
             None
         };
         let ty = if let Type::Path(t) = &*f.ty {
-            Some(t.path.segments.last().unwrap().ident.to_string())
+            let t = t.path.segments.last().unwrap();
+            if let PathArguments::AngleBracketed(p) = &t.arguments {
+                if let Some(GenericArgument::Type(Type::Path(pt))) = p.args.first() {
+                    let last_pt = pt.path.segments.last().map(|x| x.ident.to_string());
+                    Some((t.ident.to_string(), last_pt))
+                } else {
+                    Some((t.ident.to_string(), None))
+                }
+            } else {
+                Some((t.ident.to_string(), None))
+            }
         } else if let Type::Reference(t) = &*f.ty {
             if let Type::Path(nt) = &*t.elem {
                 let last = nt.path.segments.last().unwrap().ident.to_string();
                 if last == "str" {
-                    Some(last)
+                    Some((last, None))
                 } else {
                     None
                 }
@@ -70,17 +87,17 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
             None
         };
         let mut range = false;
-        for (n, rn) in &mapping {
+        for (n, rn, ins_type) in &mapping {
             if let (Some(nam), Some(rt)) = (&name, &ty) {
-                if n == rt {
-                    res.push(Operation::Range(nam.clone(), rn.clone()));
+                if n == &rt.0 {
+                    res.push(Operation::Range(nam.clone(), rn.clone(), ins_type.clone()));
                     range = true;
                 }
             }
         }
         if !range {
             if let (Some(n), Some(t)) = (name, ty) {
-                res.push(Operation::Equals(n, t));
+                res.push(Operation::Equals(n, t.0, t.1));
             }
         }
     }
@@ -163,17 +180,24 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             let type_ident = Ident::new(target_type, Span::call_site());
             let fields = extract_fields(&m.sig);
             let conditions = fields.into_iter().map(|f| match f {
-                Operation::Equals(f, ty) => {
+                Operation::Equals(f, ty, x) => {
                     let par_ident = Ident::new(&f, Span::call_site());
-                    let to_call = format!("field_{}_{}", f, ty.to_lowercase());
+                    let mut to_call = format!("field_{}_{}", f, ty.to_lowercase());
+                    if let Some(gt) = x {
+                        to_call = format!("{}_{}", to_call, gt.to_lowercase());
+                    }
                     let filter_ident = Ident::new(&to_call, Span::call_site());
                     quote! {
                         #type_ident::#filter_ident(&mut builder, #par_ident);
                     }
                 }
-                Operation::Range(f, ty) => {
+                Operation::Range(f, ty, x) => {
                     let par_ident = Ident::new(&f, Span::call_site());
-                    let to_call = format!("field_{}_{}_range", f, ty.to_lowercase());
+                    let mut to_call = format!("field_{}_{}", f, ty.to_lowercase());
+                    if let Some(gt) = x {
+                        to_call = format!("{}_{}", to_call, gt.to_lowercase());
+                    }
+                    to_call = format!("{}_range", to_call);
                     let filter_ident = Ident::new(&to_call, Span::call_site());
                     quote! {
                         #type_ident::#filter_ident(&mut builder, #par_ident);

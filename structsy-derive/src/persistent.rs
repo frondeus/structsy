@@ -411,18 +411,20 @@ fn basic_filter_gen(
     builder: &TokenStream,
 ) -> TokenStream {
     let field_name = field.to_string();
-
-    let target_type_name = if let Some(other) = suffix {
-        other.to_string().to_lowercase()
+    let ty_str_lower = ty.to_string().to_lowercase();
+    let target_field_name = if let Some(other) = suffix {
+        format!(
+            "field_{}_{}_{}",
+            field_name,
+            other.to_string().to_lowercase(),
+            ty_str_lower
+        )
     } else {
-        ty.to_string().to_lowercase()
+        format!("field_{}_{}", field_name, ty_str_lower)
     };
 
-    let method_ident = Ident::new(&format!("field_{}_{}", field_name, target_type_name), Span::call_site());
-    let method_range_ident = Ident::new(
-        &format!("field_{}_{}_range", field_name, target_type_name),
-        Span::call_site(),
-    );
+    let method_ident = Ident::new(&target_field_name, Span::call_site());
+    let method_range_ident = Ident::new(&format!("{}_range", target_field_name), Span::call_site());
 
     let range_filter = Ident::new(&format!("{}_range", mode), Span::call_site());
     let condition_filter = Ident::new(&format!("{}_condition", mode), Span::call_site());
@@ -471,8 +473,9 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                 }
                 (Some(x), None) => {
                     if !is_simple {
+                        let x_str_lower =x.to_string().to_lowercase();
                         let method_ident = Ident::new(
-                            &format!("field_{}_embeddedfilter", field_name),
+                            &format!("field_{}_embeddedfilter_{}", field_name,x_str_lower),
                             Span::call_site(),
                         );
                         let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
@@ -482,10 +485,10 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                             }
                         }
                     } else if ty.to_string() == "Ref" {
-
+                        let x_str_lower =x.to_string().to_lowercase();
                         let basic = basic_filter_gen("ref", field_ident.clone(), x.clone(),Some(ty.clone()), Some("ref") ,&filter_builder);
                         let method_ident_query = Ident::new(
-                            &format!("field_{}_structsyquery", field_name),
+                            &format!("field_{}_structsyquery_{}", field_name,x_str_lower),
                             Span::call_site(),
                         );
                         quote! {
@@ -495,15 +498,16 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                             }
                         }
                     } else {
-                        let method_ident = Ident::new(
-                            &format!("field_{}_{}", field_name, ty_str_lower),
-                            Span::call_site(),
-                        );
+                        let x_str_lower =x.to_string().to_lowercase();
                         let method_ident_contains = Ident::new(
-                            &format!("field_{}_{}", field_name, x.to_string().to_lowercase()),
+                            &format!("field_{}_{}", field_name, x_str_lower ),
                             Span::call_site(),
-                        );
+                            );
                         if x.to_string() == "bool" {
+                            let method_ident = Ident::new(
+                                &format!("field_{}_{}_{}", field_name, ty_str_lower,x_str_lower),
+                                Span::call_site(),
+                                );
                             let condition_method_name = format!("simple_{}_condition", ty_str_lower);
                             let condition_method_name_contains = format!("simple_{}_single_condition", ty_str_lower);
                             let condition_method = Ident::new(&condition_method_name, Span::call_site());
@@ -517,7 +521,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                                 }
                             }
                         } else {
-                            let addtional = if x.to_string() == "String" { 
+                            let additional = if x.to_string() == "String" { 
                                 let condition_method = Ident::new(&format!("{}_{}_single_condition",mode,ty_str_lower), Span::call_site());
                                 let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
                                 quote! {
@@ -536,7 +540,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                             let method_range_single_ident = Ident::new(&format!("field_{}_{}_range", field_name, x.to_string().to_lowercase()),Span::call_site());
                             quote! {
                                 #basic
-                                #addtional
+                                #additional
                                 pub fn #method_ident_contains(builder:&mut #filter_builder,v:#x){
                                     builder.#condition_method_contains(#field_name,v,|x|&x.#field_ident);
                                 }
@@ -554,7 +558,7 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
                         );
                     if !is_simple {
                         let method_ident = Ident::new(
-                            &format!("field_{}_embeddedfilter", field_name),
+                            &format!("field_{}_embeddedfilter_{}", field_name, ty_str_lower),
                             Span::call_site(),
                             );
                         let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
