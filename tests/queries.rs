@@ -241,6 +241,13 @@ trait BasicOptionQuery {
     fn by_name(self, name: Option<String>) -> IterResult<BasicOption>;
     fn by_single_range<R: RangeBounds<String>>(self, name: R) -> IterResult<BasicOption>;
     fn by_range<R: RangeBounds<Option<String>>>(self, name: R) -> IterResult<BasicOption>;
+
+    fn by_singe_name_str(self, name: &str) -> IterResult<BasicOption>;
+    /*
+    fn by_name_str(self, name: Option<&str>) -> IterResult<BasicOption>;
+    fn by_single_range_str<'a,R: RangeBounds<&'a str>>(self, name: R) -> IterResult<BasicOption>;
+    fn by_range_str<'a, R: RangeBounds<Option<&'a str>>>(self, name: R) -> IterResult<BasicOption>;
+    */
 }
 
 #[test]

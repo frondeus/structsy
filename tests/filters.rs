@@ -23,6 +23,7 @@ struct PersistentData {
     test_option_vec: Option<Vec<u8>>,
     test_vec_bool: Vec<bool>,
     test_embedded: EmbeddedData,
+    test_option_string: Option<String>,
 }
 
 #[derive(Persistent)]
@@ -35,6 +36,7 @@ fn test_condition_filter_builder() {
     //let st = Structsy::open("abc").expect("structsy_can_open");
     let mut bilder = FilterBuilder::<PersistentData>::new();
     PersistentData::field_test_string_string(&mut bilder, String::from("aaa"));
+    PersistentData::field_test_string_str(&mut bilder, "aaa");
     PersistentData::field_test_u8_u8(&mut bilder, 1u8);
     PersistentData::field_test_u16_u16(&mut bilder, 1u16);
     PersistentData::field_test_u32_u32(&mut bilder, 1u32);
@@ -81,6 +83,9 @@ fn test_condition_filter_builder() {
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     PersistentData::field_test_ref_ref_range(&mut bilder, first..second);
     PersistentData::field_test_embedded_embeddedfilter(&mut bilder, EmbeddedFilter::<EmbeddedData>::new());
+    PersistentData::field_test_option_string_option(&mut bilder, Some(String::from("aaa")));
+    PersistentData::field_test_option_string_string(&mut bilder, String::from("aaa"));
+    PersistentData::field_test_option_string_str(&mut bilder, "aaa");
 }
 
 #[derive(PersistentEmbedded)]
@@ -115,6 +120,7 @@ fn test_embeddd_condition_filter_builder() {
     //let st = Structsy::open("abc").expect("structsy_can_open");
     let mut bilder = EmbeddedFilterBuilder::<EmbeddedData>::new();
     EmbeddedData::field_test_string_string(&mut bilder, String::from("aaa"));
+    EmbeddedData::field_test_string_str(&mut bilder, "aaa");
     EmbeddedData::field_test_u8_u8(&mut bilder, 1u8);
     EmbeddedData::field_test_u16_u16(&mut bilder, 1u16);
     EmbeddedData::field_test_u32_u32(&mut bilder, 1u32);
