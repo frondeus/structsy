@@ -27,6 +27,7 @@ trait BasicQuery {
     fn by_name(self, name: String) -> IterResult<Basic>;
     fn by_name_str(self, name: &str) -> IterResult<Basic>;
     fn by_range<R: RangeBounds<String>>(self, name: R) -> IterResult<Basic>;
+    fn by_range_str<'a, R: RangeBounds<&'a str>>(self, name: R) -> IterResult<Basic>;
 }
 
 #[test]
@@ -70,6 +71,38 @@ pub fn basic_range_query() {
         let result = db
             .query::<Basic>()
             .by_range("aaa".to_string()..="ccc".to_string())?
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].1.name, "aaa".to_string());
+        assert_eq!(result[1].1.name, "bbb".to_string());
+        assert_eq!(result[2].1.name, "ccc".to_string());
+        Ok(())
+    });
+}
+
+#[test]
+pub fn basic_range_query_str() {
+    structsy_inst("basic_query", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.insert(&Basic::new("bbb"))?;
+        tx.insert(&Basic::new("ccc"))?;
+        tx.commit()?;
+        let count = db.query::<Basic>().by_range_str("aaa".."bbb")?.into_iter().count();
+        assert_eq!(count, 1);
+        let result = db
+            .query::<Basic>()
+            .by_range_str("aaa".."ccc")?
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].1.name, "aaa".to_string());
+        assert_eq!(result[1].1.name, "bbb".to_string());
+        let result = db
+            .query::<Basic>()
+            .by_range_str("aaa"..="ccc")?
             .into_iter()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
