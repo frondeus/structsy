@@ -55,7 +55,10 @@ fn test_condition_filter_builder() {
     PersistentData::field_test_vec_u8(&mut bilder, 1u8);
     PersistentData::field_test_option_u8(&mut bilder, 1u8);
     PersistentData::field_test_option_option_u8(&mut bilder, Some(1u8));
-    PersistentData::field_test_ref_ref_refereddata(&mut bilder, "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap());
+    PersistentData::field_test_ref_ref_refereddata(
+        &mut bilder,
+        "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap(),
+    );
     // PersistentData::field_test_option_vec_option(&mut bilder, Some(Vec::<u8>::new()));
 
     PersistentData::field_test_vec_bool_vec_bool(&mut bilder, Vec::<bool>::new());
@@ -139,7 +142,10 @@ fn test_embeddd_condition_filter_builder() {
     EmbeddedData::field_test_vec_u8(&mut bilder, 1u8);
     EmbeddedData::field_test_option_u8(&mut bilder, 1u8);
     EmbeddedData::field_test_option_option_u8(&mut bilder, Some(1u8));
-    EmbeddedData::field_test_ref_ref_refereddata(&mut bilder, "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap());
+    EmbeddedData::field_test_ref_ref_refereddata(
+        &mut bilder,
+        "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap(),
+    );
     // EmbeddedData::field_test_option_vec_option(&mut bilder, Some(Vec::<u8>::new()));
 
     EmbeddedData::field_test_vec_bool_vec_bool(&mut bilder, Vec::<bool>::new());
@@ -166,5 +172,8 @@ fn test_embeddd_condition_filter_builder() {
     let first = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     EmbeddedData::field_test_ref_ref_refereddata_range(&mut bilder, first..second);
-    EmbeddedData::field_test_other_embedded_embeddedfilter_otherembedded(&mut bilder, EmbeddedFilter::<OtherEmbedded>::new());
+    EmbeddedData::field_test_other_embedded_embeddedfilter_otherembedded(
+        &mut bilder,
+        EmbeddedFilter::<OtherEmbedded>::new(),
+    );
 }

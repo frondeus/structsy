@@ -126,10 +126,17 @@ impl BasicVec {
 
 #[queries(BasicVec)]
 trait BasicVecQuery {
-    fn by_singe_name(self, names: String) -> IterResult<BasicVec>;
+    fn by_single_name(self, names: String) -> IterResult<BasicVec>;
     fn by_name(self, names: Vec<String>) -> IterResult<BasicVec>;
     fn by_single_range<R: RangeBounds<String>>(self, names: R) -> IterResult<BasicVec>;
     fn by_range<R: RangeBounds<Vec<String>>>(self, names: R) -> IterResult<BasicVec>;
+
+    fn by_single_name_str(self, names: &str) -> IterResult<BasicVec>;
+    /*
+    fn by_name_str(self, names: Vec<&str>) -> IterResult<BasicVec>;
+    fn by_single_range_str<'a, R: RangeBounds<&'a str>>(self, names: R) -> IterResult<BasicVec>;
+    fn by_range_str<'a, R: RangeBounds<Vec<&'a str>>>(self, names: R) -> IterResult<BasicVec>;
+    */
 }
 
 #[test]
@@ -139,8 +146,18 @@ pub fn basic_vec_query() {
         let mut tx = db.begin()?;
         let data = vec!["aaa".to_string()];
         tx.insert(&BasicVec::new(&data))?;
+        let datab = vec!["bbb".to_string()];
+        tx.insert(&BasicVec::new(&datab))?;
         tx.commit()?;
         let count = db.query::<BasicVec>().by_name(data)?.into_iter().count();
+        assert_eq!(count, 1);
+        let count = db
+            .query::<BasicVec>()
+            .by_single_name(String::from("aaa"))?
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+        let count = db.query::<BasicVec>().by_single_name_str("aaa")?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -240,10 +257,18 @@ impl BasicOption {
 
 #[queries(BasicOption)]
 trait BasicOptionQuery {
-    fn by_singe_name(self, name: String) -> IterResult<BasicOption>;
+    fn by_single_name(self, name: String) -> IterResult<BasicOption>;
     fn by_name(self, name: Option<String>) -> IterResult<BasicOption>;
     fn by_single_range<R: RangeBounds<String>>(self, name: R) -> IterResult<BasicOption>;
     fn by_range<R: RangeBounds<Option<String>>>(self, name: R) -> IterResult<BasicOption>;
+    fn by_single_name_str(self, name: &str) -> IterResult<BasicOption>;
+
+    /*
+    //TODO: support in futures also this cases
+    fn by_name_str(self, name: Option<&str>) -> IterResult<BasicOption>;
+    fn by_single_range_str<'a,R: RangeBounds<&'a str>>(self, name: R) -> IterResult<BasicOption>;
+    fn by_range_str<'a, R: RangeBounds<Option<&'a str>>>(self, name: R) -> IterResult<BasicOption>;
+    */
 }
 
 #[test]
@@ -267,11 +292,21 @@ pub fn basic_option_none_query() {
         let mut tx = db.begin()?;
         let data = Some("aaa".to_string());
         tx.insert(&BasicOption::new(data.clone()))?;
+        let datab = Some("bbb".to_string());
+        tx.insert(&BasicOption::new(datab.clone()))?;
         tx.insert(&BasicOption::new(None))?;
         tx.commit()?;
         let count = db.query::<BasicOption>().by_name(data)?.into_iter().count();
         assert_eq!(count, 1);
         let count = db.query::<BasicOption>().by_name(None)?.into_iter().count();
+        assert_eq!(count, 1);
+        let count = db
+            .query::<BasicOption>()
+            .by_single_name(String::from("aaa"))?
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+        let count = db.query::<BasicOption>().by_single_name_str("aaa")?.into_iter().count();
         assert_eq!(count, 1);
         Ok(())
     });
