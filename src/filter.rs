@@ -1,7 +1,7 @@
 use crate::{
     embedded_filter::Source,
-    index::{find, find_range},
-    EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery,
+    index::{find, find_range, find_range_tx, find_tx},
+    EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
 };
 use persy::IndexType;
 use std::any::Any;
@@ -59,13 +59,27 @@ trait FilterBuilderStep {
     fn score(&mut self, _structsy: &Structsy) -> u32 {
         std::u32::MAX
     }
+
+    fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
+        (std::u32::MAX, tx)
+    }
+
     fn get_score(&self) -> u32 {
         std::u32::MAX
     }
+
     fn filter<'a>(self: Box<Self>, iter: FIter<'a, Self::Target>) -> FIter<'a, Self::Target>;
 
     fn first<'a>(self: Box<Self>, structsy: &Structsy) -> FIter<'a, Self::Target> {
         if let Ok(found) = structsy.scan::<Self::Target>() {
+            self.filter(Box::new(found.map(|(id, r)| (id, r, None))))
+        } else {
+            Box::new(Vec::new().into_iter())
+        }
+    }
+
+    fn first_tx<'a>(self: Box<Self>, tx: &'a mut OwnedSytx) -> FIter<'a, Self::Target> {
+        if let Ok(found) = StructsyTx::scan::<Self::Target>(tx) {
             self.filter(Box::new(found.map(|(id, r)| (id, r, None))))
         } else {
             Box::new(Vec::new().into_iter())
@@ -94,6 +108,10 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
     fn score(&mut self, structsy: &Structsy) -> u32 {
         self.data = find(&structsy, &self.index_name, &self.index_value).ok();
         self.get_score()
+    }
+    fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
+        self.data = find_tx(tx, &self.index_name, &self.index_value).ok();
+        (self.get_score(), tx)
     }
     fn get_score(&self) -> u32 {
         if let Some(x) = &self.data {
@@ -216,16 +234,23 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 
 struct RangeIndexFilter<V: IndexType, T: Persistent> {
     index_name: String,
+    access: fn(&T) -> &V,
     value_start: Bound<V>,
     value_end: Bound<V>,
     data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
     score: Option<u32>,
 }
 
-impl<V: IndexType + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
-    fn new(index_name: String, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
+    fn new(
+        index_name: String,
+        access: fn(&T) -> &V,
+        value_start: Bound<V>,
+        value_end: Bound<V>,
+    ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeIndexFilter {
             index_name,
+            access,
             value_start,
             value_end,
             data: None,
@@ -234,7 +259,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
     }
 }
 
-impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
+impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
     type Target = T;
     fn score(&mut self, structsy: &Structsy) -> u32 {
         let b1 = clone_bound(&self.value_start);
@@ -256,6 +281,30 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Rang
         }
         self.get_score()
     }
+
+    fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        if let Ok(iter) = find_range_tx(tx, &self.index_name, val) {
+            let mut no_key = iter.map(|(r, e, _)| (r, e));
+            let mut i = 0;
+            let mut vec = Vec::new();
+            while let Some(el) = no_key.next() {
+                vec.push(el);
+                i += 1;
+                if i == 1000 {
+                    break;
+                }
+            }
+            if i < 1000 {
+                self.score = Some(vec.len() as u32);
+                self.data = Some(Box::new(vec.into_iter()));
+            }
+        }
+        (self.get_score(), tx)
+    }
+
     fn get_score(&self) -> u32 {
         if let Some(x) = self.score {
             x
@@ -268,14 +317,124 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Rang
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
             Box::new(iter.filter(move |(r, _x, _)| to_filter.contains(r)))
         } else {
-            iter
+            let b1 = clone_bound(&self.value_start);
+            let b2 = clone_bound(&self.value_end);
+            let val = (b1, b2);
+            Box::new(iter.filter(move |(_, x, _)| val.contains((self.access)(x))))
         }
     }
     fn first<'a>(self: Box<Self>, _structsy: &Structsy) -> FIter<'a, Self::Target> {
         if let Some(found) = self.data {
             Box::new(found.into_iter().map(|(id, r)| (id, r, None)))
         } else {
-            Box::new(Vec::new().into_iter())
+            unreachable!()
+        }
+    }
+}
+
+struct RangeSingleIndexFilter<V: IndexType, T: Persistent> {
+    index_name: String,
+    access: fn(&T) -> &Vec<V>,
+    value_start: Bound<V>,
+    value_end: Bound<V>,
+    data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
+    score: Option<u32>,
+}
+
+impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIndexFilter<V, T> {
+    fn new(
+        index_name: String,
+        access: fn(&T) -> &Vec<V>,
+        value_start: Bound<V>,
+        value_end: Bound<V>,
+    ) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeSingleIndexFilter {
+            index_name,
+            access,
+            value_start,
+            value_end,
+            data: None,
+            score: None,
+        })
+    }
+}
+
+impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleIndexFilter<V, T> {
+    type Target = T;
+    fn score(&mut self, structsy: &Structsy) -> u32 {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        if let Ok(iter) = find_range(&structsy, &self.index_name, val) {
+            let mut no_key = iter.map(|(r, e, _)| (r, e));
+            let mut i = 0;
+            let mut vec = Vec::new();
+            while let Some(el) = no_key.next() {
+                vec.push(el);
+                i += 1;
+                if i == 1000 {
+                    break;
+                }
+            }
+            self.score = Some(vec.len() as u32);
+            self.data = Some(Box::new(vec.into_iter().chain(no_key)));
+        }
+        self.get_score()
+    }
+
+    fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
+        let b1 = clone_bound(&self.value_start);
+        let b2 = clone_bound(&self.value_end);
+        let val = (b1, b2);
+        if let Ok(iter) = find_range_tx(tx, &self.index_name, val) {
+            let mut no_key = iter.map(|(r, e, _)| (r, e));
+            let mut i = 0;
+            let mut vec = Vec::new();
+            while let Some(el) = no_key.next() {
+                vec.push(el);
+                i += 1;
+                if i == 1000 {
+                    break;
+                }
+            }
+            if i < 1000 {
+                self.score = Some(vec.len() as u32);
+                self.data = Some(Box::new(vec.into_iter()));
+            }
+        }
+        (self.get_score(), tx)
+    }
+
+    fn get_score(&self) -> u32 {
+        if let Some(x) = self.score {
+            x
+        } else {
+            std::u32::MAX
+        }
+    }
+    fn filter<'a>(self: Box<Self>, iter: FIter<'a, Self::Target>) -> FIter<'a, Self::Target> {
+        if let Some(found) = self.data {
+            let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
+            Box::new(iter.filter(move |(r, _x, _)| to_filter.contains(r)))
+        } else {
+            let b1 = clone_bound(&self.value_start);
+            let b2 = clone_bound(&self.value_end);
+            let val = (b1, b2);
+            Box::new(iter.filter(move |(_, x, _)| {
+                for el in (self.access)(x) {
+                    if val.contains(el) {
+                        return true;
+                    }
+                }
+                false
+            }))
+        }
+    }
+    fn first<'a>(self: Box<Self>, _structsy: &Structsy) -> FIter<'a, Self::Target> {
+        if let Some(found) = self.data {
+            Box::new(found.into_iter().map(|(id, r)| (id, r, None)))
+        } else {
+            unreachable!()
         }
     }
 }
@@ -447,6 +606,18 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         )
     }
 
+    pub fn finish_tx<'a>(mut self, mut tx: &'a mut OwnedSytx) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+        for x in &mut self.steps {
+            tx = x.score_tx(tx).1;
+        }
+        self.steps.sort_by_key(|x| x.get_score());
+        let mut res = self.steps.remove(0).first_tx(tx);
+        for s in self.steps.into_iter() {
+            res = s.filter(res)
+        }
+        Box::new(res.map(|(id, r, _)| (id, r)))
+    }
+
     fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
         self.steps.push(filter);
     }
@@ -539,7 +710,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, start, end))
+            self.add(RangeIndexFilter::new(index_name, access, start, end))
         } else {
             self.add(RangeConditionFilter::new(access, start, end))
         }
@@ -560,7 +731,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Bound::Unbounded => Bound::Unbounded,
         };
         if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, start, end))
+            self.add(RangeIndexFilter::new(index_name, access, start, end))
         } else {
             self.add(RangeConditionFilter::new(access, start, end))
         }
@@ -574,7 +745,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, start, end))
+            self.add(RangeSingleIndexFilter::new(index_name, access, start, end))
         } else {
             self.add(RangeSingleConditionFilter::new(access, start, end))
         }
