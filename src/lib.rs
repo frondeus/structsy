@@ -252,8 +252,8 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
-    pub(crate) fn filter<'a>(self, structsy: &Structsy, i: EIter<'a, T>) -> EIter<'a, T> {
-        self.builder.filter(structsy, i)
+    pub(crate) fn filter<'a>(self, i: EIter<'a, T>) -> EIter<'a, T> {
+        self.builder.filter(i)
     }
 }
 

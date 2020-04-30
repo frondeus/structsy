@@ -1,4 +1,4 @@
-use crate::{EmbeddedFilter, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery};
+use crate::{EmbeddedFilter, Persistent, PersistentEmbedded, Ref, StructsyQuery};
 use std::any::Any;
 use std::ops::{Bound, RangeBounds};
 use std::rc::Rc;
@@ -54,7 +54,7 @@ pub(crate) type EIter<'a, P> = Box<dyn Iterator<Item = (Box<dyn Source<P>>, Opti
 
 trait EmbeddedFilterBuilderStep {
     type Target;
-    fn filter<'a>(self: Box<Self>, structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target>;
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target>;
 }
 
 struct ConditionFilter<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> {
@@ -71,7 +71,7 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
     for ConditionFilter<V, T>
 {
     type Target = T;
-    fn filter<'a>(self: Box<Self>, _structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let value = self.value.clone();
         let access = self.access;
         Box::new(iter.filter(move |(s, _)| *(access)(s.source()) == value))
@@ -93,7 +93,7 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
     for ConditionSingleFilter<V, T>
 {
     type Target = T;
-    fn filter<'a>(self: Box<Self>, _structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let value = self.value.clone();
         let access = self.access;
         Box::new(iter.filter(move |(s, _)| (access)(s.source()).contains(&value)))
@@ -124,7 +124,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
 {
     type Target = T;
 
-    fn filter<'a>(self: Box<Self>, _structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let value_start = self.value_start.clone();
         let value_end = self.value_end.clone();
         let access = self.access;
@@ -156,7 +156,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
 {
     type Target = T;
 
-    fn filter<'a>(self: Box<Self>, _structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let value_start = self.value_start.clone();
         let value_end = self.value_end.clone();
         let access = self.access;
@@ -197,7 +197,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     for RangeOptionConditionFilter<V, T>
 {
     type Target = T;
-    fn filter<'a>(self: Box<Self>, _structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let value_start = self.value_start.clone();
         let value_end = self.value_end.clone();
         let access = self.access;
@@ -227,7 +227,7 @@ impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     for EmbeddedFieldFilter<V, T>
 {
     type Target = T;
-    fn filter<'a>(self: Box<Self>, structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let filter = self.filter;
         let access = self.access;
         let nested_filter = Box::new(iter.filter_map(move |(x, prev)| {
@@ -237,7 +237,7 @@ impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedF
             let prov: Box<dyn Source<V>> = Box::new(provider);
             Some((prov, Some(new_prev)))
         }));
-        let filterd = filter.filter(structsy, nested_filter);
+        let filterd = filter.filter(nested_filter);
         Box::new(filterd.map(|(_, prev)| prev).filter_map(EmbPrevInst::<T>::extract))
     }
 }
@@ -255,10 +255,10 @@ impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> QueryFilter<V, T>
 
 impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for QueryFilter<V, T> {
     type Target = T;
-    fn filter<'a>(self: Box<Self>, structsy: &Structsy, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
+    fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target> {
         let query = self.query;
         let access = self.access;
-        let st = structsy.clone();
+        let st = query.structsy.clone();
         let nested_filter = iter.filter_map(move |(x, prev)| {
             let id = (access)(&x.source()).clone();
             if let Some(r) = st.read(&id).unwrap_or(None) {
@@ -271,7 +271,7 @@ impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBui
         Box::new(
             query
                 .builder()
-                .check(structsy, Box::new(nested_filter))
+                .check(Box::new(nested_filter))
                 .map(|(_, _, prev)| prev)
                 .filter_map(EmbPrevInst::<T>::extract),
         )
@@ -295,10 +295,10 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder { steps: Vec::new() }
     }
 
-    pub(crate) fn filter<'a>(self, structsy: &Structsy, iter: EIter<'a, T>) -> EIter<'a, T> {
+    pub(crate) fn filter<'a>(self, iter: EIter<'a, T>) -> EIter<'a, T> {
         let mut new_iter = iter;
         for filter in self.steps {
-            new_iter = filter.filter(structsy, new_iter);
+            new_iter = filter.filter(new_iter);
         }
         new_iter
     }
