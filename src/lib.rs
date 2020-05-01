@@ -55,15 +55,15 @@ mod embedded_filter;
 use embedded_filter::EIter;
 pub use embedded_filter::EmbeddedFilterBuilder;
 
-pub struct StructsyIter<T: Persistent> {
-    iterator: Box<dyn Iterator<Item = (Ref<T>, T)>>,
+pub struct StructsyIter<'a, T: Persistent> {
+    iterator: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
 }
 
-impl<T: Persistent> StructsyIter<T> {
-    pub fn new<I>(iterator: I) -> StructsyIter<T>
+impl<'a, T: Persistent> StructsyIter<'a, T> {
+    pub fn new<I>(iterator: I) -> StructsyIter<'a, T>
     where
         I: Iterator<Item = (Ref<T>, T)>,
-        I: 'static,
+        I: 'a,
     {
         StructsyIter {
             iterator: Box::new(iterator),
@@ -71,7 +71,7 @@ impl<T: Persistent> StructsyIter<T> {
     }
 }
 
-impl<T: Persistent> Iterator for StructsyIter<T> {
+impl<'a, T: Persistent> Iterator for StructsyIter<'a, T> {
     type Item = (Ref<T>, T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -91,7 +91,6 @@ impl<T> StructsyInto<T> {
 
 pub type IterResult<T> = Result<StructsyQuery<T>, StructsyError>;
 pub type EmbeddedResult<T> = Result<EmbeddedFilter<T>, StructsyError>;
-pub type FirstResult<T> = Result<StructsyInto<T>, StructsyError>;
 
 #[derive(Debug)]
 pub enum StructsyError {
@@ -165,6 +164,15 @@ pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMod
 pub struct OwnedSytx {
     structsy_impl: Arc<StructsyImpl>,
     trans: Transaction,
+}
+
+impl OwnedSytx {
+    pub fn query<'a, T: Persistent>(&'a mut self) -> StructsyQueryTx<'a, T> {
+        StructsyQueryTx {
+            tx: self,
+            builder: FilterBuilder::new(),
+        }
+    }
 }
 
 /// Reference transaction to use with [`StructsyTx`] trait
@@ -257,25 +265,53 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     }
 }
 
+pub trait Query<T: Persistent> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
+}
+
 pub struct StructsyQuery<T: Persistent + 'static> {
     structsy: Structsy,
     builder: FilterBuilder<T>,
 }
 
-impl<T: Persistent + 'static> StructsyQuery<T> {
-    pub fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+impl<T: Persistent + 'static> Query<T> for StructsyQuery<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
     }
+}
+impl<T: Persistent + 'static> StructsyQuery<T> {
     pub(crate) fn builder(self) -> FilterBuilder<T> {
         self.builder
+    }
+    pub fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
     }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     type Item = (Ref<T>, T);
-    type IntoIter = StructsyIter<T>;
+    type IntoIter = StructsyIter<'static, T>;
     fn into_iter(self) -> Self::IntoIter {
         StructsyIter::new(self.builder.finish(&self.structsy))
+    }
+}
+
+pub struct StructsyQueryTx<'a, T: Persistent + 'static> {
+    tx: &'a mut OwnedSytx,
+    builder: FilterBuilder<T>,
+}
+
+impl<'a, T: Persistent + 'static> Query<T> for StructsyQueryTx<'a, T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
+    }
+}
+
+impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
+    type Item = (Ref<T>, T);
+    type IntoIter = StructsyIter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        StructsyIter::new(self.builder.finish_tx(self.tx))
     }
 }
 ///
