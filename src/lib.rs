@@ -280,9 +280,6 @@ impl<T: Persistent + 'static> StructsyQuery<T> {
     pub(crate) fn builder(self) -> FilterBuilder<T> {
         self.builder
     }
-    pub fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
-        &mut self.builder
-    }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {
@@ -885,7 +882,7 @@ impl Structsy {
 #[cfg(test)]
 mod test {
     use super::{
-        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, RangeIterator, Ref, SRes,
+        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, Query, RangeIterator, Ref, SRes,
         StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
@@ -965,7 +962,7 @@ mod test {
         fn all(self) -> Self;
     }
 
-    impl ToTestQueries for super::StructsyQuery<ToTest> {
+    impl<Q: Query<ToTest>> ToTestQueries for Q {
         fn all(mut self) -> Self {
             let _builder = self.filter_builder();
             self
