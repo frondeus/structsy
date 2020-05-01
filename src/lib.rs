@@ -89,9 +89,6 @@ impl<T> StructsyInto<T> {
     }
 }
 
-pub type IterResult<T> = Result<StructsyQuery<T>, StructsyError>;
-pub type EmbeddedResult<T> = Result<EmbeddedFilter<T>, StructsyError>;
-
 #[derive(Debug)]
 pub enum StructsyError {
     PersyError(PersyError),
@@ -888,7 +885,7 @@ impl Structsy {
 #[cfg(test)]
 mod test {
     use super::{
-        find, find_range, find_range_tx, find_tx, FieldDescription, IterResult, Persistent, RangeIterator, Ref, SRes,
+        find, find_range, find_range_tx, find_tx, FieldDescription, Persistent, RangeIterator, Ref, SRes,
         StructDescription, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
@@ -965,13 +962,13 @@ mod test {
         }
     }
     trait ToTestQueries {
-        fn all(self) -> IterResult<ToTest>;
+        fn all(self) -> Self;
     }
 
     impl ToTestQueries for super::StructsyQuery<ToTest> {
-        fn all(mut self) -> IterResult<ToTest> {
+        fn all(mut self) -> Self {
             let _builder = self.filter_builder();
-            Ok(self)
+            self
         }
     }
 

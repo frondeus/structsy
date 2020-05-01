@@ -121,8 +121,8 @@ fn check_method(s: &Signature, target_type: &str) {
         if let Type::Path(ref p) = t.borrow() {
             let last = p.path.segments.last().expect("expect return type");
             let name = last.ident.to_string();
-            if name != "IterResult" && name != "FirstResult" && name != "EmbeddedResult" {
-                panic!("only allowed return types are 'IterResult' and 'FirstResult' and EmbeddedResult ");
+            if name != "Self" {
+                panic!("only allowed return type is 'Self' ");
             }
             if let PathArguments::AngleBracketed(ref a) = &last.arguments {
                 if let Some(GenericArgument::Type(t)) = a.args.first() {
@@ -212,7 +212,7 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
                 #sign {
                     let mut builder = self.filter_builder();
                     #( #conditions)*
-                    Ok(self)
+                    self
                 }
             })
         }

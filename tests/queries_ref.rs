@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, EmbeddedResult, IterResult, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
+use structsy::{EmbeddedFilter, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
@@ -33,14 +33,14 @@ impl Other {
 
 #[queries(Basic)]
 trait BasicQuery {
-    fn by_other(self, to_other: Ref<Other>) -> IterResult<Basic>;
-    fn by_other_range<R: RangeBounds<Ref<Other>>>(self, to_other: R) -> IterResult<Basic>;
-    fn by_other_query(self, to_other: StructsyQuery<Other>) -> IterResult<Basic>;
+    fn by_other(self, to_other: Ref<Other>) -> Self;
+    fn by_other_range<R: RangeBounds<Ref<Other>>>(self, to_other: R) -> Self;
+    fn by_other_query(self, to_other: StructsyQuery<Other>) -> Self;
 }
 
 #[queries(Other)]
 trait OtherQuery {
-    fn by_name(self, name: String) -> IterResult<Other>;
+    fn by_name(self, name: String) -> Self;
 }
 
 #[test]
@@ -57,12 +57,12 @@ fn test_ref() {
         tx.insert(&Basic::new(insb.clone()))?;
         tx.insert(&Basic::new(insc))?;
         tx.commit()?;
-        let count = db.query::<Basic>().by_other(insa.clone())?.into_iter().count();
+        let count = db.query::<Basic>().by_other(insa.clone()).into_iter().count();
         assert_eq!(count, 1);
 
-        let count = db.query::<Basic>().by_other_range(insa..=insb)?.into_iter().count();
+        let count = db.query::<Basic>().by_other_range(insa..=insb).into_iter().count();
         assert_eq!(count, 2);
-        let other_query = db.query::<Other>().by_name("aaa".to_string())?;
+        let other_query = db.query::<Other>().by_name("aaa".to_string());
         let count = db.query::<Basic>().by_other_query(other_query).into_iter().count();
         assert_eq!(count, 1);
         Ok(())
@@ -87,12 +87,12 @@ struct Emb {
 
 #[queries(Parent)]
 trait ParentQuery {
-    fn by_emb(self, emb: EmbeddedFilter<Emb>) -> IterResult<Parent>;
+    fn by_emb(self, emb: EmbeddedFilter<Emb>) -> Self;
 }
 
 #[embedded_queries(Emb)]
 trait EmbQuery {
-    fn by_other(self, other: StructsyQuery<Other>) -> EmbeddedResult<Emb>;
+    fn by_other(self, other: StructsyQuery<Other>) -> Self;
 }
 
 #[test]
@@ -109,8 +109,8 @@ fn test_embedded_ref() {
         tx.insert(&Parent::new(insb.clone()))?;
         tx.insert(&Parent::new(insc))?;
         tx.commit()?;
-        let other_query = db.query::<Other>().by_name("aaa".to_string())?;
-        let emb_filter = Structsy::embedded_filter::<Emb>().by_other(other_query)?;
+        let other_query = db.query::<Other>().by_name("aaa".to_string());
+        let emb_filter = Structsy::embedded_filter::<Emb>().by_other(other_query);
         let count = db.query::<Parent>().by_emb(emb_filter).into_iter().count();
         assert_eq!(count, 1);
         Ok(())

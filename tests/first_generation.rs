@@ -1,4 +1,4 @@
-use structsy::{IterResult, Ref};
+use structsy::Ref;
 use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
@@ -26,8 +26,8 @@ struct Three {
 
 #[structsy_derive::queries(One)]
 trait OneQuery {
-    fn simple(self, first: String) -> IterResult<One>;
-    fn range<R: std::ops::RangeBounds<String>>(self, first: R) -> IterResult<One>;
+    fn simple(self, first: String) -> Self;
+    fn range<R: std::ops::RangeBounds<String>>(self, first: R) -> Self;
 }
 
 #[test]
