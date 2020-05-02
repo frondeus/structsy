@@ -1,6 +1,5 @@
 use crate::{
-    InternalDescription, Persistent, RecordIter, Ref, SRes, StructDescription, Structsy, StructsyConfig, StructsyError,
-    StructsyTx,
+    InternalDescription, Persistent, Ref, SRes, StructDescription, Structsy, StructsyConfig, StructsyError, StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -175,5 +174,26 @@ pub(crate) fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &Pers
         Ok(Some(T::read(&mut Cursor::new(buff))?))
     } else {
         Ok(None)
+    }
+}
+
+/// Iterator for record instances
+pub struct RecordIter<T: Persistent> {
+    iter: persy::SegmentIter,
+    marker: PhantomData<T>,
+}
+
+impl<T: Persistent> Iterator for RecordIter<T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, buff)) = self.iter.next() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }

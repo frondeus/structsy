@@ -1,5 +1,5 @@
 use crate::{structsy::tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
-use persy::{IndexType, PersyId, Transaction, Value};
+use persy::{IndexType, PersyId, Transaction, Value, ValueMode};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -362,4 +362,9 @@ pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
     let p1 = db.structsy().structsy_impl.clone();
     let iter = db.tx().trans.range::<K, PersyId, R>(&name, r)?;
     Ok(RangeIterator::new(p1, iter))
+}
+
+pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {
+    db.tx().trans.create_index::<T, PersyId>(name, mode)?;
+    Ok(())
 }
