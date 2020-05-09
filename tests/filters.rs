@@ -1,4 +1,7 @@
-use structsy::{EmbeddedFilter, EmbeddedFilterBuilder, FilterBuilder, Ref};
+use structsy::{
+    internal::{EmbeddedFilterBuilder, FilterBuilder},
+    EmbeddedFilter, Ref,
+};
 use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]

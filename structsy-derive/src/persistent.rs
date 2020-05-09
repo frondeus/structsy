@@ -79,7 +79,7 @@ impl PersistentInfo {
         let string_name = name.to_string();
         quote! {
 
-            impl structsy::Persistent for #name {
+            impl structsy::internal::Persistent for #name {
 
                 fn get_name() -> &'static str {
                     #string_name
@@ -111,10 +111,10 @@ impl PersistentInfo {
         }
 
         quote! {
-            impl structsy::EmbeddedDescription for #name {
+            impl structsy::internal::EmbeddedDescription for #name {
                 #desc
             }
-            impl structsy::PersistentEmbedded for #name {
+            impl structsy::internal::PersistentEmbedded for #name {
                 #ser
             }
 
@@ -141,17 +141,17 @@ fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
             let desc = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
                 (Some(x), Some(z)) => {
                     quote! {
-                        structsy::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed),
+                        structsy::internal::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed),
                     }
                 }
                 (Some(x), None) => {
                     quote! {
-                        structsy::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed),
+                        structsy::internal::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed),
                     }
                 }
                 (None, None) => {
                     quote! {
-                        structsy::FieldDescription::new::<#ty>(#pos,#field_name,#indexed),
+                        structsy::internal::FieldDescription::new::<#ty>(#pos,#field_name,#indexed),
                     }
                 }
                 (None, Some(_x)) => panic!(""),
@@ -175,22 +175,22 @@ fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
 
     let struct_name = name.to_string();
     let desc = quote! {
-            fn get_description() -> structsy::StructDescription {
+            fn get_description() -> structsy::internal::StructDescription {
                 let fields  = [
                     #( #fields_meta )*
                 ];
-                structsy::StructDescription::new(#struct_name,&fields)
+                structsy::internal::StructDescription::new(#struct_name,&fields)
             }
     };
     let serialization = quote! {
             fn write(&self,write:&mut std::io::Write) -> structsy::SRes<()> {
-                use structsy::PersistentEmbedded;
+                use structsy::internal::PersistentEmbedded;
                 #( #fields_write )*
                 Ok(())
             }
 
             fn read(read:&mut std::io::Read) -> structsy::SRes<#name> {
-                use structsy::PersistentEmbedded;
+                use structsy::internal::PersistentEmbedded;
                 #( #fields_read )*
                 Ok(#name {
                 #( #fields_construct )*
@@ -219,7 +219,7 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                 _ => f.ty.clone(),
             };
             let declare = quote! {
-                structsy::declare_index::<#index_type>(db,#index_name,#mode)?;
+                structsy::internal::declare_index::<#index_type>(db,#index_name,#mode)?;
             };
             let put = quote! {
                 self.#field.puts(tx,#index_name,id)?;
@@ -246,20 +246,20 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                 if f.index_mode == Some(IndexMode::Cluster) {
                     let find = quote!{
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
-                            structsy::find(st,#index_name,val)
+                            structsy::internal::find(st,#index_name,val)
                         }
                         fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
-                            structsy::find_tx(st,#index_name,val)
+                            structsy::internal::find_tx(st,#index_name,val)
                         }
                     };
                     let range = quote! {
                         fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (structsy::Ref<Self>, Self,#index_type)>> {
-                            structsy::find_range(st,#index_name,range)
+                            structsy::internal::find_range(st,#index_name,range)
                         }
                     };
                     let range_tx = quote! {
                         fn #find_by_range_tx<'a, R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::RangeIterator<'a,#index_type,Self>> {
-                            structsy::find_range_tx(st,#index_name,range)
+                            structsy::internal::find_range_tx(st,#index_name,range)
                         }
                     };
                     quote! {
@@ -270,21 +270,21 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                 } else {
                     let find =quote!{
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
-                            structsy::find_unique(st,#index_name,val)
+                            structsy::internal::find_unique(st,#index_name,val)
                         }
                         fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
-                            structsy::find_unique_tx(st,#index_name,val)
+                            structsy::internal::find_unique_tx(st,#index_name,val)
                         }
 
                     };
                     let range = quote! {
                         fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (Ref<Self>, Self,#index_type)>> {
-                            structsy::find_unique_range(st,#index_name,range)
+                            structsy::internal::find_unique_range(st,#index_name,range)
                         }
                     };
                     let range_tx = quote! {
                         fn #find_by_range_tx<'a,R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::UniqueRangeIterator<'a,#index_type,Self>> {
-                            structsy::find_unique_range_tx(st,#index_name,range)
+                            structsy::internal::find_unique_range_tx(st,#index_name,range)
                         }
                     };
 
@@ -313,13 +313,13 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
             }
 
             fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                use structsy::IndexableValue;
+                use structsy::internal::IndexableValue;
                 #( #index_put )*
                 Ok(())
             }
 
             fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                use structsy::IndexableValue;
+                use structsy::internal::IndexableValue;
                 #( #index_remove )*
                 Ok(())
             }
@@ -450,10 +450,10 @@ fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> Token
     let filter_builder;
     if embedded {
         mode = "simple".to_string();
-        filter_builder = quote! {structsy::EmbeddedFilterBuilder<#name>};
+        filter_builder = quote! {structsy::internal::EmbeddedFilterBuilder<#name>};
     } else {
         mode = "indexable".to_string();
-        filter_builder = quote! {structsy::FilterBuilder<#name>};
+        filter_builder = quote! {structsy::internal::FilterBuilder<#name>};
     }
     let methods: Vec<TokenStream> = fields
         .iter()

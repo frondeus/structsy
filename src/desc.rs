@@ -1,4 +1,7 @@
-use super::{EmbeddedDescription, Persistent, Ref, SRes};
+use super::{
+    internal::{EmbeddedDescription, Persistent},
+    Ref, SRes,
+};
 use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};

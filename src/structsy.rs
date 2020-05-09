@@ -1,5 +1,6 @@
 use crate::{
-    InternalDescription, Persistent, Ref, SRes, StructDescription, Structsy, StructsyConfig, StructsyError, StructsyTx,
+    internal::StructDescription, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig, StructsyError,
+    StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
