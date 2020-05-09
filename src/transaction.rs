@@ -11,6 +11,40 @@ pub struct OwnedSytx {
 }
 
 impl OwnedSytx {
+    /// Query for a persistent struct considering in transaction changes.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{ Structsy, StructsyTx, StructsyError};
+    /// use structsy_derive::{queries, Persistent};
+    /// #[derive(Persistent)]
+    /// struct Basic {
+    ///     name: String,
+    /// }
+    /// impl Basic {
+    ///     fn new(name: &str) -> Basic {
+    ///         Basic { name: name.to_string() }
+    ///     }
+    /// }
+    ///
+    /// #[queries(Basic)]
+    /// trait BasicQuery {
+    ///     fn by_name(self, name: String) -> Self;
+    /// }
+    ///
+    ///
+    /// fn basic_query() -> Result<(), StructsyError> {
+    ///     let structsy = Structsy::open("file.structsy")?;
+    ///     structsy.define::<Basic>()?;
+    ///     let mut tx = structsy.begin()?;
+    ///     tx.insert(&Basic::new("aaa"))?;
+    ///     let count = tx.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+    ///     assert_eq!(count, 1);
+    ///     tx.commit()?;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
     pub fn query<'a, T: Persistent>(&'a mut self) -> StructsyQueryTx<'a, T> {
         StructsyQueryTx {
             tx: self,

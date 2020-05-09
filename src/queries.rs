@@ -2,7 +2,7 @@ use crate::{
     embedded_filter::{EIter, EmbeddedFilterBuilder},
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
-
+/// Iterator for query results
 pub struct StructsyIter<'a, T: Persistent> {
     iterator: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
 }
@@ -27,6 +27,52 @@ impl<'a, T: Persistent> Iterator for StructsyIter<'a, T> {
     }
 }
 
+/// Filter for an embedded structure
+///
+/// # Example
+/// ```
+/// use structsy::{ Structsy, StructsyTx, StructsyError, EmbeddedFilter};
+/// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
+///
+/// #[derive(Persistent)]
+/// struct WithEmbedded {
+///     embedded: Embedded,
+/// }
+///
+/// #[derive(PersistentEmbedded)]
+/// struct Embedded {
+///     name: String,
+/// }
+/// impl WithEmbedded {
+///     fn new(name: &str) -> WithEmbedded {
+///         WithEmbedded {
+///             embedded: Embedded { name: name.to_string() },
+///         }
+///     }
+/// }
+///
+/// #[queries(WithEmbedded)]
+/// trait WithEmbeddedQuery {
+///     fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> Self;
+/// }
+///
+/// #[embedded_queries(Embedded)]
+/// trait EmbeddedQuery {
+///     fn by_name(self, name: String) -> Self;
+/// }
+///
+/// fn embedded_query() -> Result<(), StructsyError> {
+///     let structsy = Structsy::open("file.structsy")?;
+///     structsy.define::<WithEmbedded>()?;
+///     let mut tx = structsy.begin()?;
+///     tx.insert(&WithEmbedded::new("aaa"))?;
+///     tx.commit()?;
+///     let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string());
+///     let count = structsy.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
+///     assert_eq!(count, 1);
+///     Ok(())
+/// }
+/// ```
 pub struct EmbeddedFilter<T: PersistentEmbedded> {
     pub(crate) builder: EmbeddedFilterBuilder<T>,
 }
@@ -45,10 +91,43 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     }
 }
 
+/// Base trait for all the query types
 pub trait Query<T: Persistent> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
 }
-
+/// Query for a persistent struct
+///
+/// # Example
+/// ```
+/// use structsy::{ Structsy, StructsyTx, StructsyError};
+/// use structsy_derive::{queries, Persistent};
+/// #[derive(Persistent)]
+/// struct Basic {
+///     name: String,
+/// }
+/// impl Basic {
+///     fn new(name: &str) -> Basic {
+///         Basic { name: name.to_string() }
+///     }
+/// }
+///
+/// #[queries(Basic)]
+/// trait BasicQuery {
+///      fn by_name(self, name: String) -> Self;
+/// }
+///
+///
+/// fn basic_query() -> Result<(), StructsyError> {
+///     let structsy = Structsy::open("file.structsy")?;
+///     structsy.define::<Basic>()?;
+///     let mut tx = structsy.begin()?;
+///     tx.insert(&Basic::new("aaa"))?;
+///     tx.commit()?;
+///     let count = structsy.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+///     assert_eq!(count, 1);
+///     Ok(())
+/// }
+/// ```
 pub struct StructsyQuery<T: Persistent + 'static> {
     pub(crate) structsy: Structsy,
     pub(crate) builder: FilterBuilder<T>,
@@ -73,6 +152,40 @@ impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     }
 }
 
+/// Query for a persistent struct considering in transaction changes.
+///
+/// # Example
+/// ```
+/// use structsy::{ Structsy, StructsyTx, StructsyError};
+/// use structsy_derive::{queries, Persistent};
+/// #[derive(Persistent)]
+/// struct Basic {
+///     name: String,
+/// }
+/// impl Basic {
+///     fn new(name: &str) -> Basic {
+///         Basic { name: name.to_string() }
+///     }
+/// }
+///
+/// #[queries(Basic)]
+/// trait BasicQuery {
+///     fn by_name(self, name: String) -> Self;
+/// }
+///
+///
+/// fn basic_query() -> Result<(), StructsyError> {
+///     let structsy = Structsy::open("file.structsy")?;
+///     structsy.define::<Basic>()?;
+///     let mut tx = structsy.begin()?;
+///     tx.insert(&Basic::new("aaa"))?;
+///     let count = tx.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+///     assert_eq!(count, 1);
+///     tx.commit()?;
+///     Ok(())
+/// }
+/// ```
+///
 pub struct StructsyQueryTx<'a, T: Persistent + 'static> {
     pub(crate) tx: &'a mut OwnedSytx,
     pub(crate) builder: FilterBuilder<T>,
