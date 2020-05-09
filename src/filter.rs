@@ -588,34 +588,43 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn finish<'a>(mut self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
-        for x in &mut self.steps {
-            x.score(&structsy);
-        }
-        self.steps.sort_by_key(|x| x.get_score());
-        let mut res = None;
-        for s in self.steps.into_iter() {
-            res = Some(if let Some(prev) = res {
-                s.filter(prev)
+        if self.steps.is_empty() {
+            if let Ok(ok) = structsy.scan::<T>() {
+                Box::new(ok)
             } else {
-                s.first(structsy)
-            });
+                Box::new(Vec::new().into_iter())
+            }
+        } else {
+            for x in &mut self.steps {
+                x.score(&structsy);
+            }
+            self.steps.sort_by_key(|x| x.get_score());
+            let mut res = self.steps.remove(0).first(structsy);
+            for s in self.steps.into_iter() {
+                res = s.filter(res)
+            }
+            Box::new(res.map(|(id, r, _)| (id, r)))
         }
-        Box::new(
-            res.expect("there is every time at least one element")
-                .map(|(id, r, _)| (id, r)),
-        )
     }
 
     pub fn finish_tx<'a>(mut self, mut tx: &'a mut OwnedSytx) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
-        for x in &mut self.steps {
-            tx = x.score_tx(tx).1;
+        if self.steps.is_empty() {
+            if let Ok(ok) = tx.scan::<T>() {
+                Box::new(ok)
+            } else {
+                Box::new(Vec::new().into_iter())
+            }
+        } else {
+            for x in &mut self.steps {
+                tx = x.score_tx(tx).1;
+            }
+            self.steps.sort_by_key(|x| x.get_score());
+            let mut res = self.steps.remove(0).first_tx(tx);
+            for s in self.steps.into_iter() {
+                res = s.filter(res)
+            }
+            Box::new(res.map(|(id, r, _)| (id, r)))
         }
-        self.steps.sort_by_key(|x| x.get_score());
-        let mut res = self.steps.remove(0).first_tx(tx);
-        for s in self.steps.into_iter() {
-            res = s.filter(res)
-        }
-        Box::new(res.map(|(id, r, _)| (id, r)))
     }
 
     fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {

@@ -35,6 +35,8 @@ pub fn basic_query() {
         db.define::<Basic>()?;
         let mut tx = db.begin()?;
         tx.insert(&Basic::new("aaa"))?;
+        let count = tx.query::<Basic>().into_iter().count();
+        assert_eq!(count, 1);
         let count = tx.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
         assert_eq!(count, 1);
         let count = tx.query::<Basic>().by_name_str("aaa").into_iter().count();
