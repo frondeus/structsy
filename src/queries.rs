@@ -92,8 +92,21 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
 }
 
 /// Base trait for all the query types
-pub trait Query<T: Persistent> {
+pub trait Query<T: Persistent + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
+
+    fn or(mut self, builder: fn(StructsyOrFilter<T>) -> StructsyOrFilter<T>) -> Self {
+        self.filter_builder().or(builder(StructsyOrFilter::<T>::new()));
+        self
+    }
+    fn and(mut self, builder: fn(StructsyAndFilter<T>) -> StructsyAndFilter<T>) -> Self {
+        self.filter_builder().and(builder(StructsyAndFilter::<T>::new()));
+        self
+    }
+    fn not(mut self, builder: fn(StructsyNotFilter<T>) -> StructsyNotFilter<T>) -> Self {
+        self.filter_builder().not(builder(StructsyNotFilter::<T>::new()));
+        self
+    }
 }
 /// Query for a persistent struct
 ///
@@ -202,5 +215,58 @@ impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
     type IntoIter = StructsyIter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
         StructsyIter::new(self.builder.finish_tx(self.tx))
+    }
+}
+
+pub struct StructsyOrFilter<T: Persistent> {
+    pub(crate) builder: FilterBuilder<T>,
+}
+
+impl<T: Persistent + 'static> StructsyOrFilter<T> {
+    pub fn new() -> StructsyOrFilter<T> {
+        StructsyOrFilter {
+            builder: FilterBuilder::new(),
+        }
+    }
+}
+
+impl<T: Persistent + 'static> Query<T> for StructsyOrFilter<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
+    }
+}
+
+pub struct StructsyAndFilter<T: Persistent> {
+    pub(crate) builder: FilterBuilder<T>,
+}
+
+impl<T: Persistent + 'static> StructsyAndFilter<T> {
+    pub fn new() -> StructsyAndFilter<T> {
+        StructsyAndFilter {
+            builder: FilterBuilder::new(),
+        }
+    }
+}
+
+impl<T: Persistent + 'static> Query<T> for StructsyAndFilter<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
+    }
+}
+
+pub struct StructsyNotFilter<T: Persistent> {
+    pub(crate) builder: FilterBuilder<T>,
+}
+
+impl<T: Persistent + 'static> StructsyNotFilter<T> {
+    pub fn new() -> StructsyNotFilter<T> {
+        StructsyNotFilter {
+            builder: FilterBuilder::new(),
+        }
+    }
+}
+impl<T: Persistent + 'static> Query<T> for StructsyNotFilter<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
     }
 }

@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, SRes, Structsy, StructsyTx};
+use structsy::{EmbeddedFilter, Query, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -613,6 +613,81 @@ pub fn test_nested_embeeded_query() {
             .into_iter()
             .count();
         assert_eq!(count, 1);
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+struct BasicOperators {
+    name: String,
+}
+impl BasicOperators {
+    fn new(name: &str) -> BasicOperators {
+        BasicOperators { name: name.to_string() }
+    }
+}
+
+#[queries(BasicOperators)]
+trait BasicOperatorsQuery {
+    fn by_name(self, name: &str) -> Self;
+}
+
+#[test]
+#[ignore]
+pub fn basic_or_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<BasicOperators>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&BasicOperators::new("aaa"))?;
+        tx.insert(&BasicOperators::new("bbb"))?;
+        tx.insert(&BasicOperators::new("ccc"))?;
+        tx.commit()?;
+        let count = db
+            .query::<BasicOperators>()
+            .or(|or| or.by_name("aaa").by_name("bbb"))
+            .into_iter()
+            .count();
+        assert_eq!(count, 2);
+        Ok(())
+    });
+}
+
+#[test]
+#[ignore]
+pub fn basic_and_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<BasicOperators>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&BasicOperators::new("aaa"))?;
+        tx.insert(&BasicOperators::new("bbb"))?;
+        tx.insert(&BasicOperators::new("ccc"))?;
+        tx.commit()?;
+        let count = db
+            .query::<BasicOperators>()
+            .and(|and| and.by_name("aaa").by_name("bbb"))
+            .into_iter()
+            .count();
+        assert_eq!(count, 0);
+        Ok(())
+    });
+}
+
+#[test]
+#[ignore]
+pub fn basic_not_query() {
+    structsy_inst("basic_query", |db| {
+        db.define::<BasicOperators>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&BasicOperators::new("aaa"))?;
+        tx.insert(&BasicOperators::new("bbb"))?;
+        tx.insert(&BasicOperators::new("ccc"))?;
+        tx.commit()?;
+        let count = db
+            .query::<BasicOperators>()
+            .not(|not| not.by_name("aaa"))
+            .into_iter()
+            .count();
+        assert_eq!(count, 2);
         Ok(())
     });
 }

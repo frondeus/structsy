@@ -1,6 +1,7 @@
 use crate::{
     embedded_filter::Source,
     index::{find, find_range, find_range_tx, find_tx},
+    queries::{StructsyAndFilter, StructsyNotFilter, StructsyOrFilter},
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
 };
 use persy::IndexType;
@@ -839,4 +840,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let end = clone_bound_ref(&range.end_bound());
         self.add(RangeConditionFilter::new(access, start, end))
     }
+    pub fn or(&mut self, filters: StructsyOrFilter<T>) {}
+
+    pub fn and(&mut self, filters: StructsyAndFilter<T>) {
+    }
+
+    pub fn not(&mut self, filters: StructsyNotFilter<T>) {}
 }
