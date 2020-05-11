@@ -89,6 +89,9 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub(crate) fn filter<'a>(self, i: EIter<'a, T>) -> EIter<'a, T> {
         self.builder.filter(i)
     }
+    pub(crate) fn condition(self) -> Box<dyn FnMut(&T) -> bool> {
+        self.builder.condition()
+    }
 }
 
 /// Base trait for all the query types
@@ -228,6 +231,9 @@ impl<T: Persistent + 'static> StructsyOrFilter<T> {
             builder: FilterBuilder::new(),
         }
     }
+    pub(crate) fn filter(self) -> FilterBuilder<T> {
+        self.builder
+    }
 }
 
 impl<T: Persistent + 'static> Query<T> for StructsyOrFilter<T> {
@@ -246,6 +252,9 @@ impl<T: Persistent + 'static> StructsyAndFilter<T> {
             builder: FilterBuilder::new(),
         }
     }
+    pub(crate) fn filter(self) -> FilterBuilder<T> {
+        self.builder
+    }
 }
 
 impl<T: Persistent + 'static> Query<T> for StructsyAndFilter<T> {
@@ -263,6 +272,9 @@ impl<T: Persistent + 'static> StructsyNotFilter<T> {
         StructsyNotFilter {
             builder: FilterBuilder::new(),
         }
+    }
+    pub(crate) fn filter(self) -> FilterBuilder<T> {
+        self.builder
     }
 }
 impl<T: Persistent + 'static> Query<T> for StructsyNotFilter<T> {

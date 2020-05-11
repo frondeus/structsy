@@ -633,7 +633,6 @@ trait BasicOperatorsQuery {
 }
 
 #[test]
-#[ignore]
 pub fn basic_or_query() {
     structsy_inst("basic_query", |db| {
         db.define::<BasicOperators>()?;
@@ -653,7 +652,6 @@ pub fn basic_or_query() {
 }
 
 #[test]
-#[ignore]
 pub fn basic_and_query() {
     structsy_inst("basic_query", |db| {
         db.define::<BasicOperators>()?;
@@ -673,7 +671,6 @@ pub fn basic_and_query() {
 }
 
 #[test]
-#[ignore]
 pub fn basic_not_query() {
     structsy_inst("basic_query", |db| {
         db.define::<BasicOperators>()?;

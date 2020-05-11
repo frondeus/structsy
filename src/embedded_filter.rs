@@ -55,6 +55,10 @@ pub(crate) type EIter<'a, P> = Box<dyn Iterator<Item = (Box<dyn Source<P>>, Opti
 trait EmbeddedFilterBuilderStep {
     type Target;
     fn filter<'a>(self: Box<Self>, iter: EIter<'a, Self::Target>) -> EIter<'a, Self::Target>;
+
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(|_| false)
+    }
 }
 
 struct ConditionFilter<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> {
@@ -75,6 +79,9 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
         let value = self.value.clone();
         let access = self.access;
         Box::new(iter.filter(move |(s, _)| *(access)(s.source()) == value))
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(move |s| *(self.access)(s) == self.value)
     }
 }
 
@@ -97,6 +104,9 @@ impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFi
         let value = self.value.clone();
         let access = self.access;
         Box::new(iter.filter(move |(s, _)| (access)(s.source()).contains(&value)))
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(move |s| (self.access)(s).contains(&self.value))
     }
 }
 
@@ -129,6 +139,9 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
         let value_end = self.value_end.clone();
         let access = self.access;
         Box::new(iter.filter(move |(s, _)| (value_start.clone(), value_end.clone()).contains((access)(s.source()))))
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(move |s| (self.value_start.clone(), self.value_end.clone()).contains((self.access)(s)))
     }
 }
 
@@ -168,6 +181,16 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
             }
             false
         }))
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(move |s| {
+            for el in (self.access)(s) {
+                if (self.value_start.clone(), self.value_end.clone()).contains(el) {
+                    return true;
+                }
+            }
+            false
+        })
     }
 }
 
@@ -210,6 +233,15 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
             }
         }))
     }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        Box::new(move |s| {
+            if let Some(z) = (self.access)(s) {
+                (self.value_start.clone(), self.value_end.clone()).contains(z)
+            } else {
+                self.include_none
+            }
+        })
+    }
 }
 
 pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: PersistentEmbedded> {
@@ -239,6 +271,11 @@ impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedF
         }));
         let filterd = filter.filter(nested_filter);
         Box::new(filterd.map(|(_, prev)| prev).filter_map(EmbPrevInst::<T>::extract))
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let access = self.access;
+        let mut condition = self.filter.condition();
+        Box::new(move |r| condition((access)(r)))
     }
 }
 
@@ -276,6 +313,19 @@ impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBui
                 .filter_map(EmbPrevInst::<T>::extract),
         )
     }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let st = self.query.structsy.clone();
+        let mut condition = self.query.builder().condition();
+        let access = self.access;
+        Box::new(move |x| {
+            let id = (access)(&x).clone();
+            if let Some(r) = st.read(&id).unwrap_or(None) {
+                condition(&id, &r)
+            } else {
+                false
+            }
+        })
+    }
 }
 
 pub struct EmbeddedFilterBuilder<T: PersistentEmbedded> {
@@ -295,6 +345,20 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder { steps: Vec::new() }
     }
 
+    pub(crate) fn condition(self) -> Box<dyn FnMut(&T) -> bool> {
+        let mut conditions = Vec::new();
+        for filter in self.steps {
+            conditions.push(filter.condition());
+        }
+        Box::new(move |t| {
+            for condition in &mut conditions {
+                if !condition(t) {
+                    return false;
+                }
+            }
+            return true;
+        })
+    }
     pub(crate) fn filter<'a>(self, iter: EIter<'a, T>) -> EIter<'a, T> {
         let mut new_iter = iter;
         for filter in self.steps {
