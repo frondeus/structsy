@@ -1,6 +1,5 @@
 use crate::{
-    embedded_filter::{EIter, EmbeddedFilterBuilder},
-    FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
+    embedded_filter::EmbeddedFilterBuilder, FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 /// Iterator for query results
 pub struct StructsyIter<'a, T: Persistent> {
@@ -83,12 +82,11 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
             builder: EmbeddedFilterBuilder::new(),
         }
     }
+
     pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
-    pub(crate) fn filter<'a>(self, i: EIter<'a, T>) -> EIter<'a, T> {
-        self.builder.filter(i)
-    }
+
     pub(crate) fn condition(self) -> Box<dyn FnMut(&T) -> bool> {
         self.builder.condition()
     }
