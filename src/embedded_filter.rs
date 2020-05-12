@@ -1,3 +1,4 @@
+use crate::queries::{EmbeddedAndFilter, EmbeddedNotFilter, EmbeddedOrFilter};
 use crate::{EmbeddedFilter, Persistent, PersistentEmbedded, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
 
@@ -197,6 +198,70 @@ impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBui
     }
 }
 
+pub struct OrFilter<T: PersistentEmbedded> {
+    filters: EmbeddedFilterBuilder<T>,
+}
+
+impl<T: PersistentEmbedded + 'static> OrFilter<T> {
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(OrFilter { filters })
+    }
+}
+
+impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for OrFilter<T> {
+    type Target = T;
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let mut conditions = Vec::new();
+        for step in self.filters.steps {
+            conditions.push(step.condition());
+        }
+        Box::new(move |x| {
+            for condition in &mut conditions {
+                if condition(x) {
+                    return true;
+                }
+            }
+            false
+        })
+    }
+}
+
+pub struct AndFilter<T: PersistentEmbedded> {
+    filters: EmbeddedFilterBuilder<T>,
+}
+
+impl<T: PersistentEmbedded + 'static> AndFilter<T> {
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(AndFilter { filters })
+    }
+}
+
+impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
+    type Target = T;
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let mut condition = self.filters.condition();
+        Box::new(move |r| condition(r))
+    }
+}
+
+pub struct NotFilter<T: PersistentEmbedded> {
+    filters: EmbeddedFilterBuilder<T>,
+}
+
+impl<T: PersistentEmbedded + 'static> NotFilter<T> {
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(NotFilter { filters })
+    }
+}
+
+impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
+    type Target = T;
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let mut condition = self.filters.condition();
+        Box::new(move |r| !condition(r))
+    }
+}
+
 pub struct EmbeddedFilterBuilder<T: PersistentEmbedded> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
 }
@@ -383,5 +448,16 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         self.add(RangeConditionFilter::new(access, start, end))
+    }
+    pub fn or(&mut self, filters: EmbeddedOrFilter<T>) {
+        self.add(OrFilter::new(filters.filter()))
+    }
+
+    pub fn and(&mut self, filters: EmbeddedAndFilter<T>) {
+        self.add(AndFilter::new(filters.filter()))
+    }
+
+    pub fn not(&mut self, filters: EmbeddedNotFilter<T>) {
+        self.add(NotFilter::new(filters.filter()))
     }
 }

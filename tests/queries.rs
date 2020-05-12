@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, Query, SRes, Structsy, StructsyTx};
+use structsy::{EmbeddedFilter, EmbeddedFilterOp, Query, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -566,6 +566,55 @@ pub fn test_embeeded_query() {
     });
 }
 
+#[test]
+pub fn basic_embedded_or_query() {
+    structsy_inst("basic_embedded_or_query", |db| {
+        db.define::<WithEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&WithEmbedded::new("aaa"))?;
+        tx.insert(&WithEmbedded::new("anto"))?;
+        tx.insert(&WithEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let embedded_filter =
+            Structsy::embedded_filter::<Embedded>().or(|or| or.by_name("aaa".to_string()).by_name("zzz".to_string()));
+        let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
+        assert_eq!(count, 2);
+        Ok(())
+    });
+}
+
+#[test]
+pub fn basic_embedded_and_query() {
+    structsy_inst("basic_embedded_or_query", |db| {
+        db.define::<WithEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&WithEmbedded::new("aaa"))?;
+        tx.insert(&WithEmbedded::new("anto"))?;
+        tx.insert(&WithEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let embedded_filter = Structsy::embedded_filter::<Embedded>()
+            .and(|and| and.by_name("aaa".to_string()).by_name("zzz".to_string()));
+        let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
+        assert_eq!(count, 0);
+        Ok(())
+    });
+}
+
+#[test]
+pub fn basic_embeddded_not_query() {
+    structsy_inst("basic_embedded_not_query", |db| {
+        db.define::<WithEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&WithEmbedded::new("aaa"))?;
+        tx.insert(&WithEmbedded::new("anto"))?;
+        tx.insert(&WithEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let embedded_filter = Structsy::embedded_filter::<Embedded>().not(|not| not.by_name("aaa".to_string()));
+        let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
+        assert_eq!(count, 2);
+        Ok(())
+    });
+}
 #[derive(PersistentEmbedded)]
 struct NestedEmbedded {
     embedded: Embedded,
@@ -634,7 +683,7 @@ trait BasicOperatorsQuery {
 
 #[test]
 pub fn basic_or_query() {
-    structsy_inst("basic_query", |db| {
+    structsy_inst("basic_or_query", |db| {
         db.define::<BasicOperators>()?;
         let mut tx = db.begin()?;
         tx.insert(&BasicOperators::new("aaa"))?;
@@ -653,7 +702,7 @@ pub fn basic_or_query() {
 
 #[test]
 pub fn basic_and_query() {
-    structsy_inst("basic_query", |db| {
+    structsy_inst("basic_and_query", |db| {
         db.define::<BasicOperators>()?;
         let mut tx = db.begin()?;
         tx.insert(&BasicOperators::new("aaa"))?;
@@ -672,7 +721,7 @@ pub fn basic_and_query() {
 
 #[test]
 pub fn basic_not_query() {
-    structsy_inst("basic_query", |db| {
+    structsy_inst("basic_not_query", |db| {
         db.define::<BasicOperators>()?;
         let mut tx = db.begin()?;
         tx.insert(&BasicOperators::new("aaa"))?;
