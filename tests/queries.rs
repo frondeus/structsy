@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, EmbeddedFilterOp, Query, SRes, Structsy, StructsyTx};
+use structsy::{EmbeddedFilter, Query, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 

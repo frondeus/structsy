@@ -1,4 +1,3 @@
-use crate::queries::{EmbeddedAndFilter, EmbeddedNotFilter, EmbeddedOrFilter};
 use crate::{EmbeddedFilter, Persistent, PersistentEmbedded, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
 
@@ -449,15 +448,15 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
         let end = clone_bound_ref(&range.end_bound());
         self.add(RangeConditionFilter::new(access, start, end))
     }
-    pub fn or(&mut self, filters: EmbeddedOrFilter<T>) {
+    pub fn or(&mut self, filters: EmbeddedFilter<T>) {
         self.add(OrFilter::new(filters.filter()))
     }
 
-    pub fn and(&mut self, filters: EmbeddedAndFilter<T>) {
+    pub fn and(&mut self, filters: EmbeddedFilter<T>) {
         self.add(AndFilter::new(filters.filter()))
     }
 
-    pub fn not(&mut self, filters: EmbeddedNotFilter<T>) {
+    pub fn not(&mut self, filters: EmbeddedFilter<T>) {
         self.add(NotFilter::new(filters.filter()))
     }
 }

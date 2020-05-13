@@ -46,7 +46,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
-pub use crate::queries::{EmbeddedFilter, EmbeddedFilterOp, Query, StructsyIter, StructsyQuery, StructsyQueryTx};
+pub use crate::queries::{EmbeddedFilter, Query, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;

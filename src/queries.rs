@@ -26,23 +26,6 @@ impl<'a, T: Persistent> Iterator for StructsyIter<'a, T> {
     }
 }
 
-pub trait EmbeddedFilterOp<T: PersistentEmbedded + 'static>: Sized {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T>;
-
-    fn or(mut self, builder: fn(EmbeddedOrFilter<T>) -> EmbeddedOrFilter<T>) -> Self {
-        self.filter_builder().or(builder(EmbeddedOrFilter::<T>::new()));
-        self
-    }
-    fn and(mut self, builder: fn(EmbeddedAndFilter<T>) -> EmbeddedAndFilter<T>) -> Self {
-        self.filter_builder().and(builder(EmbeddedAndFilter::<T>::new()));
-        self
-    }
-    fn not(mut self, builder: fn(EmbeddedNotFilter<T>) -> EmbeddedNotFilter<T>) -> Self {
-        self.filter_builder().not(builder(EmbeddedNotFilter::<T>::new()));
-        self
-    }
-}
-
 /// Filter for an embedded structure
 ///
 /// # Example
@@ -103,9 +86,22 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub(crate) fn condition(self) -> Box<dyn FnMut(&T) -> bool> {
         self.builder.condition()
     }
-}
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterOp<T> for EmbeddedFilter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
+    pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
+        self.builder
+    }
+    pub fn or(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+    pub fn and(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+    pub fn not(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+    pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
 }
@@ -114,16 +110,16 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterOp<T> for EmbeddedFilter<T> 
 pub trait Query<T: Persistent + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
 
-    fn or(mut self, builder: fn(StructsyOrFilter<T>) -> StructsyOrFilter<T>) -> Self {
-        self.filter_builder().or(builder(StructsyOrFilter::<T>::new()));
+    fn or(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+        self.filter_builder().or(builder(StructsyFilter::<T>::new()));
         self
     }
-    fn and(mut self, builder: fn(StructsyAndFilter<T>) -> StructsyAndFilter<T>) -> Self {
-        self.filter_builder().and(builder(StructsyAndFilter::<T>::new()));
+    fn and(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+        self.filter_builder().and(builder(StructsyFilter::<T>::new()));
         self
     }
-    fn not(mut self, builder: fn(StructsyNotFilter<T>) -> StructsyNotFilter<T>) -> Self {
-        self.filter_builder().not(builder(StructsyNotFilter::<T>::new()));
+    fn not(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+        self.filter_builder().not(builder(StructsyFilter::<T>::new()));
         self
     }
 }
@@ -237,13 +233,13 @@ impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
     }
 }
 
-pub struct StructsyOrFilter<T: Persistent> {
+pub struct StructsyFilter<T: Persistent> {
     pub(crate) builder: FilterBuilder<T>,
 }
 
-impl<T: Persistent + 'static> StructsyOrFilter<T> {
-    pub fn new() -> StructsyOrFilter<T> {
-        StructsyOrFilter {
+impl<T: Persistent + 'static> StructsyFilter<T> {
+    pub fn new() -> StructsyFilter<T> {
+        StructsyFilter {
             builder: FilterBuilder::new(),
         }
     }
@@ -252,111 +248,8 @@ impl<T: Persistent + 'static> StructsyOrFilter<T> {
     }
 }
 
-impl<T: Persistent + 'static> Query<T> for StructsyOrFilter<T> {
+impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-pub struct StructsyAndFilter<T: Persistent> {
-    pub(crate) builder: FilterBuilder<T>,
-}
-
-impl<T: Persistent + 'static> StructsyAndFilter<T> {
-    pub fn new() -> StructsyAndFilter<T> {
-        StructsyAndFilter {
-            builder: FilterBuilder::new(),
-        }
-    }
-    pub(crate) fn filter(self) -> FilterBuilder<T> {
-        self.builder
-    }
-}
-
-impl<T: Persistent + 'static> Query<T> for StructsyAndFilter<T> {
-    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-pub struct StructsyNotFilter<T: Persistent> {
-    pub(crate) builder: FilterBuilder<T>,
-}
-
-impl<T: Persistent + 'static> StructsyNotFilter<T> {
-    pub fn new() -> StructsyNotFilter<T> {
-        StructsyNotFilter {
-            builder: FilterBuilder::new(),
-        }
-    }
-    pub(crate) fn filter(self) -> FilterBuilder<T> {
-        self.builder
-    }
-}
-impl<T: Persistent + 'static> Query<T> for StructsyNotFilter<T> {
-    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-pub struct EmbeddedOrFilter<T: PersistentEmbedded> {
-    pub(crate) builder: EmbeddedFilterBuilder<T>,
-}
-
-impl<T: PersistentEmbedded + 'static> EmbeddedOrFilter<T> {
-    pub fn new() -> EmbeddedOrFilter<T> {
-        EmbeddedOrFilter {
-            builder: EmbeddedFilterBuilder::new(),
-        }
-    }
-    pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
-        self.builder
-    }
-}
-
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterOp<T> for EmbeddedOrFilter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-pub struct EmbeddedAndFilter<T: PersistentEmbedded> {
-    pub(crate) builder: EmbeddedFilterBuilder<T>,
-}
-
-impl<T: PersistentEmbedded + 'static> EmbeddedAndFilter<T> {
-    pub fn new() -> EmbeddedAndFilter<T> {
-        EmbeddedAndFilter {
-            builder: EmbeddedFilterBuilder::new(),
-        }
-    }
-    pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
-        self.builder
-    }
-}
-
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterOp<T> for EmbeddedAndFilter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-pub struct EmbeddedNotFilter<T: PersistentEmbedded> {
-    pub(crate) builder: EmbeddedFilterBuilder<T>,
-}
-
-impl<T: PersistentEmbedded + 'static> EmbeddedNotFilter<T> {
-    pub fn new() -> EmbeddedNotFilter<T> {
-        EmbeddedNotFilter {
-            builder: EmbeddedFilterBuilder::new(),
-        }
-    }
-    pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
-        self.builder
-    }
-}
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterOp<T> for EmbeddedNotFilter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
 }
