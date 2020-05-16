@@ -23,7 +23,7 @@ struct PersistentData {
     test_option: Option<u8>,
     test_vec: Vec<u8>,
     test_ref: Ref<ReferedData>,
-    test_option_vec: Option<Vec<u8>>,
+    //    test_option_vec: Option<Vec<u8>>,
     test_vec_bool: Vec<bool>,
     test_embedded: EmbeddedData,
     test_option_string: Option<String>,
@@ -113,7 +113,7 @@ struct EmbeddedData {
     test_option: Option<u8>,
     test_vec: Vec<u8>,
     test_ref: Ref<ReferedData>,
-    test_option_vec: Option<Vec<u8>>,
+    //test_option_vec: Option<Vec<u8>>,
     test_vec_bool: Vec<bool>,
     test_other_embedded: OtherEmbedded,
 }

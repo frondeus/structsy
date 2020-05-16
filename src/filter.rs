@@ -481,6 +481,68 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
     }
 }
 
+pub struct VecQueryFilter<V: Persistent + 'static, T: Persistent> {
+    query: StructsyQuery<V>,
+    access: fn(&T) -> &Vec<Ref<V>>,
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
+    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Vec<Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(VecQueryFilter { query, access })
+    }
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for VecQueryFilter<V, T> {
+    type Target = T;
+    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
+        let st = self.query.structsy.clone();
+        let mut condition = self.query.builder().condition();
+        let access = self.access;
+        Box::new(move |_, x| {
+            let ids = (access)(&x).clone();
+            for id in ids {
+                if let Some(r) = st.read(&id).unwrap_or(None) {
+                    if condition(&id, &r) {
+                        return true;
+                    }
+                }
+            }
+            false
+        })
+    }
+}
+
+pub struct OptionQueryFilter<V: Persistent + 'static, T: Persistent> {
+    query: StructsyQuery<V>,
+    access: fn(&T) -> &Option<Ref<V>>,
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
+    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Option<Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(OptionQueryFilter { query, access })
+    }
+}
+
+impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for OptionQueryFilter<V, T> {
+    type Target = T;
+    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
+        let st = self.query.structsy.clone();
+        let mut condition = self.query.builder().condition();
+        let access = self.access;
+        Box::new(move |_, x| {
+            if let Some(id) = (access)(&x).clone() {
+                if let Some(r) = st.read(&id).unwrap_or(None) {
+                    condition(&id, &r)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        })
+    }
+}
+
 pub struct OrFilter<T: Persistent> {
     filters: FilterBuilder<T>,
 }
@@ -845,6 +907,73 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let end = clone_bound_ref(&range.end_bound());
         self.add(RangeConditionFilter::new(access, start, end))
     }
+
+    pub fn ref_vec_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: PartialEq + Clone + 'static,
+    {
+        self.add(ConditionFilter::new(access, value))
+    }
+
+    pub fn ref_vec_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    where
+        V: PartialOrd + Clone + 'static,
+        R: RangeBounds<V>,
+    {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        // This may support index in future, but it does not now
+        self.add(RangeConditionFilter::new(access, start, end))
+    }
+
+    pub fn ref_vec_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Vec<Ref<V>>)
+    where
+        V: Persistent + 'static,
+    {
+        self.add(VecQueryFilter::new(query, access))
+    }
+    pub fn ref_option_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    where
+        V: PartialEq + Clone + 'static,
+    {
+        self.add(ConditionFilter::new(access, value))
+    }
+
+    pub fn ref_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
+    where
+        V: PartialOrd + Clone + 'static,
+        R: RangeBounds<Option<V>>,
+    {
+        let (start, none_end) = match range.start_bound() {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
+        let (end, none_start) = match range.end_bound() {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
+        // This may support index in future, but it does not now
+        self.add(RangeOptionConditionFilter::new(
+            access,
+            start,
+            end,
+            none_end || none_start,
+        ))
+    }
+
+    pub fn ref_option_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Option<Ref<V>>)
+    where
+        V: Persistent + 'static,
+    {
+        self.add(OptionQueryFilter::new(query, access))
+    }
+
     pub fn or(&mut self, filters: StructsyFilter<T>) {
         self.add(OrFilter::new(filters.filter()))
     }
