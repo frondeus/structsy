@@ -116,3 +116,111 @@ fn test_embedded_ref() {
         Ok(())
     });
 }
+
+#[derive(Persistent)]
+struct BasicVec {
+    to_other: Vec<Ref<Other>>,
+}
+impl BasicVec {
+    fn new(to_other: Ref<Other>) -> BasicVec {
+        BasicVec {
+            to_other: vec![to_other],
+        }
+    }
+}
+
+#[queries(BasicVec)]
+trait BasicVecQuery {
+    fn by_other(self, to_other: Vec<Ref<Other>>) -> Self;
+    fn by_other_range<R: RangeBounds<Vec<Ref<Other>>>>(self, to_other: R) -> Self;
+    fn by_other_query(self, to_other: StructsyQuery<Other>) -> Self;
+}
+
+#[test]
+fn test_vec_ref() {
+    structsy_inst("basic_query", |db| {
+        db.define::<BasicVec>()?;
+        db.define::<Other>()?;
+
+        let mut tx = db.begin()?;
+        let insa = tx.insert(&Other::new("aaa"))?;
+        let insb = tx.insert(&Other::new("bbb"))?;
+        let insc = tx.insert(&Other::new("ccc"))?;
+        tx.insert(&BasicVec::new(insa.clone()))?;
+        tx.insert(&BasicVec::new(insb.clone()))?;
+        tx.insert(&BasicVec::new(insc))?;
+        tx.commit()?;
+        let count = db.query::<BasicVec>().by_other(vec![insa.clone()]).into_iter().count();
+        assert_eq!(count, 1);
+
+        let count = db
+            .query::<BasicVec>()
+            .by_other_range(vec![insa]..=vec![insb])
+            .into_iter()
+            .count();
+        assert_eq!(count, 2);
+
+        let other_query = db.query::<Other>().by_name("aaa".to_string());
+        let count = db.query::<BasicVec>().by_other_query(other_query).into_iter().count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+struct BasicOption {
+    to_other: Option<Ref<Other>>,
+}
+impl BasicOption {
+    fn new(to_other: Ref<Other>) -> BasicOption {
+        BasicOption {
+            to_other: Some(to_other),
+        }
+    }
+}
+
+#[queries(BasicOption)]
+trait BasicOptionQuery {
+    fn by_other(self, to_other: Option<Ref<Other>>) -> Self;
+    fn by_other_range<R: RangeBounds<Option<Ref<Other>>>>(self, to_other: R) -> Self;
+    fn by_other_query(self, to_other: StructsyQuery<Other>) -> Self;
+}
+
+#[test]
+fn test_option_ref() {
+    structsy_inst("basic_query", |db| {
+        db.define::<BasicOption>()?;
+        db.define::<Other>()?;
+
+        let mut tx = db.begin()?;
+        let insa = tx.insert(&Other::new("aaa"))?;
+        let insb = tx.insert(&Other::new("bbb"))?;
+        let insc = tx.insert(&Other::new("ccc"))?;
+        tx.insert(&BasicOption::new(insa.clone()))?;
+        tx.insert(&BasicOption::new(insb.clone()))?;
+        tx.insert(&BasicOption::new(insc))?;
+        tx.commit()?;
+        let count = db
+            .query::<BasicOption>()
+            .by_other(Some(insa.clone()))
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+
+        let count = db
+            .query::<BasicOption>()
+            .by_other_range(Some(insa)..=Some(insb))
+            .into_iter()
+            .count();
+        assert_eq!(count, 2);
+
+        let other_query = db.query::<Other>().by_name("aaa".to_string());
+        let count = db
+            .query::<BasicOption>()
+            .by_other_query(other_query)
+            .into_iter()
+            .count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}
