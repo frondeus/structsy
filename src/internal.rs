@@ -10,6 +10,7 @@ pub use crate::index::{
     declare_index, find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx,
     find_unique_tx, IndexableValue,
 };
+pub use crate::queries::Query;
 use crate::{Ref, SRes, Sytx};
 use std::io::{Read, Write};
 

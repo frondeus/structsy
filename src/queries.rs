@@ -76,6 +76,55 @@ pub struct EmbeddedFilter<T: PersistentEmbedded> {
     pub(crate) builder: EmbeddedFilterBuilder<T>,
 }
 
+/// And/Or/Not Operators
+/// # Example
+/// ```
+/// use structsy::{ Structsy, StructsyTx, StructsyError, Operators};
+/// use structsy_derive::{queries, Persistent};
+/// #[derive(Persistent)]
+/// struct Basic {
+///     name: String,
+/// }
+/// impl Basic {
+///     fn new(name: &str) -> Basic {
+///         Basic { name: name.to_string() }
+///     }
+/// }
+///
+/// #[queries(Basic)]
+/// trait BasicQuery {
+///      fn by_name(self, name: String) -> Self;
+/// }
+///
+///
+/// fn basic_query() -> Result<(), StructsyError> {
+///     let structsy = Structsy::open("file.structsy")?;
+///     structsy.define::<Basic>()?;
+///     let mut tx = structsy.begin()?;
+///     tx.insert(&Basic::new("aaa"))?;
+///     tx.insert(&Basic::new("bbb"))?;
+///     tx.commit()?;
+///     let count = structsy.query::<Basic>().or(|or| {
+///             or.by_name("aaa".to_string()).by_name("bbb".to_string())
+///         }).into_iter().count();
+///     assert_eq!(count, 2);
+///     let count = structsy.query::<Basic>().not(|not| {
+///             not.by_name("aaa".to_string())
+///         }).into_iter().count();
+///     assert_eq!(count, 1);
+///     let count = structsy.query::<Basic>().and(|and| {
+///             and.by_name("aaa".to_string()).by_name("bbb".to_string())
+///         }).into_iter().count();
+///     assert_eq!(count, 0);
+///     Ok(())
+/// }
+/// ```
+pub trait Operators<F> {
+    fn or(self, builder: fn(F) -> F) -> Self;
+    fn and(self, builder: fn(F) -> F) -> Self;
+    fn not(self, builder: fn(F) -> F) -> Self;
+}
+
 impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub fn new() -> EmbeddedFilter<T> {
         EmbeddedFilter {
@@ -89,27 +138,27 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
     pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
         self.builder
     }
-    pub fn or(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
-        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()));
-        self
-    }
-    pub fn and(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
-        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()));
-        self
-    }
-    pub fn not(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
-        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()));
-        self
-    }
     pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
 }
 
-/// Base trait for all the query types
-pub trait Query<T: Persistent + 'static>: Sized {
-    fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
+impl<T: PersistentEmbedded + 'static> Operators<EmbeddedFilter<T>> for EmbeddedFilter<T> {
+    fn or(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+    fn and(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+    fn not(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()));
+        self
+    }
+}
 
+impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
     fn or(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
         self.filter_builder().or(builder(StructsyFilter::<T>::new()));
         self
@@ -122,6 +171,11 @@ pub trait Query<T: Persistent + 'static>: Sized {
         self.filter_builder().not(builder(StructsyFilter::<T>::new()));
         self
     }
+}
+
+/// Base trait for all the query types
+pub trait Query<T: Persistent + 'static>: Sized {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
 }
 /// Query for a persistent struct
 ///

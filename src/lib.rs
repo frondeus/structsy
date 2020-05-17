@@ -46,7 +46,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
-pub use crate::queries::{EmbeddedFilter, Query, StructsyIter, StructsyQuery, StructsyQueryTx};
+pub use crate::queries::{EmbeddedFilter, Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
@@ -424,8 +424,8 @@ impl Structsy {
 #[cfg(test)]
 mod test {
     use super::{
-        internal::{find, find_range, find_range_tx, find_tx, FieldDescription, StructDescription},
-        Persistent, Query, RangeIterator, Ref, SRes, Structsy, StructsyTx, Sytx,
+        internal::{find, find_range, find_range_tx, find_tx, FieldDescription, Query, StructDescription},
+        Persistent, RangeIterator, Ref, SRes, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;

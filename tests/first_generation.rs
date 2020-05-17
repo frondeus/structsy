@@ -9,7 +9,7 @@ struct One {
     second: u8,
     third: Option<u8>,
     forth: Vec<String>,
-    fifth: Option<Vec<String>>,
+    //fifth: Option<Vec<String>>,
     sixth: Ref<Two>,
     seventh: Three,
 }
