@@ -245,19 +245,23 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                 let find_by_range_tx= Ident::new( &format!("find_by_{}_range_tx", &field_name), Span::call_site());
                 if f.index_mode == Some(IndexMode::Cluster) {
                     let find = quote!{
+                        #[deprecated]
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
                             structsy::internal::find(st,#index_name,val)
                         }
+                        #[deprecated]
                         fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
                             structsy::internal::find_tx(st,#index_name,val)
                         }
                     };
                     let range = quote! {
+                        #[deprecated]
                         fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (structsy::Ref<Self>, Self,#index_type)>> {
                             structsy::internal::find_range(st,#index_name,range)
                         }
                     };
                     let range_tx = quote! {
+                        #[deprecated]
                         fn #find_by_range_tx<'a, R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::RangeIterator<'a,#index_type,Self>> {
                             structsy::internal::find_range_tx(st,#index_name,range)
                         }
@@ -269,20 +273,24 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                     }
                 } else {
                     let find =quote!{
+                        #[deprecated]
                         fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
                             structsy::internal::find_unique(st,#index_name,val)
                         }
+                        #[deprecated]
                         fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
                             structsy::internal::find_unique_tx(st,#index_name,val)
                         }
 
                     };
                     let range = quote! {
+                        #[deprecated]
                         fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (Ref<Self>, Self,#index_type)>> {
                             structsy::internal::find_unique_range(st,#index_name,range)
                         }
                     };
                     let range_tx = quote! {
+                        #[deprecated]
                         fn #find_by_range_tx<'a,R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::UniqueRangeIterator<'a,#index_type,Self>> {
                             structsy::internal::find_unique_range_tx(st,#index_name,range)
                         }
