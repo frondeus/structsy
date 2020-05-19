@@ -10,6 +10,8 @@ struct MyData {
 
 #[queries(MyData)]
 trait MyDataQuery {
+    /// The parameters name have two match the field names and type
+    /// like the `address` parameter match the `address` field of the struct.
     fn search(self, address: String) -> Self;
 }
 

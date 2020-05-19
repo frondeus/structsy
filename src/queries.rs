@@ -120,9 +120,9 @@ pub struct EmbeddedFilter<T: PersistentEmbedded> {
 /// }
 /// ```
 pub trait Operators<F> {
-    fn or(self, builder: fn(F) -> F) -> Self;
-    fn and(self, builder: fn(F) -> F) -> Self;
-    fn not(self, builder: fn(F) -> F) -> Self;
+    fn or<FN: Fn(F) -> F>(self, builder: FN) -> Self;
+    fn and<FN: Fn(F) -> F>(self, builder: FN) -> Self;
+    fn not<FN: Fn(F) -> F>(self, builder: FN) -> Self;
 }
 
 impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
@@ -142,32 +142,31 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
         &mut self.builder
     }
 }
-
 impl<T: PersistentEmbedded + 'static> Operators<EmbeddedFilter<T>> for EmbeddedFilter<T> {
-    fn or(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+    fn or<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(EmbeddedFilter::<T>::new()));
         self
     }
-    fn and(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+    fn and<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().and(builder(EmbeddedFilter::<T>::new()));
         self
     }
-    fn not(mut self, builder: fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>) -> Self {
+    fn not<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().not(builder(EmbeddedFilter::<T>::new()));
         self
     }
 }
 
 impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
-    fn or(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+    fn or<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(StructsyFilter::<T>::new()));
         self
     }
-    fn and(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+    fn and<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().and(builder(StructsyFilter::<T>::new()));
         self
     }
-    fn not(mut self, builder: fn(StructsyFilter<T>) -> StructsyFilter<T>) -> Self {
+    fn not<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().not(builder(StructsyFilter::<T>::new()));
         self
     }
