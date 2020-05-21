@@ -15,7 +15,7 @@ trait MyDataQuery {
 }
 
 fn main() -> Result<(), StructsyError> {
-    let db = Structsy::open("my_data.db")?;
+    let db = Structsy::open("example_advanced_query.db")?;
     db.define::<MyData>()?;
 
     let my_data = MyData {

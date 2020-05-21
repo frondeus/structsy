@@ -31,10 +31,10 @@ impl Address {
 }
 
 fn main() -> Result<(), StructsyError> {
-    let db = Structsy::open("my_data.db")?;
+    let db = Structsy::open("example_embedded.db")?;
     db.define::<MyData>()?;
 
-    let my_data = MyData::new("My host", Address::new("127.0.0.1", 2424));
+    let my_data = MyData::new("My Host", Address::new("127.0.0.1", 2424));
     let mut tx = db.begin()?;
     let id = tx.insert(&my_data)?;
     tx.commit()?;

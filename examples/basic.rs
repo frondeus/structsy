@@ -17,7 +17,7 @@ impl MyData {
 }
 
 fn main() -> Result<(), StructsyError> {
-    let db = Structsy::open("my_data.db")?;
+    let db = Structsy::open("example_basic.db")?;
     db.define::<MyData>()?;
 
     let my_data = MyData::new("Structsy", "https://gitlab.com/tglman/structsy");
