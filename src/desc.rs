@@ -6,7 +6,7 @@ use crate::format::PersistentEmbedded;
 use persy::ValueMode;
 use std::io::{Read, Write};
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum FieldValueType {
     U8,
     U16,
@@ -26,7 +26,7 @@ pub enum FieldValueType {
     Embedded(StructDescription),
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum FieldType {
     Value(FieldValueType),
     Option(FieldValueType),
@@ -56,7 +56,7 @@ impl FieldValueType {
                 let s = String::read(read)?;
                 FieldValueType::Ref(s)
             }
-            26 => {
+            16 => {
                 let s = StructDescription::read(read)?;
                 FieldValueType::Embedded(s)
             }
@@ -204,7 +204,7 @@ impl FieldType {
 }
 
 /// Field metadata for internal use
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct FieldDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
@@ -274,7 +274,7 @@ impl InternalDescription {
 }
 
 /// Struct metadata for internal use
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct StructDescription {
     pub(crate) name: String,
     pub(crate) fields: Vec<FieldDescription>,
@@ -287,7 +287,7 @@ impl StructDescription {
             fields: Vec::from(fields),
         }
     }
-    pub(crate) fn read(read: &mut dyn Read) -> SRes<StructDescription> {
+    pub fn read(read: &mut dyn Read) -> SRes<StructDescription> {
         let name = String::read(read)?;
         let n_fields = u32::read(read)?;
         let mut fields = Vec::new();
@@ -296,7 +296,7 @@ impl StructDescription {
         }
         Ok(StructDescription { name, fields })
     }
-    pub(crate) fn write(&self, write: &mut dyn Write) -> SRes<()> {
+    pub fn write(&self, write: &mut dyn Write) -> SRes<()> {
         self.name.write(write)?;
         (self.fields.len() as u32).write(write)?;
         for f in &self.fields {
