@@ -1,6 +1,6 @@
 [package]
 name = "structsy-derive"
-version = "0.2.0"
+version = "0.3.0"
 description = "Structsy single file struct database persistent derive implementation" 
 license = "MIT"
 authors = ["Tglman <tglman@tglman.com>"]
