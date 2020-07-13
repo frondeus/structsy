@@ -12,7 +12,7 @@ generate_test_data:
     - cargo test --no-run
   artifacts:
     paths:
-      - target/debug/*-*
+      - target/debug/deps/*-*
     expire_in: 30 minutes
   only:
     changes:
