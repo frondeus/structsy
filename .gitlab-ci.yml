@@ -31,13 +31,13 @@ coverage_report:
     entrypoint: [""]
   stage: "coverage_report"
   script:
-    - ls target/debug/ || echo "notfound"
-    - for file in $(ls -1 target/debug | grep "-" | grep -v "\.d$");
+    - ls target/debug/deps/ || echo "notfound"
+    - for file in $(ls -1 target/debug/deps/ | grep "-" | grep -v "\.");
         do
           mkdir -p "target/cov/$(basename $file)";
           kcov --exclude-pattern=/.cargo,/usr/lib
             --verify "target/cov/$(basename $file)"
-            "target/debug/$file";
+            "target/debug/deps/$file";
         done
   artifacts:
     paths:
