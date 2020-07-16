@@ -89,7 +89,7 @@ impl StructsyImpl {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
         tx.create_segment(INTERNAL_SEGMENT_NAME)?;
-        let prep = tx.prepare_commit()?;
+        let prep = tx.prepare()?;
         prep.commit()?;
         Ok(())
     }
@@ -132,7 +132,7 @@ impl StructsyImpl {
             let mut buff = Vec::new();
             desc.write(&mut buff)?;
             let mut tx = structsy.begin()?;
-            tx.trans.insert_record(INTERNAL_SEGMENT_NAME, &buff)?;
+            tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
             tx.trans.create_segment(&desc.name)?;
             T::declare(&mut tx)?;
             tx.commit()?;
@@ -146,14 +146,14 @@ impl StructsyImpl {
 
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
         self.check_defined::<T>()?;
-        if let Some(buff) = self.persy.read_record(&sref.type_name, &sref.raw_id)? {
+        if let Some(buff) = self.persy.read(&sref.type_name, &sref.raw_id)? {
             Ok(Some(T::read(&mut Cursor::new(buff))?))
         } else {
             Ok(None)
         }
     }
     pub fn commit(&self, tx: Transaction) -> SRes<()> {
-        let to_finalize = tx.prepare_commit()?;
+        let to_finalize = tx.prepare()?;
         to_finalize.commit()?;
         Ok(())
     }
@@ -171,7 +171,7 @@ impl StructsyImpl {
 }
 
 pub(crate) fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {
-    if let Some(buff) = tx.read_record(name, id)? {
+    if let Some(buff) = tx.read(name, id)? {
         Ok(Some(T::read(&mut Cursor::new(buff))?))
     } else {
         Ok(None)

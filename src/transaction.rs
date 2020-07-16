@@ -94,14 +94,14 @@ impl Sytx for OwnedSytx {
 }
 impl StructsyTx for OwnedSytx {
     fn commit(self) -> SRes<()> {
-        let prepared = self.trans.prepare_commit()?;
+        let prepared = self.trans.prepare()?;
         prepared.commit()?;
         Ok(())
     }
 
     fn prepare_commit(self) -> SRes<Prepared> {
         Ok(Prepared {
-            prepared: self.trans.prepare_commit()?,
+            prepared: self.trans.prepare()?,
         })
     }
 }
@@ -171,7 +171,7 @@ pub trait StructsyTx: Sytx + Sized {
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
         let segment = T::get_description().name;
-        let id = self.tx().trans.insert_record(&segment, &buff)?;
+        let id = self.tx().trans.insert(&segment, &buff)?;
         let id_ref = Ref::new(id);
         sct.put_indexes(self, &id_ref)?;
         Ok(id_ref)
@@ -206,7 +206,7 @@ pub trait StructsyTx: Sytx + Sized {
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tx().trans.update_record(&sref.type_name, &sref.raw_id, &buff)?;
+        self.tx().trans.update(&sref.type_name, &sref.raw_id, &buff)?;
         sct.put_indexes(self, &sref)?;
         Ok(())
     }
@@ -238,7 +238,7 @@ pub trait StructsyTx: Sytx + Sized {
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tx().trans.delete_record(&sref.type_name, &sref.raw_id)?;
+        self.tx().trans.delete(&sref.type_name, &sref.raw_id)?;
         Ok(())
     }
 
