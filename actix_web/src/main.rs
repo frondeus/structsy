@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, ResponseError};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, ResponseError};
 use serde::{Deserialize, Serialize};
 use std::io::Error as IOError;
 use structsy::{Structsy, StructsyError, StructsyTx};
@@ -45,8 +45,14 @@ struct Coffee {
 }
 
 #[derive(Serialize, Deserialize)]
+struct CoffeeItem {
+    id: String,
+    coffee: Coffee,
+}
+
+#[derive(Serialize, Deserialize)]
 struct CoffeeList {
-    coffees: Vec<(String, Coffee)>,
+    coffees: Vec<CoffeeItem>,
 }
 
 #[derive(Serialize, Deserialize, Persistent)]
@@ -57,8 +63,14 @@ struct Beer {
 }
 
 #[derive(Serialize, Deserialize)]
+struct BeerItem {
+    id: String,
+    beer: Beer,
+}
+
+#[derive(Serialize, Deserialize)]
 struct BeerList {
-    beers: Vec<(String, Beer)>,
+    beers: Vec<BeerItem>,
 }
 
 async fn drink_coffee(
@@ -72,12 +84,26 @@ async fn drink_coffee(
 async fn list_coffees(db: web::Data<Structsy>) -> Result<HttpResponse, Error> {
     let mut coffees = Vec::new();
     for (id, coffee) in db.scan::<Coffee>()? {
-        coffees.push((id.to_string(), coffee));
+        coffees.push(CoffeeItem {
+            id: id.to_string(),
+            coffee,
+        });
     }
     Ok(HttpResponse::Ok().json(CoffeeList { coffees }))
 }
-async fn delete_coffee((db, id): (web::Data<Structsy>, String)) -> Result<HttpResponse, Error> {
-    let p_id: structsy::Ref<Coffee> = id.parse()?;
+async fn update_coffee(
+    (db, coffee, request): (web::Data<Structsy>, web::Json<Coffee>, HttpRequest),
+) -> Result<HttpResponse, Error> {
+    let p_id: structsy::Ref<Coffee> = request.match_info()["id"].parse()?;
+    let mut tx = db.begin()?;
+    tx.update(&p_id, &coffee.0)?;
+    tx.commit()?;
+    Ok(HttpResponse::from("OK"))
+}
+async fn delete_coffee(
+    (db, request): (web::Data<Structsy>, HttpRequest),
+) -> Result<HttpResponse, Error> {
+    let p_id: structsy::Ref<Coffee> = request.match_info()["id"].parse()?;
     let mut tx = db.begin()?;
     tx.delete(&p_id)?;
     tx.commit()?;
@@ -95,12 +121,26 @@ async fn drink_beer(
 async fn list_beers(db: web::Data<Structsy>) -> Result<HttpResponse, Error> {
     let mut beers = Vec::new();
     for (id, beer) in db.scan::<Beer>()? {
-        beers.push((id.to_string(), beer));
+        beers.push(BeerItem {
+            id: id.to_string(),
+            beer,
+        });
     }
     Ok(HttpResponse::Ok().json(BeerList { beers }))
 }
-async fn delete_beer((db, id): (web::Data<Structsy>, String)) -> Result<HttpResponse, Error> {
-    let p_id: structsy::Ref<Beer> = id.parse()?;
+async fn update_beer(
+    (db, beer, request): (web::Data<Structsy>, web::Json<Beer>, HttpRequest),
+) -> Result<HttpResponse, Error> {
+    let p_id: structsy::Ref<Beer> = request.match_info()["id"].parse()?;
+    let mut tx = db.begin()?;
+    tx.update(&p_id, &beer.0)?;
+    tx.commit()?;
+    Ok(HttpResponse::from("OK"))
+}
+async fn delete_beer(
+    (db, request): (web::Data<Structsy>, HttpRequest),
+) -> Result<HttpResponse, Error> {
+    let p_id: structsy::Ref<Beer> = request.match_info()["id"].parse()?;
     let mut tx = db.begin()?;
     tx.delete(&p_id)?;
     tx.commit()?;
@@ -120,13 +160,15 @@ async fn main() -> Result<(), Error> {
                 web::scope("coffee")
                     .service(web::resource("create").route(web::post().to(drink_coffee)))
                     .service(web::resource("list").route(web::get().to(list_coffees)))
-                    .service(web::resource("delete").route(web::get().to(delete_coffee))),
+                    .service(web::resource("delete/update").route(web::post().to(update_coffee)))
+                    .service(web::resource("delete/{id}").route(web::delete().to(delete_coffee))),
             )
             .service(
                 web::scope("beer")
                     .service(web::resource("create").route(web::post().to(drink_beer)))
                     .service(web::resource("list").route(web::get().to(list_beers)))
-                    .service(web::resource("delete").route(web::get().to(delete_beer))),
+                    .service(web::resource("delete/{id}").route(web::post().to(update_beer)))
+                    .service(web::resource("delete/{id}").route(web::delete().to(delete_beer))),
             )
     })
     .bind("127.0.0.1:8080")?
