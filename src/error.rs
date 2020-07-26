@@ -1,5 +1,6 @@
 use persy::PersyError;
-use std::{io::Error as IOError, sync::PoisonError};
+use std::fmt::{Display, Formatter};
+use std::{error::Error, io::Error as IOError, sync::PoisonError};
 
 #[derive(Debug)]
 pub enum StructsyError {
@@ -30,3 +31,19 @@ impl From<IOError> for StructsyError {
 }
 
 pub type SRes<T> = Result<T, StructsyError>;
+
+impl Error for StructsyError {}
+
+impl Display for StructsyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            &StructsyError::PersyError(pe) => write!(f, "Persy Error: {}", pe),
+            &StructsyError::StructAlreadyDefined(name) => write!(f, "Struct with name '{}' already defined ", name),
+            &StructsyError::StructNotDefined(name) => writeln!(f, "Struct with name '{}', already defined", name),
+            &StructsyError::IOError => writeln!(f, "IOError"),
+            &StructsyError::PoisonedLock => writeln!(f, "PoisonedLock"),
+            &StructsyError::MigrationNotSupported(name) => writeln!(f, "Migration of Struct '{}' not supported", name),
+            &StructsyError::InvalidId => writeln!(f, "Invalid ID"),
+        }
+    }
+}
