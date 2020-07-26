@@ -149,25 +149,25 @@ async fn delete_beer(
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
-    let structsy = Structsy::open("track.db")?;
+    let structsy = Structsy::open("target/track.db")?;
     structsy.define::<Coffee>()?;
     structsy.define::<Beer>()?;
     let data_persistence = web::Data::new(structsy);
     HttpServer::new(move || {
         App::new()
-            .data(data_persistence.clone())
+            .app_data(data_persistence.clone())
             .service(
                 web::scope("coffee")
                     .service(web::resource("create").route(web::post().to(drink_coffee)))
                     .service(web::resource("list").route(web::get().to(list_coffees)))
-                    .service(web::resource("delete/update").route(web::post().to(update_coffee)))
+                    .service(web::resource("update/{id}").route(web::post().to(update_coffee)))
                     .service(web::resource("delete/{id}").route(web::delete().to(delete_coffee))),
             )
             .service(
                 web::scope("beer")
                     .service(web::resource("create").route(web::post().to(drink_beer)))
                     .service(web::resource("list").route(web::get().to(list_beers)))
-                    .service(web::resource("delete/{id}").route(web::post().to(update_beer)))
+                    .service(web::resource("update/{id}").route(web::post().to(update_beer)))
                     .service(web::resource("delete/{id}").route(web::delete().to(delete_beer))),
             )
     })
