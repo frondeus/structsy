@@ -24,6 +24,7 @@ pub enum FieldValueType {
     String,
     Ref(String),
     Embedded(StructDescription),
+    Enum(EnumDescription),
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -60,6 +61,10 @@ impl FieldValueType {
                 let s = StructDescription::read(read)?;
                 FieldValueType::Embedded(s)
             }
+            17 => {
+                let s = EnumDescription::read(read)?;
+                FieldValueType::Enum(s)
+            }
             _ => panic!("error on de-serialization"),
         })
     }
@@ -85,6 +90,10 @@ impl FieldValueType {
             }
             FieldValueType::Embedded(t) => {
                 u8::write(&16, write)?;
+                t.write(write)?;
+            }
+            FieldValueType::Enum(t) => {
+                u8::write(&17, write)?;
                 t.write(write)?;
             }
         }
@@ -131,13 +140,16 @@ impl_field_type!(String, FieldValueType::String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> FieldValueType {
-        FieldValueType::Ref(T::get_description().name)
+        FieldValueType::Ref(T::get_description().get_name().to_string())
     }
 }
 
 impl<T: EmbeddedDescription> SimpleType for T {
     fn resolve() -> FieldValueType {
-        FieldValueType::Embedded(T::get_description())
+        match T::get_description() {
+            Description::Struct(s) => FieldValueType::Embedded(s),
+            Description::Enum(s) => FieldValueType::Enum(s),
+        }
     }
 }
 
@@ -264,7 +276,7 @@ impl FieldDescription {
 }
 
 pub struct InternalDescription {
-    pub desc: StructDescription,
+    pub desc: Description,
     pub checked: bool,
 }
 impl InternalDescription {
@@ -313,7 +325,130 @@ impl StructDescription {
         }
         false
     }
+
     pub(crate) fn get_field(&self, name: &str) -> Option<&FieldDescription> {
         self.fields.iter().filter(|f| f.name == name).next()
+    }
+
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct VariantDescription {
+    pub(crate) position: u32,
+    pub(crate) name: String,
+    pub(crate) ty: Option<FieldType>,
+}
+
+impl VariantDescription {
+    pub fn new(name: &str, position: u32, ty: Option<FieldType>) -> Self {
+        Self {
+            name: name.to_string(),
+            position,
+            ty,
+        }
+    }
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
+        self.name.write(write)?;
+        self.position.write(write)?;
+        if let Some(ty) = &self.ty {
+            true.write(write)?;
+            ty.write(write)?;
+        } else {
+            false.write(write)?;
+        }
+        Ok(())
+    }
+    fn read(read: &mut dyn Read) -> SRes<VariantDescription> {
+        let name = String::read(read)?;
+        let position = u32::read(read)?;
+        let ty = if bool::read(read)? {
+            Some(FieldType::read(read)?)
+        } else {
+            None
+        };
+        Ok(Self::new(&name, position, ty))
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct EnumDescription {
+    pub(crate) name: String,
+    pub(crate) variants: Vec<VariantDescription>,
+}
+
+impl EnumDescription {
+    pub fn new(name: &str, variants: &[VariantDescription]) -> Self {
+        EnumDescription {
+            name: name.to_string(),
+            variants: Vec::from(variants),
+        }
+    }
+
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
+        self.name.write(write)?;
+        (self.variants.len() as u32).write(write)?;
+        for variant in &self.variants {
+            variant.write(write)?;
+        }
+        Ok(())
+    }
+    fn read(read: &mut dyn Read) -> SRes<EnumDescription> {
+        let name = String::read(read)?;
+        let len = u32::read(read)?;
+        let mut variants = Vec::new();
+        for _ in 0..len {
+            variants.push(VariantDescription::read(read)?);
+        }
+        Ok(Self::new(&name, &variants))
+    }
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum Description {
+    Struct(StructDescription),
+    Enum(EnumDescription),
+}
+
+impl Description {
+    pub fn get_name(&self) -> String {
+        match self {
+            Description::Struct(s) => s.get_name(),
+            Description::Enum(e) => e.get_name(),
+        }
+    }
+
+    pub fn has_refer_to(&self, name: &str) -> bool {
+        match self {
+            Description::Struct(s) => s.has_refer_to(name),
+            Description::Enum(_e) => unimplemented!(),
+        }
+    }
+
+    pub fn write(&self, write: &mut dyn Write) -> SRes<()> {
+        match self {
+            Description::Struct(s) => {
+                1u8.write(write)?;
+                s.write(write)?;
+            }
+            Description::Enum(e) => {
+                2u8.write(write)?;
+                e.write(write)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn read(read: &mut dyn Read) -> SRes<Description> {
+        Ok(match u8::read(read)? {
+            1u8 => Description::Struct(StructDescription::read(read)?),
+            2u8 => Description::Enum(EnumDescription::read(read)?),
+            _ => panic!("wrong description serialization"),
+        })
     }
 }

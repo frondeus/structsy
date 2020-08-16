@@ -1,5 +1,5 @@
 use darling::ast::Data;
-use darling::{FromDeriveInput, FromField, FromMeta};
+use darling::{FromDeriveInput, FromField, FromMeta, FromVariant};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::Type::Path;
@@ -9,7 +9,7 @@ use syn::{AngleBracketedGenericArguments, GenericArgument, Ident, PathArguments,
 #[darling(attributes(index))]
 pub struct PersistentInfo {
     ident: Ident,
-    data: Data<(), PersistentAttr>,
+    data: Data<PersistentEnum, PersistentAttr>,
 }
 
 #[derive(FromMeta, Debug, Clone, PartialEq)]
@@ -22,6 +22,11 @@ impl Default for IndexMode {
     fn default() -> IndexMode {
         IndexMode::Cluster
     }
+}
+
+#[derive(FromVariant, Debug)]
+struct PersistentEnum {
+    ident: Ident,
 }
 
 #[derive(FromField, Debug)]
@@ -72,12 +77,13 @@ impl PersistentInfo {
 
     pub fn to_tokens(&self) -> TokenStream {
         let name = &self.ident;
-        let fields = self.field_infos();
-        let (desc, ser) = serialization_tokens(name, &fields);
-        let (indexes, impls) = indexes_tokens(name, &fields);
-        let filters = filter_tokens(name, &fields, false);
         let string_name = name.to_string();
-        quote! {
+        if self.data.is_struct() {
+            let fields = self.field_infos();
+            let (desc, ser) = serialization_tokens(name, &fields);
+            let (indexes, impls) = indexes_tokens(name, &fields);
+            let filters = filter_tokens(name, &fields, false);
+            quote! {
 
             impl structsy::internal::Persistent for #name {
 
@@ -95,34 +101,143 @@ impl PersistentInfo {
                 #impls
                 #filters
             }
+            }
+        } else {
+            let variants = self.data.as_ref().take_enum().expect("Only enum type supported");
+            let (desc, ser) = enum_serialization_tokens(name, &variants);
+
+            quote! {
+            impl structsy::internal::Persistent for #name {
+
+                #desc
+                #ser
+
+                fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
+                    Ok(())
+                }
+
+                fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                    Ok(())
+                }
+
+                fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                    Ok(())
+                }
+
+                fn get_name() -> &'static str {
+                    #string_name
+                }
+            }
+            }
         }
     }
 
     pub fn to_embedded_tokens(&self) -> TokenStream {
         let name = &self.ident;
-        let fields = self.field_infos();
-        let (desc, ser) = serialization_tokens(name, &fields);
-        let filters = filter_tokens(name, &fields, true);
 
-        for f in fields {
-            if f.index_mode.is_some() {
-                panic!("indexing not supported for Persistent Embedded structs");
+        if self.data.is_struct() {
+            let fields = self.field_infos();
+            let (desc, ser) = serialization_tokens(name, &fields);
+            let filters = filter_tokens(name, &fields, true);
+
+            for f in fields {
+                if f.index_mode.is_some() {
+                    panic!("indexing not supported for Persistent Embedded structs");
+                }
             }
-        }
 
-        quote! {
+            quote! {
+                impl structsy::internal::EmbeddedDescription for #name {
+                    #desc
+                }
+                impl structsy::internal::PersistentEmbedded for #name {
+                    #ser
+                }
+
+                impl #name {
+                    #filters
+                }
+            }
+        } else {
+            let variants = self.data.as_ref().take_enum().expect("Only enum type supported");
+            let (desc, ser) = enum_serialization_tokens(name, &variants);
+
+            quote! {
             impl structsy::internal::EmbeddedDescription for #name {
                 #desc
             }
             impl structsy::internal::PersistentEmbedded for #name {
                 #ser
             }
-
-            impl #name {
-                #filters
             }
         }
     }
+}
+fn enum_serialization_tokens(name: &Ident, variants: &Vec<&PersistentEnum>) -> (TokenStream, TokenStream) {
+    let enum_name = name.to_string();
+    let variants_meta = variants
+        .iter()
+        .enumerate()
+        .map(|(pos, vt)| {
+            let vt_name = vt.ident.to_string();
+            let index = pos as u32;
+            quote! {
+                structsy::internal::VariantDescription::new(#vt_name, #index, None),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let variants_write = variants
+        .iter()
+        .enumerate()
+        .map(|(pos, vt)| {
+            let index: u32 = pos as u32;
+            let ident = vt.ident.clone();
+            quote! {
+               #name::#ident => #index.write(write)?,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let variants_read = variants
+        .iter()
+        .enumerate()
+        .map(|(pos, vt)| {
+            let ident = vt.ident.clone();
+            let index: u32 = pos as u32;
+            quote! {
+               #index => #name::#ident,
+            }
+        })
+        .collect::<Vec<_>>();
+    let desc = quote! {
+            fn get_description() -> structsy::internal::Description {
+                let fields  = [
+                    #( #variants_meta )*
+                ];
+                structsy::internal::Description::Enum(
+                    structsy::internal::EnumDescription::new(#enum_name,&fields)
+                )
+            }
+    };
+    let ser = quote! {
+            fn write(&self,write:&mut std::io::Write) -> structsy::SRes<()> {
+                use structsy::internal::PersistentEmbedded;
+                match self {
+                    #( #variants_write )*
+                }
+                Ok(())
+            }
+
+            fn read(read:&mut std::io::Read) -> structsy::SRes<#name> {
+                use structsy::internal::PersistentEmbedded;
+                Ok(match u32::read(read)? {
+                    #( #variants_read )*
+                    _ => panic!("data on disc do not match code structure"),
+                })
+            }
+    };
+    (desc, ser)
 }
 
 fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
@@ -175,11 +290,13 @@ fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
 
     let struct_name = name.to_string();
     let desc = quote! {
-            fn get_description() -> structsy::internal::StructDescription {
+            fn get_description() -> structsy::internal::Description {
                 let fields  = [
                     #( #fields_meta )*
                 ];
-                structsy::internal::StructDescription::new(#struct_name,&fields)
+                structsy::internal::Description::Struct(
+                    structsy::internal::StructDescription::new(#struct_name,&fields)
+                )
             }
     };
     let serialization = quote! {

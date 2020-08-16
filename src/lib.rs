@@ -424,7 +424,7 @@ impl Structsy {
 #[cfg(test)]
 mod test {
     use super::{
-        internal::{find, find_range, find_range_tx, find_tx, FieldDescription, Query, StructDescription},
+        internal::{find, find_range, find_range_tx, find_tx, Description, FieldDescription, Query, StructDescription},
         Persistent, RangeIterator, Ref, SRes, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
@@ -439,12 +439,12 @@ mod test {
         fn get_name() -> &'static str {
             "ToTest"
         }
-        fn get_description() -> StructDescription {
+        fn get_description() -> Description {
             let fields: [FieldDescription; 2] = [
                 FieldDescription::new::<String>(0, "name", Some(ValueMode::CLUSTER)),
                 FieldDescription::new::<u32>(1, "length", None),
             ];
-            StructDescription::new("ToTest", &fields)
+            Description::Struct(StructDescription::new("ToTest", &fields))
         }
         fn write(&self, write: &mut dyn Write) -> SRes<()> {
             use super::PersistentEmbedded;
@@ -598,8 +598,8 @@ mod test {
         fn get_name() -> &'static str {
             "Pers"
         }
-        fn get_description() -> StructDescription {
-            StructDescription::new("Pers", &Vec::new())
+        fn get_description() -> Description {
+            Description::Struct(StructDescription::new("Pers", &Vec::new()))
         }
         fn write(&self, _write: &mut dyn Write) -> SRes<()> {
             Ok(())

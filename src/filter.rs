@@ -1,5 +1,6 @@
 use crate::{
     index::{find, find_range, find_range_tx, find_tx},
+    internal::Description,
     queries::StructsyFilter,
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
 };
@@ -634,14 +635,18 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
 
     fn is_indexed(name: &str) -> Option<String> {
         let desc = T::get_description();
-        if let Some(f) = desc.get_field(name) {
-            if f.indexed.is_some() {
-                Some(format!("{}.{}", desc.name, f.name))
+        if let Description::Struct(st) = &desc {
+            if let Some(f) = st.get_field(name) {
+                if f.indexed.is_some() {
+                    Some(format!("{}.{}", st.get_name(), f.name))
+                } else {
+                    None
+                }
             } else {
-                None
+                panic!("field with name:'{}' not found", name)
             }
         } else {
-            panic!("field with name:'{}' not found", name)
+            None
         }
     }
 

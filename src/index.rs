@@ -116,7 +116,7 @@ fn map_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Vec<(Ref<P>
 }
 
 fn map_unique_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId>) -> Option<(Ref<P>, P)> {
-    let name = P::get_description().name;
+    let name = P::get_description().get_name();
     if let Some(id) = entry.into_iter().next() {
         if let Ok(val) = tx_read::<P>(&name, tx, &id) {
             let r = Ref::new(id);
@@ -130,7 +130,7 @@ fn map_unique_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId
 }
 
 fn map_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
-    let name = P::get_description().name;
+    let name = P::get_description().get_name();
     entry
         .into_iter()
         .filter_map(|id| {
@@ -234,7 +234,7 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
 
     pub fn next_tx<'b: 'a>(&'b mut self) -> Option<(Vec<(Ref<P>, P)>, K, RefSytx<'a>)> {
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
-            let name = P::get_description().name;
+            let name = P::get_description().get_name();
             let mut pv = Vec::new();
             for id in v {
                 if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
@@ -265,7 +265,7 @@ impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
             }
 
             if let Some((k, v)) = self.persy_iter.next() {
-                let name = P::get_description().name;
+                let name = P::get_description().get_name();
                 let mut pv = Vec::new();
                 for id in v {
                     let tx = self.persy_iter.tx();
@@ -305,7 +305,7 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
     }
 
     pub fn next_tx(&'a mut self) -> Option<(Ref<P>, P, K, RefSytx<'a>)> {
-        let name = P::get_description().name;
+        let name = P::get_description().get_name();
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
             if let Some(id) = v.into_iter().next() {
                 if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
@@ -326,7 +326,7 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
 impl<'a, P: Persistent, K: IndexType> Iterator for UniqueRangeIterator<'a, K, P> {
     type Item = (Ref<P>, P, K);
     fn next(&mut self) -> Option<Self::Item> {
-        let name = P::get_description().name;
+        let name = P::get_description().get_name();
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
             if let Some(id) = v.into_iter().next() {
                 if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {

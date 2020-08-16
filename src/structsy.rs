@@ -1,5 +1,5 @@
 use crate::{
-    internal::StructDescription, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig, StructsyError,
+    internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig, StructsyError,
     StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
@@ -32,7 +32,7 @@ impl Definitions {
             } else {
                 let desc = T::get_description();
                 if x.desc != desc {
-                    Err(StructsyError::StructNotDefined(desc.name.clone()))
+                    Err(StructsyError::StructNotDefined(desc.get_name()))
                 } else {
                     x.checked = true;
                     Ok(())
@@ -49,14 +49,14 @@ impl Definitions {
 
     pub fn define<T: Persistent, F>(&self, create: F) -> SRes<bool>
     where
-        F: Fn(&StructDescription) -> SRes<()>,
+        F: Fn(&Description) -> SRes<()>,
     {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
-        match lock.entry(desc.name.clone()) {
+        match lock.entry(desc.get_name()) {
             Entry::Occupied(x) => {
                 if x.get().desc != desc {
-                    return Err(StructsyError::StructAlreadyDefined(desc.name.clone()));
+                    return Err(StructsyError::StructAlreadyDefined(desc.get_name()));
                 }
                 Ok(false)
             }
@@ -102,10 +102,10 @@ impl StructsyImpl {
         let persy = Persy::open(&config.path, Config::new())?;
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
-            .filter_map(|(_, r)| StructDescription::read(&mut Cursor::new(r)).ok())
+            .filter_map(|(_, r)| Description::read(&mut Cursor::new(r)).ok())
             .map(|d| {
                 (
-                    d.name.clone(),
+                    d.get_name(),
                     InternalDescription {
                         desc: d,
                         checked: false,
@@ -133,7 +133,7 @@ impl StructsyImpl {
             desc.write(&mut buff)?;
             let mut tx = structsy.begin()?;
             tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
-            tx.trans.create_segment(&desc.name)?;
+            tx.trans.create_segment(&desc.get_name())?;
             T::declare(&mut tx)?;
             tx.commit()?;
             Ok(())
@@ -162,7 +162,7 @@ impl StructsyImpl {
     }
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
         self.check_defined::<T>()?;
-        let name = T::get_description().name;
+        let name = T::get_description().get_name();
         Ok(RecordIter {
             iter: self.persy.scan(&name)?,
             marker: PhantomData,

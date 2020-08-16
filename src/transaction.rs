@@ -170,7 +170,7 @@ pub trait StructsyTx: Sytx + Sized {
         self.structsy().structsy_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
-        let segment = T::get_description().name;
+        let segment = T::get_description().get_name();
         let id = self.tx().trans.insert(&segment, &buff)?;
         let id_ref = Ref::new(id);
         sct.put_indexes(self, &id_ref)?;
@@ -293,7 +293,7 @@ pub trait StructsyTx: Sytx + Sized {
     /// ```
     fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
         self.structsy().structsy_impl.check_defined::<T>()?;
-        let name = T::get_description().name;
+        let name = T::get_description().get_name();
         let implc = self.structsy().structsy_impl.clone();
         let iter = self.tx().trans.scan(&name)?;
         Ok(TxRecordIter::new(iter, implc))

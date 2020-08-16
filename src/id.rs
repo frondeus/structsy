@@ -12,7 +12,7 @@ pub struct Ref<T> {
 impl<T: Persistent> Ref<T> {
     pub(crate) fn new(persy_id: PersyId) -> Ref<T> {
         Ref {
-            type_name: T::get_description().name.clone(),
+            type_name: T::get_description().get_name(),
             raw_id: persy_id,
             ph: PhantomData,
         }

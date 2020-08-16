@@ -29,6 +29,12 @@ struct Embed {
     val_u8: u8,
 }
 
+#[derive(Persistent, PartialEq, Debug)]
+enum EnumExample {
+    One,
+    Two,
+}
+
 #[test]
 fn test_persist_all_values() {
     let dir = tempdir().expect("can make a tempdir");

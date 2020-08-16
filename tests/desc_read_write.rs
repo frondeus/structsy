@@ -1,5 +1,5 @@
 use std::io::Cursor;
-use structsy::{internal::StructDescription, Persistent, Ref};
+use structsy::{internal::Description, Persistent, Ref};
 use structsy_derive::{Persistent, PersistentEmbedded};
 
 #[derive(Persistent)]
@@ -62,6 +62,6 @@ fn test_read_write_desc() {
     let desc = PersistentData::get_description();
     let mut buff = Vec::new();
     desc.write(&mut buff).unwrap();
-    let read_desc = StructDescription::read(&mut Cursor::new(buff)).unwrap();
+    let read_desc = Description::read(&mut Cursor::new(buff)).unwrap();
     assert_eq!(desc, read_desc);
 }
