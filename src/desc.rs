@@ -343,11 +343,18 @@ pub struct VariantDescription {
 }
 
 impl VariantDescription {
-    pub fn new(name: &str, position: u32, ty: Option<FieldType>) -> Self {
+    pub fn new(name: &str, position: u32) -> Self {
         Self {
             name: name.to_string(),
             position,
-            ty,
+            ty: None,
+        }
+    }
+    pub fn new_value<T: SupportedType>(name: &str, position: u32) -> Self {
+        Self {
+            name: name.to_string(),
+            position,
+            ty: Some(FieldType::resolve::<T>()),
         }
     }
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
@@ -369,7 +376,7 @@ impl VariantDescription {
         } else {
             None
         };
-        Ok(Self::new(&name, position, ty))
+        Ok(Self { name, position, ty })
     }
 }
 

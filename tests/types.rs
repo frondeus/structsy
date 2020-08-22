@@ -34,6 +34,14 @@ enum EnumExample {
     One,
     Two,
 }
+#[derive(PersistentEmbedded, PartialEq, Debug)]
+struct InEnum {}
+
+#[derive(Persistent, PartialEq, Debug)]
+enum EnumEmbeddedExample {
+    One(InEnum),
+    Two,
+}
 
 #[test]
 fn test_persist_all_values() {

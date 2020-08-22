@@ -1,4 +1,4 @@
-use darling::ast::Data;
+use darling::ast::{Data, Fields, Style};
 use darling::{FromDeriveInput, FromField, FromMeta, FromVariant};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -27,6 +27,7 @@ impl Default for IndexMode {
 #[derive(FromVariant, Debug)]
 struct PersistentEnum {
     ident: Ident,
+    fields: Fields<syn::Type>,
 }
 
 #[derive(FromField, Debug)]
@@ -48,12 +49,8 @@ struct FieldInfo {
 }
 
 impl PersistentInfo {
-    fn field_infos(&self) -> Vec<FieldInfo> {
-        self.data
-            .as_ref()
-            .take_struct()
-            .expect("Only struct type supported")
-            .fields
+    fn field_infos(&self, fields: &Fields<PersistentAttr>) -> Vec<FieldInfo> {
+        fields
             .iter()
             .filter_map(|f| {
                 let field = f.ident.clone().unwrap();
@@ -78,56 +75,58 @@ impl PersistentInfo {
     pub fn to_tokens(&self) -> TokenStream {
         let name = &self.ident;
         let string_name = name.to_string();
-        if self.data.is_struct() {
-            let fields = self.field_infos();
-            let (desc, ser) = serialization_tokens(name, &fields);
-            let (indexes, impls) = indexes_tokens(name, &fields);
-            let filters = filter_tokens(name, &fields, false);
-            quote! {
+        match &self.data {
+            Data::Struct(data) => {
+                let fields = self.field_infos(&data);
+                let (desc, ser) = serialization_tokens(name, &fields);
+                let (indexes, impls) = indexes_tokens(name, &fields);
+                let filters = filter_tokens(name, &fields, false);
+                quote! {
 
-            impl structsy::internal::Persistent for #name {
+                impl structsy::internal::Persistent for #name {
 
-                fn get_name() -> &'static str {
-                    #string_name
+                    fn get_name() -> &'static str {
+                        #string_name
+                    }
+
+                    #desc
+                    #ser
+
+                    #indexes
                 }
 
-                #desc
-                #ser
-
-                #indexes
-            }
-
-            impl #name {
-                #impls
-                #filters
-            }
-            }
-        } else {
-            let variants = self.data.as_ref().take_enum().expect("Only enum type supported");
-            let (desc, ser) = enum_serialization_tokens(name, &variants);
-
-            quote! {
-            impl structsy::internal::Persistent for #name {
-
-                #desc
-                #ser
-
-                fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
-                    Ok(())
+                impl #name {
+                    #impls
+                    #filters
                 }
-
-                fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                    Ok(())
-                }
-
-                fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
-                    Ok(())
-                }
-
-                fn get_name() -> &'static str {
-                    #string_name
                 }
             }
+            Data::Enum(variants) => {
+                let (desc, ser) = enum_serialization_tokens(name, &variants);
+
+                quote! {
+                impl structsy::internal::Persistent for #name {
+
+                    #desc
+                    #ser
+
+                    fn declare(db:&mut structsy::Sytx)-> structsy::SRes<()> {
+                        Ok(())
+                    }
+
+                    fn put_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                        Ok(())
+                    }
+
+                    fn remove_indexes(&self, tx:&mut structsy::Sytx, id:&structsy::Ref<Self>) -> structsy::SRes<()> {
+                        Ok(())
+                    }
+
+                    fn get_name() -> &'static str {
+                        #string_name
+                    }
+                }
+                }
             }
         }
     }
@@ -135,78 +134,115 @@ impl PersistentInfo {
     pub fn to_embedded_tokens(&self) -> TokenStream {
         let name = &self.ident;
 
-        if self.data.is_struct() {
-            let fields = self.field_infos();
-            let (desc, ser) = serialization_tokens(name, &fields);
-            let filters = filter_tokens(name, &fields, true);
+        match &self.data {
+            Data::Struct(data) => {
+                let fields = self.field_infos(&data);
+                let (desc, ser) = serialization_tokens(name, &fields);
+                let filters = filter_tokens(name, &fields, true);
 
-            for f in fields {
-                if f.index_mode.is_some() {
-                    panic!("indexing not supported for Persistent Embedded structs");
+                for f in fields {
+                    if f.index_mode.is_some() {
+                        panic!("indexing not supported for Persistent Embedded structs");
+                    }
+                }
+
+                quote! {
+                    impl structsy::internal::EmbeddedDescription for #name {
+                        #desc
+                    }
+                    impl structsy::internal::PersistentEmbedded for #name {
+                        #ser
+                    }
+
+                    impl #name {
+                        #filters
+                    }
                 }
             }
+            Data::Enum(variants) => {
+                let (desc, ser) = enum_serialization_tokens(name, &variants);
 
-            quote! {
+                quote! {
                 impl structsy::internal::EmbeddedDescription for #name {
                     #desc
                 }
                 impl structsy::internal::PersistentEmbedded for #name {
                     #ser
                 }
-
-                impl #name {
-                    #filters
                 }
-            }
-        } else {
-            let variants = self.data.as_ref().take_enum().expect("Only enum type supported");
-            let (desc, ser) = enum_serialization_tokens(name, &variants);
-
-            quote! {
-            impl structsy::internal::EmbeddedDescription for #name {
-                #desc
-            }
-            impl structsy::internal::PersistentEmbedded for #name {
-                #ser
-            }
             }
         }
     }
 }
-fn enum_serialization_tokens(name: &Ident, variants: &Vec<&PersistentEnum>) -> (TokenStream, TokenStream) {
+fn enum_serialization_tokens(name: &Ident, variants: &[PersistentEnum]) -> (TokenStream, TokenStream) {
     let enum_name = name.to_string();
-    let variants_meta = variants
+    let variants_data = variants
         .iter()
         .enumerate()
         .map(|(pos, vt)| {
-            let vt_name = vt.ident.to_string();
             let index = pos as u32;
+            let tt = match vt.fields.style {
+                Style::Tuple => {
+                    if vt.fields.fields.len() == 1 {
+                        match &vt.fields.fields[0] {
+                            Type::Path(p) => Some(p.clone()),
+                            _ => panic!("Supported only named types as enums values"),
+                        }
+                    } else if vt.fields.fields.len() == 0 {
+                        None
+                    } else {
+                        panic!("Tuples with multiple values not supported")
+                    }
+                }
+                Style::Unit => None,
+                _ => panic!("Supported only named types as enums values"),
+            };
+            (vt.ident.clone(), index, tt)
+        })
+        .collect::<Vec<_>>();
+
+    let variants_meta = variants_data.iter().map(|(ident, index, tt)| {
+        let vt_name = ident.to_string();
+        if let Some(t) = tt {
             quote! {
-                structsy::internal::VariantDescription::new(#vt_name, #index, None),
+                structsy::internal::VariantDescription::new_value::<#t>(#vt_name, #index),
+            }
+        } else {
+            quote! {
+                structsy::internal::VariantDescription::new(#vt_name, #index),
+            }
+        }
+    });
+
+    let variants_write = variants_data
+        .iter()
+        .map(|(ident, index, tt)| {
+            if let Some(_t) = tt {
+                quote! {
+                   #name::#ident(v) => {
+                        #index.write(write)?;
+                        v.write(write)?;
+                   }
+                }
+            } else {
+                quote! {
+                   #name::#ident => #index.write(write)?,
+                }
             }
         })
         .collect::<Vec<_>>();
 
-    let variants_write = variants
+    let variants_read = variants_data
         .iter()
-        .enumerate()
-        .map(|(pos, vt)| {
-            let index: u32 = pos as u32;
-            let ident = vt.ident.clone();
-            quote! {
-               #name::#ident => #index.write(write)?,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let variants_read = variants
-        .iter()
-        .enumerate()
-        .map(|(pos, vt)| {
-            let ident = vt.ident.clone();
-            let index: u32 = pos as u32;
-            quote! {
-               #index => #name::#ident,
+        .map(|(ident, index, tt)| {
+            if let Some(t) = tt {
+                quote! {
+                   #index => #name::#ident(#t::read(read)?),
+                }
+            } else {
+                quote! {
+                   #index => #name::#ident,
+                }
             }
         })
         .collect::<Vec<_>>();
