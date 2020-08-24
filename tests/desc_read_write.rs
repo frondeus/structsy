@@ -57,9 +57,36 @@ struct EmbeddedData {
 #[derive(PersistentEmbedded)]
 pub struct OtherEmbedded {}
 
+#[derive(Persistent)]
+pub enum Simple {
+    Value(ValueEnum),
+    Other,
+}
+
+#[derive(PersistentEmbedded)]
+pub struct ValueEnum {
+    string: String,
+    emb: EmbeddedEnum,
+}
+
+#[derive(PersistentEmbedded)]
+pub enum EmbeddedEnum {
+    X,
+    Y,
+}
+
 #[test]
 fn test_read_write_desc() {
     let desc = PersistentData::get_description();
+    let mut buff = Vec::new();
+    desc.write(&mut buff).unwrap();
+    let read_desc = Description::read(&mut Cursor::new(buff)).unwrap();
+    assert_eq!(desc, read_desc);
+}
+
+#[test]
+fn test_read_write_desc_enum() {
+    let desc = Simple::get_description();
     let mut buff = Vec::new();
     desc.write(&mut buff).unwrap();
     let read_desc = Description::read(&mut Cursor::new(buff)).unwrap();

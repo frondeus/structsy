@@ -23,8 +23,7 @@ pub enum FieldValueType {
     Bool,
     String,
     Ref(String),
-    Embedded(StructDescription),
-    Enum(EnumDescription),
+    Embedded(Description),
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -58,12 +57,8 @@ impl FieldValueType {
                 FieldValueType::Ref(s)
             }
             16 => {
-                let s = StructDescription::read(read)?;
+                let s = Description::read(read)?;
                 FieldValueType::Embedded(s)
-            }
-            17 => {
-                let s = EnumDescription::read(read)?;
-                FieldValueType::Enum(s)
             }
             _ => panic!("error on de-serialization"),
         })
@@ -90,10 +85,6 @@ impl FieldValueType {
             }
             FieldValueType::Embedded(t) => {
                 u8::write(&16, write)?;
-                t.write(write)?;
-            }
-            FieldValueType::Enum(t) => {
-                u8::write(&17, write)?;
                 t.write(write)?;
             }
         }
@@ -146,10 +137,7 @@ impl<T: Persistent> SimpleType for Ref<T> {
 
 impl<T: EmbeddedDescription> SimpleType for T {
     fn resolve() -> FieldValueType {
-        match T::get_description() {
-            Description::Struct(s) => FieldValueType::Embedded(s),
-            Description::Enum(s) => FieldValueType::Enum(s),
-        }
+        FieldValueType::Embedded(T::get_description())
     }
 }
 
