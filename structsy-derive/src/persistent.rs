@@ -607,10 +607,10 @@ fn basic_filter_gen(
 
     quote! {
         pub fn #method_ident(builder:&mut #builder,v:#tt){
-            builder.#condition_filter(#field_name,v,|x|&x.#field);
+            builder.#condition_filter(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
         }
         pub fn #method_range_ident< R: std::ops::RangeBounds<#tt>>(builder:&mut #builder,v:R){
-            builder.#range_filter(#field_name,v,|x|&x.#field);
+            builder.#range_filter(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
         }
     }
 }
@@ -680,7 +680,7 @@ fn double_template_field_methods(
             #basic
 
             pub fn #method_ident_query(builder:&mut #filter,v:structsy::StructsyQuery<#z>){
-                builder.#method_name(#field_name,v,|x|&x.#field);
+                builder.#method_name(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
             }
 
         }
@@ -707,7 +707,7 @@ fn template_field_methods(
         let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
         quote! {
             pub fn #method_ident(builder:&mut #filter,v:structsy::EmbeddedFilter<#x>){
-                builder.#condition_method(#field_name,v,|x|&x.#field);
+                builder.#condition_method(structsy::interna::Field::new(#field_name,|x|&x.#field),v);
             }
         }
     } else if ty.to_string() == "Ref" {
@@ -720,7 +720,7 @@ fn template_field_methods(
         quote! {
             #basic
             pub fn #method_ident_query(builder:&mut #filter,v:structsy::StructsyQuery<#x>){
-                builder.ref_query(#field_name,v,|x|&x.#field);
+                builder.ref_query(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
             }
         }
     } else {
@@ -737,10 +737,10 @@ fn template_field_methods(
             let condition_method_contains = Ident::new(&condition_method_name_contains, Span::call_site());
             quote! {
                 pub fn #method_ident(builder:&mut #filter,v:#ty<#x>){
-                    builder.#condition_method(#field_name,v,|x|&x.#field);
+                    builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
                 }
                 pub fn #method_ident_contains(builder:&mut #filter,v:#x){
-                    builder.#condition_method_contains(#field_name,v,|x|&x.#field);
+                    builder.#condition_method_contains(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
                 }
             }
         } else {
@@ -752,7 +752,7 @@ fn template_field_methods(
                 let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
                 quote! {
                     pub fn #method_str_ident(builder:&mut #filter,v:&str){
-                        builder.#condition_method(#field_name,v.to_string(),|x|&x.#field);
+                        builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v.to_string());
                     }
                 }
             } else {
@@ -771,10 +771,10 @@ fn template_field_methods(
                 #basic
                 #additional
                 pub fn #method_ident_contains(builder:&mut #filter,v:#x){
-                    builder.#condition_method_contains(#field_name,v,|x|&x.#field);
+                    builder.#condition_method_contains(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
                 }
                 pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> >(builder:&mut #filter,v:R){
-                    builder.#range_single_method(#field_name,v,|x|&x.#field);
+                    builder.#range_single_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
                 }
             }
         }
@@ -792,14 +792,14 @@ fn simple_field_methos(is_simple: bool, filter: TokenStream, field: Ident, ty: I
         let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
         quote! {
             pub fn #method_ident(builder:&mut #filter,v:structsy::EmbeddedFilter<#ty>){
-                builder.#condition_method(#field_name,v,|x|&x.#field);
+                builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
             }
         }
     } else if ty.to_string() == "bool" {
         let condition_method = Ident::new("simple_condition", Span::call_site());
         quote! {
             pub fn #method_ident(builder:&mut #filter,v:#ty){
-                builder.#condition_method(#field_name,v,|x|&x.#field);
+                builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
             }
         }
     } else {
@@ -810,10 +810,10 @@ fn simple_field_methos(is_simple: bool, filter: TokenStream, field: Ident, ty: I
             let range_method = Ident::new(&format!("{}_range_str", mode), Span::call_site());
             quote! {
                 pub fn #method_str_ident(builder:&mut #filter,v:&str){
-                    builder.#condition_method(#field_name,v.to_string(),|x|&x.#field);
+                    builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v.to_string());
                 }
                 pub fn #method_str_ident_range<'a,R: std::ops::RangeBounds<&'a str>>(builder:&mut #filter,v:R){
-                    builder.#range_method(#field_name,v,|x|&x.#field);
+                    builder.#range_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
                 }
             }
         } else {

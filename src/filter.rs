@@ -1,6 +1,6 @@
 use crate::{
     index::{find, find_range, find_range_tx, find_tx},
-    internal::Description,
+    internal::{Description, Field},
     queries::StructsyFilter,
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
 };
@@ -704,101 +704,101 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.steps.push(filter);
     }
 
-    pub fn indexable_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &V)
+    pub fn indexable_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: IndexType + PartialEq + 'static,
     {
-        if let Some(index_name) = Self::is_indexed(name) {
+        if let Some(index_name) = Self::is_indexed(field.name) {
             self.add(IndexFilter::new(index_name, value))
         } else {
-            self.add(ConditionFilter::new(access, value))
+            self.add(ConditionFilter::new(field.access, value))
         }
     }
 
-    pub fn simple_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    pub fn simple_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn indexable_vec_condition<V>(&mut self, _name: &str, value: Vec<V>, access: fn(&T) -> &Vec<V>)
+    pub fn indexable_vec_condition<V>(&mut self, field: Field<T, Vec<V>>, value: Vec<V>)
     where
         V: IndexType + PartialEq + 'static,
     {
         //TODO: support lookup in index
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn simple_vec_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    pub fn simple_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn simple_vec_single_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &Vec<V>)
+    pub fn simple_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionSingleFilter::new(access, value))
+        self.add(ConditionSingleFilter::new(field.access, value))
     }
 
-    pub fn indexable_vec_single_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &Vec<V>)
+    pub fn indexable_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
         V: IndexType + PartialEq + 'static,
     {
-        if let Some(index_name) = Self::is_indexed(name) {
+        if let Some(index_name) = Self::is_indexed(field.name) {
             self.add(IndexFilter::new(index_name, value))
         } else {
-            self.add(ConditionSingleFilter::new(access, value))
+            self.add(ConditionSingleFilter::new(field.access, value))
         }
     }
 
-    pub fn indexable_option_single_condition<V>(&mut self, name: &str, value: V, access: fn(&T) -> &Option<V>)
+    pub fn indexable_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
     where
         V: IndexType + PartialEq + 'static,
     {
-        self.indexable_option_condition(name, Some(value), access);
+        self.indexable_option_condition(field, Some(value));
     }
 
-    pub fn simple_option_single_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &Option<V>)
+    pub fn simple_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
     where
         V: IndexType + PartialEq + 'static,
     {
-        self.add(ConditionFilter::<Option<V>, T>::new(access, Some(value)));
+        self.add(ConditionFilter::<Option<V>, T>::new(field.access, Some(value)));
     }
 
-    pub fn indexable_option_condition<V>(&mut self, name: &str, value: Option<V>, access: fn(&T) -> &Option<V>)
+    pub fn indexable_option_condition<V>(&mut self, field: Field<T, Option<V>>, value: Option<V>)
     where
         V: IndexType + PartialEq + 'static,
     {
-        if let Some(index_name) = Self::is_indexed(name) {
+        if let Some(index_name) = Self::is_indexed(field.name) {
             if let Some(v) = value {
                 self.add(IndexFilter::new(index_name, v));
             } else {
-                self.add(ConditionFilter::<Option<V>, T>::new(access, value));
+                self.add(ConditionFilter::<Option<V>, T>::new(field.access, value));
             }
         } else {
-            self.add(ConditionFilter::<Option<V>, T>::new(access, value));
+            self.add(ConditionFilter::<Option<V>, T>::new(field.access, value));
         }
     }
 
-    pub fn indexable_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &V)
+    pub fn indexable_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
         V: IndexType + PartialOrd + 'static,
         R: RangeBounds<V>,
     {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, access, start, end))
+        if let Some(index_name) = Self::is_indexed(field.name) {
+            self.add(RangeIndexFilter::new(index_name, field.access, start, end))
         } else {
-            self.add(RangeConditionFilter::new(access, start, end))
+            self.add(RangeConditionFilter::new(field.access, start, end))
         }
     }
 
-    pub fn indexable_range_str<'a, R>(&mut self, name: &str, range: R, access: fn(&T) -> &String)
+    pub fn indexable_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
     where
         R: RangeBounds<&'a str>,
     {
@@ -812,28 +812,28 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Bound::Excluded(x) => Bound::Excluded(x.to_string()),
             Bound::Unbounded => Bound::Unbounded,
         };
-        if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeIndexFilter::new(index_name, access, start, end))
+        if let Some(index_name) = Self::is_indexed(field.name) {
+            self.add(RangeIndexFilter::new(index_name, field.access, start, end))
         } else {
-            self.add(RangeConditionFilter::new(access, start, end))
+            self.add(RangeConditionFilter::new(field.access, start, end))
         }
     }
 
-    pub fn indexable_vec_single_range<V, R>(&mut self, name: &str, range: R, access: fn(&T) -> &Vec<V>)
+    pub fn indexable_vec_single_range<V, R>(&mut self, field: Field<T, Vec<V>>, range: R)
     where
         V: IndexType + PartialOrd + 'static,
         R: RangeBounds<V>,
     {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        if let Some(index_name) = Self::is_indexed(name) {
-            self.add(RangeSingleIndexFilter::new(index_name, access, start, end))
+        if let Some(index_name) = Self::is_indexed(field.name) {
+            self.add(RangeSingleIndexFilter::new(index_name, field.access, start, end))
         } else {
-            self.add(RangeSingleConditionFilter::new(access, start, end))
+            self.add(RangeSingleConditionFilter::new(field.access, start, end))
         }
     }
 
-    pub fn indexable_option_single_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
+    pub fn indexable_option_single_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
@@ -841,10 +841,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
-        self.add(RangeOptionConditionFilter::new(access, start, end, false))
+        self.add(RangeOptionConditionFilter::new(field.access, start, end, false))
     }
 
-    pub fn indexable_vec_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    pub fn indexable_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
@@ -852,10 +852,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
-        self.add(RangeConditionFilter::new(access, start, end))
+        self.add(RangeConditionFilter::new(field.access, start, end))
     }
 
-    pub fn indexable_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
+    pub fn indexable_option_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<Option<V>>,
@@ -876,51 +876,51 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         };
         // This may support index in future, but it does not now
         self.add(RangeOptionConditionFilter::new(
-            access,
+            field.access,
             start,
             end,
             none_end || none_start,
         ))
     }
 
-    pub fn simple_persistent_embedded<V>(&mut self, _name: &str, filter: EmbeddedFilter<V>, access: fn(&T) -> &V)
+    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
     where
         V: PersistentEmbedded + 'static,
     {
-        self.add(EmbeddedFieldFilter::new(filter, access))
+        self.add(EmbeddedFieldFilter::new(filter, field.access))
     }
-    pub fn ref_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>)
+    pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(QueryFilter::new(query, access))
+        self.add(QueryFilter::new(query, field.access))
     }
 
-    pub fn ref_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    pub fn ref_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn ref_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    pub fn ref_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
         V: Clone + PartialOrd + 'static,
         R: RangeBounds<V>,
     {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        self.add(RangeConditionFilter::new(access, start, end))
+        self.add(RangeConditionFilter::new(field.access, start, end))
     }
 
-    pub fn ref_vec_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    pub fn ref_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn ref_vec_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &V)
+    pub fn ref_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
@@ -928,23 +928,23 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
-        self.add(RangeConditionFilter::new(access, start, end))
+        self.add(RangeConditionFilter::new(field.access, start, end))
     }
 
-    pub fn ref_vec_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Vec<Ref<V>>)
+    pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(VecQueryFilter::new(query, access))
+        self.add(VecQueryFilter::new(query, field.access))
     }
-    pub fn ref_option_condition<V>(&mut self, _name: &str, value: V, access: fn(&T) -> &V)
+    pub fn ref_option_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(access, value))
+        self.add(ConditionFilter::new(field.access, value))
     }
 
-    pub fn ref_option_range<V, R>(&mut self, _name: &str, range: R, access: fn(&T) -> &Option<V>)
+    pub fn ref_option_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
     where
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<Option<V>>,
@@ -965,18 +965,18 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         };
         // This may support index in future, but it does not now
         self.add(RangeOptionConditionFilter::new(
-            access,
+            field.access,
             start,
             end,
             none_end || none_start,
         ))
     }
 
-    pub fn ref_option_query<V>(&mut self, _name: &str, query: StructsyQuery<V>, access: fn(&T) -> &Option<Ref<V>>)
+    pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(OptionQueryFilter::new(query, access))
+        self.add(OptionQueryFilter::new(query, field.access))
     }
 
     pub fn or(&mut self, filters: StructsyFilter<T>) {
