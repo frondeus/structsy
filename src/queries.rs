@@ -306,3 +306,118 @@ impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
         &mut self.builder
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Query, StructsyFilter};
+    use crate::{
+        filter::SimpleCondition,
+        internal::{Description, Field, FilterBuilder},
+        Persistent, PersistentEmbedded, Ref, SRes, Sytx,
+    };
+
+    use std::io::{Read, Write};
+    struct ToQuery {
+        first: String,
+        second: Vec<String>,
+    }
+    impl Persistent for ToQuery {
+        fn get_name() -> &'static str {
+            "ToQuery"
+        }
+        fn get_description() -> Description {
+            let fields = [
+                crate::internal::FieldDescription::new::<String>(0u32, "first", None),
+                crate::internal::FieldDescription::new::<Vec<String>>(2u32, "second", None),
+            ];
+            Description::Struct(crate::internal::StructDescription::new("ToQuery", &fields))
+        }
+        fn read(_read: &mut dyn Read) -> SRes<Self>
+        where
+            Self: std::marker::Sized,
+        {
+            unimplemented!()
+        }
+        fn remove_indexes(&self, _tx: &mut dyn Sytx, _id: &Ref<Self>) -> SRes<()>
+        where
+            Self: std::marker::Sized,
+        {
+            unimplemented!()
+        }
+        fn write(&self, _write: &mut dyn Write) -> SRes<()> {
+            unimplemented!()
+        }
+        fn put_indexes(&self, _tx: &mut dyn Sytx, _id: &Ref<Self>) -> SRes<()>
+        where
+            Self: std::marker::Sized,
+        {
+            unimplemented!()
+        }
+        fn declare(_db: &mut dyn Sytx) -> SRes<()> {
+            unimplemented!()
+        }
+    }
+    //fn condition
+
+    trait QueryAction<T, V, X>
+    where
+        T: Persistent,
+        V: PersistentEmbedded,
+    {
+        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: X);
+    }
+    impl<T, V> QueryAction<T, V, V> for Field<T, V>
+    where
+        T: Persistent + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
+    {
+        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+            filter_builder.simple_condition(self, value);
+        }
+    }
+
+    impl<T, V> QueryAction<T, Vec<V>, V> for Field<T, Vec<V>>
+    where
+        T: Persistent + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
+    {
+        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+            filter_builder.simple_vec_single_condition(self, value);
+        }
+    }
+
+    impl<T, V> QueryAction<T, Option<V>, V> for Field<T, Option<V>>
+    where
+        T: Persistent + 'static,
+        V: PersistentEmbedded + SimpleCondition<T, V> + PartialEq + Clone + 'static,
+    {
+        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+            filter_builder.simple_option_single_condition(self, value);
+        }
+    }
+
+    trait MyQuery {
+        fn by_name(self, first: String) -> Self;
+        fn by_second(self, second: String) -> Self;
+    }
+
+    impl MyQuery for StructsyFilter<ToQuery> {
+        fn by_name(mut self, first: String) -> Self {
+            let builder = self.filter_builder();
+            let field = Field::<ToQuery, String>::new("first", |x| &x.first);
+            QueryAction::simple(field, builder, first);
+            self
+        }
+        fn by_second(mut self, second: String) -> Self {
+            let builder = self.filter_builder();
+            let field = Field::<ToQuery, Vec<String>>::new("second", |x| &x.second);
+            QueryAction::simple(field, builder, second);
+            self
+        }
+    }
+    #[test]
+    fn test_query_build() {
+        let filter = StructsyFilter::<ToQuery>::new();
+        filter.by_name("one".to_string()).by_second("second".to_string());
+    }
+}

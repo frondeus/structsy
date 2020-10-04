@@ -1,5 +1,5 @@
 use crate::{
-    index::{find, find_range, find_range_tx, find_tx},
+    index::{find, find_range, find_range_tx, find_tx, IndexMark},
     internal::{Description, Field},
     queries::StructsyFilter,
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
@@ -628,6 +628,122 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     }
 }
 
+pub trait RangeCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialOrd + 'static> {
+    fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        filter.add(RangeConditionFilter::new(field.access, start, end))
+    }
+}
+pub trait SimpleCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialEq + 'static> {
+    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
+        filter.add(ConditionFilter::new(field.access, value))
+    }
+
+    fn single(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+        filter.add(ConditionSingleFilter::new(field.access, value))
+    }
+
+    fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
+        filter.add(ConditionFilter::new(field.access, Some(value)))
+    }
+}
+
+impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + 'static + Clone> RangeCondition<T, V>
+    for V
+{
+    fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+            filter.add(RangeIndexFilter::new(index_name, field.access, start, end))
+        } else {
+            filter.add(RangeConditionFilter::new(field.access, start, end))
+        }
+    }
+}
+impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone> SimpleCondition<T, V>
+    for V
+{
+    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
+        if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+            filter.add(IndexFilter::new(index_name, value))
+        } else {
+            filter.add(ConditionFilter::new(field.access, value))
+        }
+    }
+    fn single(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+        if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+            filter.add(IndexFilter::new(index_name, value))
+        } else {
+            filter.add(ConditionSingleFilter::new(field.access, value))
+        }
+    }
+    fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
+        if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+            filter.add(IndexFilter::new(index_name, value))
+        } else {
+            filter.add(ConditionFilter::new(field.access, Some(value)))
+        }
+    }
+}
+
+impl<T: Persistent + 'static> RangeCondition<T, bool> for bool {}
+impl<T: Persistent + 'static> SimpleCondition<T, bool> for bool {}
+
+impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone>
+    SimpleCondition<T, Vec<V>> for Vec<V>
+{
+    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: Vec<V>) {
+        if let Some(_index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+            // TODO: support index search for vec types
+            filter.add(ConditionFilter::new(field.access, value))
+        //filter.add(IndexFilter::new(index_name, value))
+        } else {
+            filter.add(ConditionFilter::new(field.access, value))
+        }
+    }
+    fn single(_filter: &mut FilterBuilder<T>, _field: Field<T, Vec<Vec<V>>>, _value: Vec<V>) {
+        unimplemented!("Vec<Vec<_>> is not a supported type");
+    }
+    fn is(_filter: &mut FilterBuilder<T>, _field: Field<T, Option<Vec<V>>>, _value: Vec<V>) {
+        unimplemented!("Option<Vec<_>> is not a supported type");
+    }
+}
+impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + 'static + Clone>
+    RangeCondition<T, Vec<V>> for Vec<V>
+{
+}
+
+impl<T: Persistent + 'static> SimpleCondition<T, Vec<bool>> for Vec<bool> {
+    fn single(_filter: &mut FilterBuilder<T>, _field: Field<T, Vec<Vec<bool>>>, _value: Vec<bool>) {
+        unimplemented!("Vec<Vec<bool>> is not a supported type");
+    }
+
+    fn is(_filter: &mut FilterBuilder<T>, _field: Field<T, Option<Vec<bool>>>, _value: Vec<bool>) {
+        unimplemented!("Option<Vec<bool>> is not a supported type");
+    }
+}
+impl<T: Persistent + 'static> RangeCondition<T, Vec<bool>> for Vec<bool> {}
+
+impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone>
+    SimpleCondition<T, Option<V>> for Option<V>
+{
+    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: Option<V>) {
+        if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
+            filter.add(IndexFilter::new(index_name, v));
+        } else {
+            filter.add(ConditionFilter::<Option<V>, T>::new(field.access, value));
+        }
+    }
+    fn single(_filter: &mut FilterBuilder<T>, _field: Field<T, Vec<Option<V>>>, _value: Option<V>) {
+        unimplemented!("not yet implemented");
+    }
+    fn is(_filter: &mut FilterBuilder<T>, _field: Field<T, Option<Option<V>>>, _value: Option<V>) {
+        unimplemented!("Option<Option<_>> is not a supported type");
+    }
+}
+
 impl<T: Persistent + 'static> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder { steps: Vec::new() }
@@ -706,73 +822,85 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
 
     pub fn indexable_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
     {
+        V::simple(self, field, value);
+        /*
         if let Some(index_name) = Self::is_indexed(field.name) {
             self.add(IndexFilter::new(index_name, value))
         } else {
             self.add(ConditionFilter::new(field.access, value))
         }
+        */
     }
 
     pub fn simple_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
-        V: PartialEq + Clone + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(field.access, value))
+        V::simple(self, field, value);
     }
 
-    pub fn indexable_vec_condition<V>(&mut self, field: Field<T, Vec<V>>, value: Vec<V>)
+    pub fn indexable_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + Clone + PartialEq + 'static,
     {
         //TODO: support lookup in index
-        self.add(ConditionFilter::new(field.access, value))
+        V::simple(self, field, value)
+        //self.add(ConditionFilter::new(field.access, value))
     }
 
     pub fn simple_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
-        V: PartialEq + Clone + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
     {
-        self.add(ConditionFilter::new(field.access, value))
+        V::simple(self, field, value)
+        //self.add(ConditionFilter::new(field.access, value))
     }
 
     pub fn simple_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
-        V: PartialEq + Clone + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
     {
-        self.add(ConditionSingleFilter::new(field.access, value))
+        V::single(self, field, value)
+        //self.add(ConditionSingleFilter::new(field.access, value))
     }
 
     pub fn indexable_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + IndexType + PartialEq + 'static,
     {
+        V::single(self, field, value)
+        /*
         if let Some(index_name) = Self::is_indexed(field.name) {
             self.add(IndexFilter::new(index_name, value))
         } else {
             self.add(ConditionSingleFilter::new(field.access, value))
-        }
+        }*/
     }
 
     pub fn indexable_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + Clone + PartialEq + 'static,
     {
-        self.indexable_option_condition(field, Some(value));
+        V::is(self, field, value)
+        //self.indexable_option_condition::<Option<V>>(field, Some(value));
     }
 
     pub fn simple_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + 'static + Clone,
     {
-        self.add(ConditionFilter::<Option<V>, T>::new(field.access, Some(value)));
+        V::is(self, field, value)
+        //self.add(ConditionFilter::<Option<V>, T>::new(field.access, Some(value)));
     }
 
-    pub fn indexable_option_condition<V>(&mut self, field: Field<T, Option<V>>, value: Option<V>)
+    pub fn indexable_option_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
-        V: IndexType + PartialEq + 'static,
+        V: SimpleCondition<T, V> + PersistentEmbedded + Clone + PartialEq + 'static,
     {
+        V::simple(self, field, value)
+        /*
         if let Some(index_name) = Self::is_indexed(field.name) {
             if let Some(v) = value {
                 self.add(IndexFilter::new(index_name, v));
@@ -782,13 +910,16 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         } else {
             self.add(ConditionFilter::<Option<V>, T>::new(field.access, value));
         }
+        */
     }
 
     pub fn indexable_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
-        V: IndexType + PartialOrd + 'static,
+        V: RangeCondition<T, V> + PersistentEmbedded + PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
+        V::range(self, field, range)
+        /*
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         if let Some(index_name) = Self::is_indexed(field.name) {
@@ -796,6 +927,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         } else {
             self.add(RangeConditionFilter::new(field.access, start, end))
         }
+        */
     }
 
     pub fn indexable_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
@@ -846,13 +978,16 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
 
     pub fn indexable_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
     where
-        V: PartialOrd + Clone + 'static,
+        V: RangeCondition<T, V> + PersistentEmbedded + PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
+        V::range(self, field, range)
+        /*
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
         self.add(RangeConditionFilter::new(field.access, start, end))
+        */
     }
 
     pub fn indexable_option_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
