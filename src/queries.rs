@@ -1,5 +1,6 @@
 use crate::{
-    embedded_filter::EmbeddedFilterBuilder, FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
+    embedded_filter::EmbeddedFilterBuilder, filter::SimpleCondition, internal::Field, FilterBuilder, OwnedSytx,
+    Persistent, PersistentEmbedded, Ref, Structsy,
 };
 /// Iterator for query results
 pub struct StructsyIter<'a, T: Persistent> {
@@ -307,13 +308,48 @@ impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     }
 }
 
+trait QueryAction<T, V, X>
+where
+    T: Persistent,
+{
+    fn simple(self, filter_builder: &mut FilterBuilder<T>, value: X);
+}
+impl<T, V> QueryAction<T, V, V> for Field<T, V>
+where
+    T: Persistent + 'static,
+    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+{
+    fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+        V::equal(filter_builder, self, value);
+    }
+}
+
+impl<T, V> QueryAction<T, Vec<V>, V> for Field<T, Vec<V>>
+where
+    T: Persistent + 'static,
+    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+{
+    fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+        V::contains(filter_builder, self, value);
+    }
+}
+
+impl<T, V> QueryAction<T, Option<V>, V> for Field<T, Option<V>>
+where
+    T: Persistent + 'static,
+    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+{
+    fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
+        V::is(filter_builder, self, value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Query, StructsyFilter};
+    use super::{Query, QueryAction, StructsyFilter};
     use crate::{
-        filter::SimpleCondition,
-        internal::{Description, Field, FilterBuilder},
-        Persistent, PersistentEmbedded, Ref, SRes, Sytx,
+        internal::{Description, Field},
+        Persistent, Ref, SRes, Sytx,
     };
 
     use std::io::{Read, Write};
@@ -355,44 +391,6 @@ mod tests {
         }
         fn declare(_db: &mut dyn Sytx) -> SRes<()> {
             unimplemented!()
-        }
-    }
-    //fn condition
-
-    trait QueryAction<T, V, X>
-    where
-        T: Persistent,
-        V: PersistentEmbedded,
-    {
-        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: X);
-    }
-    impl<T, V> QueryAction<T, V, V> for Field<T, V>
-    where
-        T: Persistent + 'static,
-        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
-    {
-        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
-            filter_builder.simple_condition(self, value);
-        }
-    }
-
-    impl<T, V> QueryAction<T, Vec<V>, V> for Field<T, Vec<V>>
-    where
-        T: Persistent + 'static,
-        V: SimpleCondition<T, V> + PersistentEmbedded + PartialEq + Clone + 'static,
-    {
-        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
-            filter_builder.simple_vec_single_condition(self, value);
-        }
-    }
-
-    impl<T, V> QueryAction<T, Option<V>, V> for Field<T, Option<V>>
-    where
-        T: Persistent + 'static,
-        V: PersistentEmbedded + SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
-            filter_builder.simple_option_single_condition(self, value);
         }
     }
 

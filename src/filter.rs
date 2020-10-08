@@ -645,7 +645,7 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
         filter.add(RangeConditionFilter::new(field.access, start, end))
     }
 
-    fn range_single<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
+    fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         filter.add(RangeSingleConditionFilter::new(field.access, start, end))
@@ -667,11 +667,11 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
     }
 }
 pub trait SimpleCondition<T: Persistent + 'static, V: Clone + PartialEq + 'static> {
-    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
+    fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
         filter.add(ConditionFilter::new(field.access, value))
     }
 
-    fn single(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+    fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
         filter.add(ConditionSingleFilter::new(field.access, value))
     }
 
@@ -705,7 +705,7 @@ impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + '
         }
     }
 
-    fn range_single<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
+    fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
         if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
@@ -718,14 +718,14 @@ impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + '
 impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone> SimpleCondition<T, V>
     for V
 {
-    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
+    fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
         if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
             filter.add(IndexFilter::new(index_name, value))
         } else {
             filter.add(ConditionFilter::new(field.access, value))
         }
     }
-    fn single(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+    fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
         if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
             filter.add(IndexFilter::new(index_name, value))
         } else {
@@ -744,7 +744,7 @@ impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 's
 impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone>
     SimpleCondition<T, Vec<V>> for Vec<V>
 {
-    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: Vec<V>) {
+    fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: Vec<V>) {
         if let Some(_index_name) = FilterBuilder::<T>::is_indexed(field.name) {
             // TODO: support index search for vec types
             filter.add(ConditionFilter::new(field.access, value))
@@ -762,7 +762,7 @@ impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + '
 impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialEq + 'static + Clone>
     SimpleCondition<T, Option<V>> for Option<V>
 {
-    fn simple(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: Option<V>) {
+    fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: Option<V>) {
         if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
             filter.add(IndexFilter::new(index_name, v));
         } else {
@@ -862,42 +862,42 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value);
+        V::equal(self, field, value);
     }
 
     pub fn simple_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value);
+        V::equal(self, field, value);
     }
 
     pub fn indexable_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: SimpleCondition<T, V> + Clone + PartialEq + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn simple_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn simple_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::single(self, field, value)
+        V::contains(self, field, value)
     }
 
     pub fn indexable_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
         V: SimpleCondition<T, V> + IndexType + PartialEq + 'static,
     {
-        V::single(self, field, value)
+        V::contains(self, field, value)
     }
 
     pub fn indexable_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
@@ -918,7 +918,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: SimpleCondition<T, V> + Clone + PartialEq + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn indexable_range<V, R>(&mut self, field: Field<T, V>, range: R)
@@ -951,7 +951,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         V: RangeCondition<T, V> + PartialOrd + 'static + Clone,
         R: RangeBounds<V>,
     {
-        V::range_single(self, field, range)
+        V::range_contains(self, field, range)
     }
 
     pub fn indexable_option_single_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
@@ -995,7 +995,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn ref_range<V, R>(&mut self, field: Field<T, V>, range: R)
@@ -1010,7 +1010,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn ref_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
@@ -1031,7 +1031,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
     {
-        V::simple(self, field, value)
+        V::equal(self, field, value)
     }
 
     pub fn ref_option_range<V, R>(&mut self, field: Field<T, V>, range: R)
