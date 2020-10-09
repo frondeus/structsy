@@ -1,7 +1,10 @@
 use crate::{
-    embedded_filter::EmbeddedFilterBuilder, filter::SimpleCondition, internal::Field, FilterBuilder, OwnedSytx,
-    Persistent, PersistentEmbedded, Ref, Structsy,
+    embedded_filter::EmbeddedFilterBuilder,
+    filter::{RangeCondition, SimpleCondition},
+    internal::Field,
+    FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
+use std::ops::RangeBounds;
 /// Iterator for query results
 pub struct StructsyIter<'a, T: Persistent> {
     iterator: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
@@ -73,7 +76,7 @@ impl<'a, T: Persistent> Iterator for StructsyIter<'a, T> {
 ///     Ok(())
 /// }
 /// ```
-pub struct EmbeddedFilter<T: PersistentEmbedded> {
+pub struct EmbeddedFilter<T> {
     pub(crate) builder: EmbeddedFilterBuilder<T>,
 }
 
@@ -126,7 +129,7 @@ pub trait Operators<F> {
     fn not<FN: Fn(F) -> F>(self, builder: FN) -> Self;
 }
 
-impl<T: PersistentEmbedded + 'static> EmbeddedFilter<T> {
+impl<T: 'static> EmbeddedFilter<T> {
     pub fn new() -> EmbeddedFilter<T> {
         EmbeddedFilter {
             builder: EmbeddedFilterBuilder::new(),
@@ -341,6 +344,39 @@ where
 {
     fn simple(self, filter_builder: &mut FilterBuilder<T>, value: V) {
         V::is(filter_builder, self, value);
+    }
+}
+trait QueryRange<T, V, X>
+where
+    T: Persistent,
+{
+    fn range(self, filter_builder: &mut FilterBuilder<T>, value: impl RangeBounds<X>);
+}
+impl<T, V> QueryRange<T, V, V> for Field<T, V>
+where
+    T: Persistent + 'static,
+    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    fn range(self, filter_builder: &mut FilterBuilder<T>, value: impl RangeBounds<V>) {
+        V::range(filter_builder, self, value);
+    }
+}
+impl<T, V> QueryRange<T, Vec<V>, V> for Field<T, Vec<V>>
+where
+    T: Persistent + 'static,
+    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    fn range(self, filter_builder: &mut FilterBuilder<T>, value: impl RangeBounds<V>) {
+        V::range_contains(filter_builder, self, value);
+    }
+}
+impl<T, V> QueryRange<T, Option<V>, V> for Field<T, Option<V>>
+where
+    T: Persistent + 'static,
+    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    fn range(self, filter_builder: &mut FilterBuilder<T>, value: impl RangeBounds<V>) {
+        V::range_is(filter_builder, self, value);
     }
 }
 
