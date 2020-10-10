@@ -1,5 +1,5 @@
 use crate::{
-    embedded_filter::EmbeddedFilterBuilder,
+    embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::{RangeCondition, SimpleCondition},
     internal::Field,
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
@@ -319,6 +319,7 @@ where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
 {
+    #[inline]
     fn equal(self, value: V) {
         V::equal(self.1, self.0, value);
     }
@@ -329,6 +330,7 @@ where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
 {
+    #[inline]
     fn equal(self, value: V) {
         V::contains(self.1, self.0, value);
     }
@@ -339,23 +341,39 @@ where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
 {
+    #[inline]
     fn equal(self, value: V) {
         V::is(self.1, self.0, value);
     }
 }
 
-/*
-impl<T, V> EqualAction<T, V, V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
+impl<T: 'static, V> EqualAction<T, V, V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
-    T: PersistentEmbedded + 'static,
-    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static,
 {
+    #[inline]
     fn equal(self, value: V) {
         V::equal(self.1, self.0, value);
     }
 }
-*/
-
+impl<T: 'static, V> EqualAction<T, V, V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static,
+{
+    #[inline]
+    fn equal(self, value: V) {
+        V::contains(self.1, self.0, value);
+    }
+}
+impl<T: 'static, V> EqualAction<T, V, V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static,
+{
+    #[inline]
+    fn equal(self, value: V) {
+        V::is(self.1, self.0, value);
+    }
+}
 
 trait RangeAction<T, V, X> {
     fn range(self, value: impl RangeBounds<X>);
@@ -365,6 +383,7 @@ where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
+    #[inline]
     fn range(self, value: impl RangeBounds<V>) {
         V::range(self.1, self.0, value);
     }
@@ -374,6 +393,7 @@ where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
+    #[inline]
     fn range(self, value: impl RangeBounds<V>) {
         V::range_contains(self.1, self.0, value);
     }
@@ -383,6 +403,35 @@ where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
+    #[inline]
+    fn range(self, value: impl RangeBounds<V>) {
+        V::range_is(self.1, self.0, value);
+    }
+}
+
+impl<T: 'static, V> RangeAction<T, Option<V>, V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    #[inline]
+    fn range(self, value: impl RangeBounds<V>) {
+        V::range(self.1, self.0, value);
+    }
+}
+impl<T: 'static, V> RangeAction<T, Option<V>, V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    #[inline]
+    fn range(self, value: impl RangeBounds<V>) {
+        V::range_contains(self.1, self.0, value);
+    }
+}
+impl<T: 'static, V> RangeAction<T, Option<V>, V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static,
+{
+    #[inline]
     fn range(self, value: impl RangeBounds<V>) {
         V::range_is(self.1, self.0, value);
     }

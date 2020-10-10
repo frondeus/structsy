@@ -104,35 +104,48 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
 }
 
 struct RangeOptionConditionFilter<V, T> {
-    value_start: Bound<V>,
-    value_end: Bound<V>,
+    value_start: Bound<Option<V>>,
+    value_end: Bound<Option<V>>,
     access: fn(&T) -> &Option<V>,
-    include_none: bool,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeOptionConditionFilter<V, T> {
     fn new(
         access: fn(&T) -> &Option<V>,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
-        include_none: bool,
+        value_start: Bound<Option<V>>,
+        value_end: Bound<Option<V>>,
     ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(RangeOptionConditionFilter {
             access,
             value_start,
             value_end,
-            include_none,
         })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeOptionConditionFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
+        let (b1, none_end) = match &self.value_start {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
+        let (b2, none_start) = match &self.value_end {
+            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
+            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
+            Bound::Included(None) => (Bound::Unbounded, true),
+            Bound::Excluded(None) => (Bound::Unbounded, true),
+            Bound::Unbounded => (Bound::Unbounded, false),
+        };
+        let val = (b1, b2);
+        let include_none = none_end | none_start;
         Box::new(move |s| {
             if let Some(z) = (self.access)(s) {
-                (self.value_start.clone(), self.value_end.clone()).contains(z)
+                val.contains(z)
             } else {
-                self.include_none
+                include_none
             }
         })
     }
@@ -250,6 +263,52 @@ impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     }
 }
 
+pub trait SimpleEmbeddedCondition<T: 'static, V: Clone + PartialEq + 'static> {
+    fn equal(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, value: V) {
+        filter.add(ConditionFilter::new(field.access, value))
+    }
+
+    fn contains(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+        filter.add(ConditionSingleFilter::new(field.access, value))
+    }
+
+    fn is(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
+        filter.add(ConditionFilter::new(field.access, Some(value)))
+    }
+}
+
+pub trait EmbeddedRangeCondition<T: 'static, V: Clone + PartialOrd + 'static> {
+    fn range<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, range: R) {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        filter.add(RangeConditionFilter::new(field.access, start, end))
+    }
+
+    fn range_contains<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
+        filter.add(RangeSingleConditionFilter::new(field.access, start, end))
+    }
+
+    fn range_is<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
+        let start = match range.start_bound() {
+            Bound::Included(x) => Bound::Included(Some(x.clone())),
+            Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => Bound::Included(Some(x.clone())),
+            Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        // This may support index in future, but it does not now
+        filter.add(RangeOptionConditionFilter::new(field.access, start, end))
+    }
+}
+impl<T: 'static, V: Clone + PartialOrd + 'static> EmbeddedRangeCondition<T, V> for V {}
+
+impl<T: 'static, V: Clone + PartialEq + 'static> SimpleEmbeddedCondition<T, V> for V {}
+
 pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
 }
@@ -359,13 +418,10 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
 
     pub fn simple_option_single_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
     where
-        V: PartialOrd + Clone + 'static,
+        V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static,
         R: RangeBounds<V>,
     {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        // This may support index in future, but it does not now
-        self.add(RangeOptionConditionFilter::new(field.access, start, end, false))
+        V::range_is(self, field, range)
     }
 
     pub fn simple_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
@@ -384,27 +440,10 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         V: PartialOrd + Clone + 'static,
         R: RangeBounds<Option<V>>,
     {
-        let (start, none_end) = match range.start_bound() {
-            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
-            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
-            Bound::Included(None) => (Bound::Unbounded, true),
-            Bound::Excluded(None) => (Bound::Unbounded, true),
-            Bound::Unbounded => (Bound::Unbounded, false),
-        };
-        let (end, none_start) = match range.end_bound() {
-            Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
-            Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
-            Bound::Included(None) => (Bound::Unbounded, true),
-            Bound::Excluded(None) => (Bound::Unbounded, true),
-            Bound::Unbounded => (Bound::Unbounded, false),
-        };
+        let start = clone_bound_ref(&range.start_bound());
+        let end = clone_bound_ref(&range.end_bound());
         // This may support index in future, but it does not now
-        self.add(RangeOptionConditionFilter::new(
-            field.access,
-            start,
-            end,
-            none_end || none_start,
-        ))
+        self.add(RangeOptionConditionFilter::new(field.access, start, end))
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
