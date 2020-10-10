@@ -311,10 +311,7 @@ impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     }
 }
 
-trait QueryAction<T, V, X>
-where
-    T: Persistent,
-{
+trait QueryAction<T, V, X> {
     fn simple(self, filter_builder: &mut FilterBuilder<T>, value: X);
 }
 impl<T, V> QueryAction<T, V, V> for Field<T, V>
@@ -346,10 +343,7 @@ where
         V::is(filter_builder, self, value);
     }
 }
-trait QueryRange<T, V, X>
-where
-    T: Persistent,
-{
+trait QueryRange<T, V, X> {
     fn range(self, filter_builder: &mut FilterBuilder<T>, value: impl RangeBounds<X>);
 }
 impl<T, V> QueryRange<T, V, V> for Field<T, V>

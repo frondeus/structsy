@@ -1,5 +1,5 @@
 use crate::internal::Field;
-use crate::{EmbeddedFilter, Persistent, PersistentEmbedded, Ref, StructsyQuery};
+use crate::{EmbeddedFilter, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
 
 trait EmbeddedFilterBuilderStep {
@@ -7,52 +7,48 @@ trait EmbeddedFilterBuilderStep {
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool>;
 }
 
-struct ConditionFilter<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> {
+struct ConditionFilter<V, T> {
     value: V,
     access: fn(&T) -> &V,
 }
 
-impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> ConditionFilter<V, T> {
+impl<V: PartialEq + Clone + 'static, T: 'static> ConditionFilter<V, T> {
     fn new(access: fn(&T) -> &V, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(ConditionFilter { access, value })
     }
 }
-impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for ConditionFilter<V, T>
-{
+impl<V: PartialEq + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         Box::new(move |s| *(self.access)(s) == self.value)
     }
 }
 
-struct ConditionSingleFilter<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> {
+struct ConditionSingleFilter<V, T> {
     value: V,
     access: fn(&T) -> &Vec<V>,
 }
 
-impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> ConditionSingleFilter<V, T> {
+impl<V: PartialEq + Clone + 'static, T: 'static> ConditionSingleFilter<V, T> {
     fn new(access: fn(&T) -> &Vec<V>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(ConditionSingleFilter { access, value })
     }
 }
 
-impl<V: PartialEq + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for ConditionSingleFilter<V, T>
-{
+impl<V: PartialEq + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for ConditionSingleFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         Box::new(move |s| (self.access)(s).contains(&self.value))
     }
 }
 
-struct RangeConditionFilter<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> {
+struct RangeConditionFilter<V, T> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &V,
 }
 
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeConditionFilter<V, T> {
+impl<V: PartialOrd + Clone + 'static, T: 'static> RangeConditionFilter<V, T> {
     fn new(
         access: fn(&T) -> &V,
         value_start: Bound<V>,
@@ -65,9 +61,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeCond
         })
     }
 }
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for RangeConditionFilter<V, T>
-{
+impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeConditionFilter<V, T> {
     type Target = T;
 
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
@@ -75,13 +69,13 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
-struct RangeSingleConditionFilter<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> {
+struct RangeSingleConditionFilter<V, T> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &Vec<V>,
 }
 
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeSingleConditionFilter<V, T> {
+impl<V: PartialOrd + Clone + 'static, T: 'static> RangeSingleConditionFilter<V, T> {
     fn new(
         access: fn(&T) -> &Vec<V>,
         value_start: Bound<V>,
@@ -94,9 +88,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeSing
         })
     }
 }
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for RangeSingleConditionFilter<V, T>
-{
+impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeSingleConditionFilter<V, T> {
     type Target = T;
 
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
@@ -111,14 +103,14 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
-struct RangeOptionConditionFilter<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> {
+struct RangeOptionConditionFilter<V, T> {
     value_start: Bound<V>,
     value_end: Bound<V>,
     access: fn(&T) -> &Option<V>,
     include_none: bool,
 }
 
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeOptionConditionFilter<V, T> {
+impl<V: PartialOrd + Clone + 'static, T: 'static> RangeOptionConditionFilter<V, T> {
     fn new(
         access: fn(&T) -> &Option<V>,
         value_start: Bound<V>,
@@ -133,9 +125,7 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> RangeOpti
         })
     }
 }
-impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for RangeOptionConditionFilter<V, T>
-{
+impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeOptionConditionFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         Box::new(move |s| {
@@ -148,20 +138,18 @@ impl<V: PartialOrd + Clone + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
-pub struct EmbeddedFieldFilter<V: PersistentEmbedded, T: PersistentEmbedded> {
+pub struct EmbeddedFieldFilter<V, T> {
     filter: EmbeddedFilter<V>,
     access: fn(&T) -> &V,
 }
 
-impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedFieldFilter<V, T> {
+impl<V: 'static, T: 'static> EmbeddedFieldFilter<V, T> {
     fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(EmbeddedFieldFilter { filter, access })
     }
 }
 
-impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep
-    for EmbeddedFieldFilter<V, T>
-{
+impl<V: 'static, T: 'static> EmbeddedFilterBuilderStep for EmbeddedFieldFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let access = self.access;
@@ -170,18 +158,18 @@ impl<V: PersistentEmbedded + 'static, T: PersistentEmbedded + 'static> EmbeddedF
     }
 }
 
-pub struct QueryFilter<V: Persistent + 'static, T: PersistentEmbedded> {
+pub struct QueryFilter<V: Persistent + 'static, T> {
     query: StructsyQuery<V>,
     access: fn(&T) -> &Ref<V>,
 }
 
-impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> QueryFilter<V, T> {
+impl<V: Persistent + 'static, T: 'static> QueryFilter<V, T> {
     fn new(query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(QueryFilter { query, access })
     }
 }
 
-impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for QueryFilter<V, T> {
+impl<V: Persistent + 'static, T: 'static> EmbeddedFilterBuilderStep for QueryFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let st = self.query.structsy.clone();
@@ -198,17 +186,17 @@ impl<V: Persistent + 'static, T: PersistentEmbedded + 'static> EmbeddedFilterBui
     }
 }
 
-pub struct OrFilter<T: PersistentEmbedded> {
+pub struct OrFilter<T> {
     filters: EmbeddedFilterBuilder<T>,
 }
 
-impl<T: PersistentEmbedded + 'static> OrFilter<T> {
+impl<T: 'static> OrFilter<T> {
     fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(OrFilter { filters })
     }
 }
 
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for OrFilter<T> {
+impl<T: 'static> EmbeddedFilterBuilderStep for OrFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let mut conditions = Vec::new();
@@ -226,17 +214,17 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for OrFilter<T> 
     }
 }
 
-pub struct AndFilter<T: PersistentEmbedded> {
+pub struct AndFilter<T> {
     filters: EmbeddedFilterBuilder<T>,
 }
 
-impl<T: PersistentEmbedded + 'static> AndFilter<T> {
+impl<T: 'static> AndFilter<T> {
     fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(AndFilter { filters })
     }
 }
 
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
+impl<T: 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let mut condition = self.filters.condition();
@@ -244,17 +232,17 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for AndFilter<T>
     }
 }
 
-pub struct NotFilter<T: PersistentEmbedded> {
+pub struct NotFilter<T> {
     filters: EmbeddedFilterBuilder<T>,
 }
 
-impl<T: PersistentEmbedded + 'static> NotFilter<T> {
+impl<T: 'static> NotFilter<T> {
     fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
         Box::new(NotFilter { filters })
     }
 }
 
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
+impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let mut condition = self.filters.condition();
@@ -262,7 +250,7 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilderStep for NotFilter<T>
     }
 }
 
-pub struct EmbeddedFilterBuilder<T: PersistentEmbedded> {
+pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
 }
 
@@ -274,7 +262,7 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     }
 }
 
-impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
+impl<T: 'static> EmbeddedFilterBuilder<T> {
     pub fn new() -> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder { steps: Vec::new() }
     }
@@ -421,7 +409,7 @@ impl<T: PersistentEmbedded + 'static> EmbeddedFilterBuilder<T> {
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
     where
-        V: PersistentEmbedded + 'static,
+        V: 'static,
     {
         self.add(EmbeddedFieldFilter::new(filter, field.access))
     }
