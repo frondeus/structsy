@@ -608,7 +608,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Opt
     }
 }
 
-pub struct OrFilter<T: Persistent> {
+pub struct OrFilter<T> {
     filters: FilterBuilder<T>,
 }
 
@@ -639,7 +639,7 @@ impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
     }
 }
 
-pub struct AndFilter<T: Persistent> {
+pub struct AndFilter<T> {
     filters: FilterBuilder<T>,
 }
 
@@ -660,7 +660,7 @@ impl<T: Persistent + 'static> FilterBuilderStep for AndFilter<T> {
     }
 }
 
-pub struct NotFilter<T: Persistent> {
+pub struct NotFilter<T> {
     filters: FilterBuilder<T>,
 }
 
@@ -843,11 +843,18 @@ impl<T: Persistent + 'static, V: PersistentEmbedded + IndexMark + PartialOrd + '
 pub struct FilterBuilder<T> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
 }
-impl<T: Persistent + 'static> FilterBuilder<T> {
+
+impl<T> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder { steps: Vec::new() }
     }
 
+    fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
+        self.steps.push(filter);
+    }
+}
+
+impl<T: Persistent + 'static> FilterBuilder<T> {
     fn is_indexed(name: &str) -> Option<String> {
         let desc = T::get_description();
         if let Description::Struct(st) = &desc {
@@ -913,10 +920,6 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             let mut condition = self.condition();
             Box::new(res.filter(move |(id, r)| condition(id, r)))
         }
-    }
-
-    fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
-        self.steps.push(filter);
     }
 
     pub fn indexable_condition<V>(&mut self, field: Field<T, V>, value: V)
