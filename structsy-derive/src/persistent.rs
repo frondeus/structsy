@@ -80,7 +80,7 @@ impl PersistentInfo {
                 let fields = self.field_infos(&data);
                 let (desc, ser) = serialization_tokens(name, &fields);
                 let (indexes, impls) = indexes_tokens(name, &fields);
-                let filters = filter_tokens(name, &fields, false);
+                let filters = filter_tokens(&fields);
                 quote! {
 
                 impl structsy::internal::Persistent for #name {
@@ -138,7 +138,7 @@ impl PersistentInfo {
             Data::Struct(data) => {
                 let fields = self.field_infos(&data);
                 let (desc, ser) = serialization_tokens(name, &fields);
-                let filters = filter_tokens(name, &fields, true);
+                let filters = filter_tokens(&fields);
 
                 for f in fields {
                     if f.index_mode.is_some() {
@@ -546,284 +546,31 @@ fn get_type_ident(ty: &syn::Type) -> Option<Ident> {
     }
 }
 
-fn is_simple_type(field: &FieldInfo) -> bool {
-    let (t, r) = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
-        (Some(r), Some(z)) => (z, Some(r.clone())),
-        (Some(x), None) => (x, Some(field.ty.clone())),
-        (None, None) => (field.ty.clone(), None),
-        (None, Some(_x)) => panic!(""),
-    };
-    match t.to_string().as_str() {
-        "String" | "u8" | "u16" | "u32" | "u64" | "u128" | "i8" | "i16" | "i32" | "i64" | "i128" | "f32" | "f64"
-        | "bool" => true,
-        _ => match r.map(|x| x.to_string()).unwrap_or(String::from("")).as_str() {
-            "Ref" => true,
-            _ => false,
-        },
-    }
-}
-
-fn basic_filter_gen(
-    mode: &str,
-    field: Ident,
-    ty: Ident,
-    cont_ty: Option<Ident>,
-    second_ty: Option<Ident>,
-    builder: &TokenStream,
-) -> TokenStream {
-    let field_name = field.to_string();
-    let ty_str_lower = ty.to_string().to_lowercase();
-    let target_field_name = if let (Some(oth), Some(sec)) = (&cont_ty, &second_ty) {
-        format!(
-            "field_{}_{}_{}",
-            field_name,
-            sec.to_string().to_lowercase(),
-            oth.to_string().to_lowercase(),
-        )
-    } else if let Some(other) = &cont_ty {
-        format!(
-            "field_{}_{}_{}",
-            field_name,
-            other.to_string().to_lowercase(),
-            ty_str_lower
-        )
-    } else {
-        format!("field_{}_{}", field_name, ty_str_lower)
-    };
-
-    let method_ident = Ident::new(&target_field_name, Span::call_site());
-    let method_range_ident = Ident::new(&format!("{}_range", target_field_name), Span::call_site());
-
-    let range_filter = Ident::new(&format!("{}_range", mode), Span::call_site());
-    let condition_filter = Ident::new(&format!("{}_condition", mode), Span::call_site());
-
-    let tt = if let (Some(oth), Some(sec)) = (&cont_ty, &second_ty) {
-        quote! {#sec<#oth<#ty>>}
-    } else if let Some(other) = cont_ty {
-        quote! {#other<#ty>}
-    } else {
-        quote! {#ty}
-    };
-
-    quote! {
-        pub fn #method_ident(builder:&mut #builder,v:#tt){
-            builder.#condition_filter(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-        }
-        pub fn #method_range_ident< R: std::ops::RangeBounds<#tt>>(builder:&mut #builder,v:R){
-            builder.#range_filter(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-        }
-    }
-}
-
-fn filter_tokens(name: &Ident, fields: &Vec<FieldInfo>, embedded: bool) -> TokenStream {
-    let mode;
-    let filter;
-    if embedded {
-        mode = "simple".to_string();
-        filter = quote! {structsy::internal::EmbeddedFilterBuilder<#name>};
-    } else {
-        mode = "indexable".to_string();
-        filter = quote! {structsy::internal::FilterBuilder<#name>};
-    }
+fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
     let methods: Vec<TokenStream> = fields
         .iter()
         .map(|field| {
-            let is_simple = is_simple_type(field);
             let field_ident = field.name.clone();
-            let ty = field.ty.clone();
-            match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+            let t= field.ty.clone();
+            let ty = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
                 (Some(x), Some(z)) => {
-                    double_template_field_methods(is_simple, filter.clone(), field_ident, ty, x, z, &mode)
+                    quote!{#t<#x<#z>>}
                 }
-                (Some(x), None) => template_field_methods(is_simple, filter.clone(), field_ident, ty, x, &mode),
-                (None, None) => simple_field_methos(is_simple, filter.clone(), field_ident, ty, &mode),
+                (Some(x), None) => quote! {#t<#x>},
+                (None, None) => quote!{#t},
                 (None, Some(_x)) => panic!(""),
+            };
+            let  field_name = field.name.to_string();
+            let meta_method= Ident::new(&format!("field_{}",&field_name), Span::call_site());
+            quote! {
+                pub fn #meta_method() -> structsy::internal::Field<Self,#ty> {
+                    structsy::internal::Field::new(#field_name,|x|&x.#field_ident)
+                }
             }
         })
         .collect();
 
     quote! {
         #( #methods )*
-    }
-}
-
-fn double_template_field_methods(
-    is_simple: bool,
-    filter: TokenStream,
-    field: Ident,
-    ty: Ident,
-    x: Ident,
-    z: Ident,
-    _mode: &str,
-) -> TokenStream {
-    let field_name = field.to_string();
-    let ty_str_lower = ty.to_string().to_lowercase();
-    if !is_simple {
-        panic!("Complex types not supported, only supported simple types and Vec or Option of simple types");
-    } else if x.to_string() == "Ref" {
-        let prefix = format!("ref_{}", ty_str_lower);
-        let z_str_lower = z.to_string().to_lowercase();
-        let basic = basic_filter_gen(
-            &prefix,
-            field.clone(),
-            z.clone(),
-            Some(x.clone()),
-            Some(ty.clone()),
-            &filter,
-        );
-        let method_ident_query = Ident::new(
-            &format!("field_{}_structsyquery_{}", field_name, z_str_lower),
-            Span::call_site(),
-        );
-        let method_name = Ident::new(&format!("ref_{}_query", ty_str_lower), Span::call_site());
-        quote! {
-            #basic
-
-            pub fn #method_ident_query(builder:&mut #filter,v:structsy::StructsyQuery<#z>){
-                builder.#method_name(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-            }
-
-        }
-    } else {
-        panic!("Complex types not supported, only supported simple types and Vec or Option of simple types");
-    }
-}
-fn template_field_methods(
-    is_simple: bool,
-    filter: TokenStream,
-    field: Ident,
-    ty: Ident,
-    x: Ident,
-    mode: &str,
-) -> TokenStream {
-    let field_name = field.to_string();
-    let ty_str_lower = ty.to_string().to_lowercase();
-    if !is_simple {
-        let x_str_lower = x.to_string().to_lowercase();
-        let method_ident = Ident::new(
-            &format!("field_{}_embeddedfilter_{}", field_name, x_str_lower),
-            Span::call_site(),
-        );
-        let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
-        quote! {
-            pub fn #method_ident(builder:&mut #filter,v:structsy::EmbeddedFilter<#x>){
-                builder.#condition_method(structsy::interna::Field::new(#field_name,|x|&x.#field),v);
-            }
-        }
-    } else if ty.to_string() == "Ref" {
-        let x_str_lower = x.to_string().to_lowercase();
-        let basic = basic_filter_gen("ref", field.clone(), x.clone(), Some(ty.clone()), None, &filter);
-        let method_ident_query = Ident::new(
-            &format!("field_{}_structsyquery_{}", field_name, x_str_lower),
-            Span::call_site(),
-        );
-        quote! {
-            #basic
-            pub fn #method_ident_query(builder:&mut #filter,v:structsy::StructsyQuery<#x>){
-                builder.ref_query(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-            }
-        }
-    } else {
-        let x_str_lower = x.to_string().to_lowercase();
-        let method_ident_contains = Ident::new(&format!("field_{}_{}", field_name, x_str_lower), Span::call_site());
-        if x.to_string() == "bool" {
-            let method_ident = Ident::new(
-                &format!("field_{}_{}_{}", field_name, ty_str_lower, x_str_lower),
-                Span::call_site(),
-            );
-            let condition_method_name = format!("simple_{}_condition", ty_str_lower);
-            let condition_method_name_contains = format!("simple_{}_single_condition", ty_str_lower);
-            let condition_method = Ident::new(&condition_method_name, Span::call_site());
-            let condition_method_contains = Ident::new(&condition_method_name_contains, Span::call_site());
-            quote! {
-                pub fn #method_ident(builder:&mut #filter,v:#ty<#x>){
-                    builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-                }
-                pub fn #method_ident_contains(builder:&mut #filter,v:#x){
-                    builder.#condition_method_contains(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-                }
-            }
-        } else {
-            let additional = if x.to_string() == "String" {
-                let condition_method = Ident::new(
-                    &format!("{}_{}_single_condition", mode, ty_str_lower),
-                    Span::call_site(),
-                );
-                let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
-                quote! {
-                    pub fn #method_str_ident(builder:&mut #filter,v:&str){
-                        builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v.to_string());
-                    }
-                }
-            } else {
-                quote! {}
-            };
-            let prefix = format!("{}_{}", mode, ty_str_lower);
-            let basic = basic_filter_gen(&prefix, field.clone(), x.clone(), Some(ty.clone()), None, &filter);
-            let condition_method_name_contains = format!("{}_{}_single_condition", mode, ty_str_lower);
-            let condition_method_contains = Ident::new(&condition_method_name_contains, Span::call_site());
-            let range_single_method = Ident::new(&format!("{}_{}_single_range", mode, ty_str_lower), Span::call_site());
-            let method_range_single_ident = Ident::new(
-                &format!("field_{}_{}_range", field_name, x.to_string().to_lowercase()),
-                Span::call_site(),
-            );
-            quote! {
-                #basic
-                #additional
-                pub fn #method_ident_contains(builder:&mut #filter,v:#x){
-                    builder.#condition_method_contains(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-                }
-                pub fn #method_range_single_ident< R: std::ops::RangeBounds<#x> >(builder:&mut #filter,v:R){
-                    builder.#range_single_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-                }
-            }
-        }
-    }
-}
-fn simple_field_methos(is_simple: bool, filter: TokenStream, field: Ident, ty: Ident, mode: &str) -> TokenStream {
-    let field_name = field.to_string();
-    let ty_str_lower = ty.to_string().to_lowercase();
-    let method_ident = Ident::new(&format!("field_{}_{}", field_name, ty_str_lower), Span::call_site());
-    if !is_simple {
-        let method_ident = Ident::new(
-            &format!("field_{}_embeddedfilter_{}", field_name, ty_str_lower),
-            Span::call_site(),
-        );
-        let condition_method = Ident::new("simple_persistent_embedded", Span::call_site());
-        quote! {
-            pub fn #method_ident(builder:&mut #filter,v:structsy::EmbeddedFilter<#ty>){
-                builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-            }
-        }
-    } else if ty.to_string() == "bool" {
-        let condition_method = Ident::new("simple_condition", Span::call_site());
-        quote! {
-            pub fn #method_ident(builder:&mut #filter,v:#ty){
-                builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-            }
-        }
-    } else {
-        let addtional = if ty.to_string() == "String" {
-            let condition_method = Ident::new(&format!("{}_condition", mode), Span::call_site());
-            let method_str_ident = Ident::new(&format!("field_{}_str", field_name), Span::call_site());
-            let method_str_ident_range = Ident::new(&format!("field_{}_str_range", field_name), Span::call_site());
-            let range_method = Ident::new(&format!("{}_range_str", mode), Span::call_site());
-            quote! {
-                pub fn #method_str_ident(builder:&mut #filter,v:&str){
-                    builder.#condition_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v.to_string());
-                }
-                pub fn #method_str_ident_range<'a,R: std::ops::RangeBounds<&'a str>>(builder:&mut #filter,v:R){
-                    builder.#range_method(structsy::internal::Field::new(#field_name,|x|&x.#field),v);
-                }
-            }
-        } else {
-            quote! {}
-        };
-        let basic = basic_filter_gen(&mode, field, ty, None, None, &filter);
-
-        quote! {
-            #basic
-            #addtional
-        }
     }
 }

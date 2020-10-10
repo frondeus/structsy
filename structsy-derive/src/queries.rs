@@ -180,27 +180,18 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             let type_ident = Ident::new(target_type, Span::call_site());
             let fields = extract_fields(&m.sig);
             let conditions = fields.into_iter().map(|f| match f {
-                Operation::Equals(f, ty, x) => {
+                Operation::Equals(f, _, _) => {
                     let par_ident = Ident::new(&f, Span::call_site());
-                    let mut to_call = format!("field_{}_{}", f, ty.to_lowercase());
-                    if let Some(gt) = x {
-                        to_call = format!("{}_{}", to_call, gt.to_lowercase());
-                    }
-                    let filter_ident = Ident::new(&to_call, Span::call_site());
+                    let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
-                        #type_ident::#filter_ident(&mut builder, #par_ident);
+                        structsy::internal::EqualAction::equal((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
-                Operation::Range(f, ty, x) => {
+                Operation::Range(f, _, _) => {
                     let par_ident = Ident::new(&f, Span::call_site());
-                    let mut to_call = format!("field_{}_{}", f, ty.to_lowercase());
-                    if let Some(gt) = x {
-                        to_call = format!("{}_{}", to_call, gt.to_lowercase());
-                    }
-                    to_call = format!("{}_range", to_call);
-                    let filter_ident = Ident::new(&to_call, Span::call_site());
+                    let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
-                        #type_ident::#filter_ident(&mut builder, #par_ident);
+                        structsy::internal::RangeAction::range((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
             });
