@@ -922,77 +922,6 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }
     }
 
-    pub fn indexable_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value);
-    }
-
-    pub fn simple_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value);
-    }
-
-    pub fn indexable_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + Clone + PartialEq + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn simple_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn simple_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::contains(self, field, value)
-    }
-
-    pub fn indexable_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
-    where
-        V: SimpleCondition<T, V> + IndexType + PartialEq + 'static,
-    {
-        V::contains(self, field, value)
-    }
-
-    pub fn indexable_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
-    where
-        V: SimpleCondition<T, V> + Clone + PartialEq + 'static,
-    {
-        V::is(self, field, value)
-    }
-
-    pub fn simple_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + 'static + Clone,
-    {
-        V::is(self, field, value)
-    }
-
-    pub fn indexable_option_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + Clone + PartialEq + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn indexable_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range)
-    }
-
     pub fn indexable_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
     where
         R: RangeBounds<&'a str>,
@@ -1010,44 +939,13 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         String::range(self, field, (start, end))
     }
 
-    pub fn indexable_vec_single_range<V, R>(&mut self, field: Field<T, Vec<V>>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + 'static + Clone,
-        R: RangeBounds<V>,
-    {
-        V::range_contains(self, field, range)
-    }
-
-    pub fn indexable_option_single_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range_is(self, field, range);
-    }
-
-    pub fn indexable_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range)
-    }
-
-    pub fn indexable_option_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range);
-    }
-
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
     where
         V: PersistentEmbedded + 'static,
     {
         self.add(EmbeddedFieldFilter::new(filter, field.access))
     }
+
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
@@ -1055,55 +953,11 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(QueryFilter::new(query, field.access))
     }
 
-    pub fn ref_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn ref_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + Clone + PartialOrd + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range)
-    }
-
-    pub fn ref_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn ref_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range)
-    }
-
     pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
         self.add(VecQueryFilter::new(query, field.access))
-    }
-    pub fn ref_option_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
-    {
-        V::equal(self, field, value)
-    }
-
-    pub fn ref_option_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range(self, field, range)
     }
 
     pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: StructsyQuery<V>)

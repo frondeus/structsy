@@ -345,50 +345,6 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.steps.push(filter);
     }
 
-    pub fn simple_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionFilter::new(field.access, value))
-    }
-
-    pub fn simple_option_condition<V>(&mut self, field: Field<T, Option<V>>, value: Option<V>)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionFilter::<Option<V>, T>::new(field.access, value));
-    }
-    pub fn simple_vec_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionFilter::new(field.access, value))
-    }
-
-    pub fn simple_vec_single_condition<V>(&mut self, field: Field<T, Vec<V>>, value: V)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionSingleFilter::new(field.access, value))
-    }
-
-    pub fn simple_option_single_condition<V>(&mut self, field: Field<T, Option<V>>, value: V)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionFilter::<Option<V>, T>::new(field.access, Some(value)));
-    }
-
-    pub fn simple_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: Clone + PartialOrd + 'static,
-        R: RangeBounds<V>,
-    {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        self.add(RangeConditionFilter::new(field.access, start, end))
-    }
-
     pub fn simple_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
     where
         R: RangeBounds<&'a str>,
@@ -406,46 +362,6 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(RangeConditionFilter::new(field.access, start, end))
     }
 
-    pub fn simple_vec_single_range<V, R>(&mut self, field: Field<T, Vec<V>>, range: R)
-    where
-        V: PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        self.add(RangeSingleConditionFilter::new(field.access, start, end))
-    }
-
-    pub fn simple_option_single_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
-    where
-        V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        V::range_is(self, field, range)
-    }
-
-    pub fn simple_vec_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: PartialOrd + Clone + 'static,
-        R: RangeBounds<V>,
-    {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        // This may support index in future, but it does not now
-        self.add(RangeConditionFilter::new(field.access, start, end))
-    }
-
-    pub fn simple_option_range<V, R>(&mut self, field: Field<T, Option<V>>, range: R)
-    where
-        V: PartialOrd + Clone + 'static,
-        R: RangeBounds<Option<V>>,
-    {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        // This may support index in future, but it does not now
-        self.add(RangeOptionConditionFilter::new(field.access, start, end))
-    }
-
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
     where
         V: 'static,
@@ -460,22 +376,6 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(QueryFilter::new(query, field.access))
     }
 
-    pub fn ref_condition<V>(&mut self, field: Field<T, V>, value: V)
-    where
-        V: PartialEq + Clone + 'static,
-    {
-        self.add(ConditionFilter::new(field.access, value))
-    }
-
-    pub fn ref_range<V, R>(&mut self, field: Field<T, V>, range: R)
-    where
-        V: Clone + PartialOrd + 'static,
-        R: RangeBounds<V>,
-    {
-        let start = clone_bound_ref(&range.start_bound());
-        let end = clone_bound_ref(&range.end_bound());
-        self.add(RangeConditionFilter::new(field.access, start, end))
-    }
     pub fn or(&mut self, filters: EmbeddedFilter<T>) {
         self.add(OrFilter::new(filters.filter()))
     }
