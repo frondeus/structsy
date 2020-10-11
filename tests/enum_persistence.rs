@@ -1,5 +1,5 @@
 use structsy::{Structsy, StructsyTx};
-use structsy_derive::{Persistent, PersistentEmbedded};
+use structsy_derive::{queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
 #[derive(PersistentEmbedded, Eq, PartialEq, Debug)]
@@ -45,4 +45,40 @@ fn save_enum_read() {
             .expect("the record is there");
         assert_eq!(data_second, SimpleEnum::Second);
     }
+}
+
+#[derive(PersistentEmbedded, Clone, PartialEq, Debug)]
+enum Options {
+    Best,
+    Medium,
+}
+
+#[derive(Persistent)]
+struct Container {
+    option: Options,
+}
+
+#[queries(Container)]
+trait ContainerQueries {
+    fn by_option(self, option: Options) -> Self;
+}
+
+#[test]
+fn save_enum_query() {
+    let dir = tempdir().expect("can make a tempdir");
+    let file = dir.path().join("save_enum_read.db");
+    let db = Structsy::open(&file).expect("can open just create");
+    db.define::<Container>().expect("can define the struct");
+    let mut tx = db.begin().expect("begins ok");
+    tx.insert(&Container {
+        option: Options::Medium,
+    })
+    .expect("insert works");
+    tx.insert(&Container { option: Options::Best }).expect("insert works");
+    tx.commit().expect("commit works");
+
+    let result = db.query::<Container>().by_option(Options::Best).into_iter().count();
+    assert_eq!(result, 1);
+    let result = db.query::<Container>().by_option(Options::Best).into_iter().next();
+    assert_eq!(result.unwrap().1.option, Options::Best);
 }
