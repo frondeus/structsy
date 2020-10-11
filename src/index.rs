@@ -10,10 +10,10 @@ pub trait IndexableValue {
     fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
     fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
 }
-pub trait IndexMark: IndexType {}
 
 macro_rules! impl_indexable_value {
-    ($t:ident) => {
+    ($($t:ty),+) => {
+        $(
         impl IndexableValue for $t {
             fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
                 put_index(tx, name, self, id)
@@ -22,22 +22,10 @@ macro_rules! impl_indexable_value {
                 remove_index(tx, name, self, id)
             }
         }
-        impl IndexMark for $t {}
+        )+
     };
 }
-impl_indexable_value!(u8);
-impl_indexable_value!(u16);
-impl_indexable_value!(u32);
-impl_indexable_value!(u64);
-impl_indexable_value!(u128);
-impl_indexable_value!(i8);
-impl_indexable_value!(i16);
-impl_indexable_value!(i32);
-impl_indexable_value!(i64);
-impl_indexable_value!(i128);
-impl_indexable_value!(f32);
-impl_indexable_value!(f64);
-impl_indexable_value!(String);
+impl_indexable_value!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, String);
 
 impl<T: IndexableValue> IndexableValue for Option<T> {
     fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
