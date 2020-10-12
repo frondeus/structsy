@@ -551,17 +551,17 @@ fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
         .iter()
         .map(|field| {
             let field_ident = field.name.clone();
-            let t= field.ty.clone();
+            let t = field.ty.clone();
             let ty = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
                 (Some(x), Some(z)) => {
-                    quote!{#t<#x<#z>>}
+                    quote! {#t<#x<#z>>}
                 }
                 (Some(x), None) => quote! {#t<#x>},
-                (None, None) => quote!{#t},
+                (None, None) => quote! {#t},
                 (None, Some(_x)) => panic!(""),
             };
-            let  field_name = field.name.to_string();
-            let meta_method= Ident::new(&format!("field_{}",&field_name), Span::call_site());
+            let field_name = field.name.to_string();
+            let meta_method = Ident::new(&format!("field_{}", &field_name), Span::call_site());
             quote! {
                 pub fn #meta_method() -> structsy::internal::Field<Self,#ty> {
                     structsy::internal::Field::new(#field_name,|x|&x.#field_ident)

@@ -375,50 +375,6 @@ where
     }
 }
 
-impl<T, V> EqualAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
-where
-    T: Persistent + 'static,
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn equal(self, value: StructsyQuery<V>) {
-        self.1.ref_query(self.0, value);
-    }
-}
-
-impl<T, V> EqualAction<StructsyQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
-where
-    T: Persistent + 'static,
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn equal(self, value: StructsyQuery<V>) {
-        self.1.ref_vec_query(self.0, value);
-    }
-}
-
-impl<T, V> EqualAction<StructsyQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
-where
-    T: Persistent + 'static,
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn equal(self, value: StructsyQuery<V>) {
-        self.1.ref_option_query(self.0, value);
-    }
-}
-
-impl<T, V> EqualAction<EmbeddedFilter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
-where
-    T: Persistent + 'static,
-    V: PersistentEmbedded + 'static,
-{
-    #[inline]
-    fn equal(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value);
-    }
-}
-
 impl<T: 'static, V> EqualAction<V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
     V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static,
@@ -452,26 +408,6 @@ where
     #[inline]
     fn equal(self, value: V) {
         V::is(self.1, self.0, value);
-    }
-}
-
-impl<T: 'static, V> EqualAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn equal(self, value: StructsyQuery<V>) {
-        self.1.ref_query(self.0, value);
-    }
-}
-
-impl<T: 'static, V> EqualAction<EmbeddedFilter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: PersistentEmbedded + 'static,
-{
-    #[inline]
-    fn equal(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value);
     }
 }
 
@@ -552,6 +488,73 @@ impl<'a, T: 'static> RangeAction<&'a str> for (Field<T, String>, &mut EmbeddedFi
     #[inline]
     fn range(self, value: impl RangeBounds<&'a str>) {
         self.1.simple_range_str(self.0, value)
+    }
+}
+
+pub trait QueryAction<X> {
+    fn query(self, value: X);
+}
+
+impl<T: 'static, V> QueryAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_query(self.0, value);
+    }
+}
+
+impl<T: 'static, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: PersistentEmbedded + 'static,
+{
+    #[inline]
+    fn query(self, value: EmbeddedFilter<V>) {
+        self.1.simple_persistent_embedded(self.0, value);
+    }
+}
+
+impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_option_query(self.0, value);
+    }
+}
+
+impl<T, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: PersistentEmbedded + 'static,
+{
+    #[inline]
+    fn query(self, value: EmbeddedFilter<V>) {
+        self.1.simple_persistent_embedded(self.0, value);
+    }
+}
+impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_query(self.0, value);
+    }
+}
+
+impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_vec_query(self.0, value);
     }
 }
 

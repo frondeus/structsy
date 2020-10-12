@@ -7,6 +7,7 @@ use syn::{
 };
 enum Operation {
     Equals(String, String, Option<String>),
+    Query(String, String, Option<String>),
     Range(String, String, Option<String>),
 }
 
@@ -97,7 +98,11 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         }
         if !range {
             if let (Some(n), Some(t)) = (name, ty) {
-                res.push(Operation::Equals(n, t.0, t.1));
+                if t.0 == "EmbeddedFilter" || t.0 == "StructsyQuery" {
+                    res.push(Operation::Query(n, t.0, t.1));
+                } else {
+                    res.push(Operation::Equals(n, t.0, t.1));
+                }
             }
         }
     }
@@ -192,6 +197,13 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
                         structsy::internal::RangeAction::range((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
+                    }
+                }
+                Operation::Query(f, _, _) => {
+                    let par_ident = Ident::new(&f, Span::call_site());
+                    let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
+                    quote! {
+                        structsy::internal::QueryAction::query((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
             });
