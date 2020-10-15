@@ -2,6 +2,7 @@ use darling::FromDeriveInput;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput, Item};
 mod persistent;
 use persistent::PersistentInfo;
+use persistent::ProjectionInfo;
 mod queries;
 use queries::persistent_queries;
 
@@ -34,5 +35,13 @@ pub fn persistent(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed: DeriveInput = syn::parse(input).unwrap();
 
     let gen = PersistentInfo::from_derive_input(&parsed).unwrap().to_tokens();
+    gen.into()
+}
+
+#[proc_macro_derive(Projection, attributes(projection))]
+pub fn projection(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed: DeriveInput = syn::parse(input).unwrap();
+
+    let gen = ProjectionInfo::from_derive_input(&parsed).unwrap().to_tokens();
     gen.into()
 }

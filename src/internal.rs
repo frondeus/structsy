@@ -50,3 +50,7 @@ pub trait Persistent {
     where
         Self: std::marker::Sized;
 }
+
+pub trait Projection<T> {
+    fn projection(source: &T) -> Self;
+}

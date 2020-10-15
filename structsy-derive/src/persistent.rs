@@ -6,6 +6,14 @@ use syn::Type::Path;
 use syn::{AngleBracketedGenericArguments, GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath};
 
 #[derive(FromDeriveInput, Debug)]
+#[darling(forward_attrs(projection))]
+pub struct ProjectionInfo {
+    ident: Ident,
+    data: Data<(), ProjectionAttr>,
+    attrs: Vec<syn::Attribute>,
+}
+
+#[derive(FromDeriveInput, Debug)]
 #[darling(attributes(index))]
 pub struct PersistentInfo {
     ident: Ident,
@@ -39,13 +47,85 @@ struct PersistentAttr {
     mode: Option<IndexMode>,
 }
 
-#[derive(Clone)]
+#[derive(FromField, Debug)]
+struct ProjectionAttr {
+    ident: Option<Ident>,
+    ty: syn::Type,
+}
+
+#[derive(Clone, Debug)]
 struct FieldInfo {
     name: Ident,
     ty: Ident,
     template_ty: Option<Ident>,
     sub_template_ty: Option<Ident>,
     index_mode: Option<IndexMode>,
+}
+impl ProjectionInfo {
+    fn field_infos(&self, fields: &Fields<ProjectionAttr>) -> Vec<FieldInfo> {
+        fields
+            .iter()
+            .filter_map(|f| {
+                let field = f.ident.clone().unwrap();
+                let st = sub_type(&f.ty);
+                let sub = st.iter().filter_map(|x| get_type_ident(*x)).next();
+                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
+                if let Some(ty) = get_type_ident(&f.ty) {
+                    Some(FieldInfo {
+                        name: field,
+                        ty,
+                        template_ty: sub,
+                        sub_template_ty: subsub,
+                        index_mode: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn to_tokens(&self) -> TokenStream {
+        let name = &self.ident;
+        let mut target = None;
+        for attr in self.attrs.iter() {
+            let option = attr.parse_meta().unwrap();
+            match option {
+                // Match `#[projection = "xxx"]` attributes.  Match guard makes it `#[prefix = lit]`
+                syn::Meta::NameValue(syn::MetaNameValue { ref path, ref lit, .. })
+                    if path.get_ident().expect("projection attribute") == "projection" =>
+                {
+                    if let syn::Lit::Str(lit) = lit {
+                        target = Some(lit.value());
+                    }
+                }
+                _ => {
+                    panic!("unsupported attribute");
+                }
+            }
+        }
+        match &self.data {
+            Data::Struct(data) => {
+                let fields = self.field_infos(&data);
+                let ser = projection_tokens(&fields);
+                let target_ident = Ident::new(&target.expect("missing projection attributed"), Span::call_site());
+                quote! {
+
+                impl structsy::internal::Projection<#target_ident> for #name {
+
+                    fn projection(source:& #target_ident) -> Self {
+                            #ser
+                    }
+
+                }
+
+                }
+            }
+            Data::Enum(_) => {
+                panic!("enum not supported as projection");
+            }
+        }
+    }
 }
 
 impl PersistentInfo {
@@ -572,5 +652,23 @@ fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
 
     quote! {
         #( #methods )*
+    }
+}
+
+fn projection_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
+    let fields_info: Vec<TokenStream> = fields
+        .iter()
+        .map(|field| {
+            let field_ident = field.name.clone();
+            quote! {
+                #field_ident: source.#field_ident,
+            }
+        })
+        .collect();
+
+    quote! {
+        Self {
+            #( #fields_info )*
+        }
     }
 }
