@@ -114,7 +114,8 @@ impl ProjectionInfo {
                 impl structsy::internal::Projection<#target_ident> for #name {
 
                     fn projection(source:& #target_ident) -> Self {
-                            #ser
+                        use structsy::internal::Projection;
+                        #ser
                     }
 
                 }
@@ -661,7 +662,7 @@ fn projection_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
         .map(|field| {
             let field_ident = field.name.clone();
             quote! {
-                #field_ident: source.#field_ident,
+                #field_ident: Projection::projection(&source.#field_ident),
             }
         })
         .collect();

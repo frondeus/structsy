@@ -52,6 +52,7 @@ pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
 pub mod internal;
 pub use internal::{Persistent, PersistentEmbedded};
+mod projection;
 
 /// Main API to persist structs with structsy.
 ///

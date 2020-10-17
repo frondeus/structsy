@@ -10,6 +10,7 @@ pub use crate::index::{
     declare_index, find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx,
     find_unique_tx, IndexableValue,
 };
+pub use crate::projection::Projection;
 pub use crate::queries::EqualAction;
 pub use crate::queries::Query;
 pub use crate::queries::QueryAction;
@@ -49,8 +50,4 @@ pub trait Persistent {
     fn remove_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()>
     where
         Self: std::marker::Sized;
-}
-
-pub trait Projection<T> {
-    fn projection(source: &T) -> Self;
 }
