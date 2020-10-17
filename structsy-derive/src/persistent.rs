@@ -160,7 +160,7 @@ impl PersistentInfo {
             Data::Struct(data) => {
                 let fields = self.field_infos(&data);
                 let (desc, ser) = serialization_tokens(name, &fields);
-                let (indexes, impls) = indexes_tokens(name, &fields);
+                let indexes = indexes_tokens(name, &fields);
                 let filters = filter_tokens(&fields);
                 quote! {
 
@@ -177,7 +177,6 @@ impl PersistentInfo {
                 }
 
                 impl #name {
-                    #impls
                     #filters
                 }
                 }
@@ -434,7 +433,7 @@ fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
     (desc, serialization)
 }
 
-fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
+fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
     let only_indexed: Vec<FieldInfo> = fields
         .iter()
         .filter(|f| f.index_mode.is_some())
@@ -464,86 +463,6 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
             (declare, (put, remove))
         })
         .collect();
-    let lookup_methods:Vec<TokenStream> = only_indexed.iter()
-            .map(|f| {
-                let index_name = format!("{}.{}", name, f.name);
-                let index_type = match (f.template_ty.clone(),f.sub_template_ty.clone()) {
-                    (Some(_), Some(s1)) => s1,
-                    (Some(s), None) => s,
-                    _ =>f.ty.clone(),
-                };
-                let field_name = f.name.to_string();
-                let find_by= Ident::new( &format!("find_by_{}", &field_name), Span::call_site());
-                let find_by_tx= Ident::new( &format!("find_by_{}_tx", &field_name), Span::call_site());
-                let find_by_range= Ident::new( &format!("find_by_{}_range", &field_name), Span::call_site());
-                let find_by_range_tx= Ident::new( &format!("find_by_{}_range_tx", &field_name), Span::call_site());
-                if f.index_mode == Some(IndexMode::Cluster) {
-                    let find = quote!{
-                        #[deprecated]
-                        fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
-                            structsy::internal::find(st,#index_name,val)
-                        }
-                        #[deprecated]
-                        fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Vec<(structsy::Ref<Self>,Self)>> {
-                            structsy::internal::find_tx(st,#index_name,val)
-                        }
-                    };
-                    let range = quote! {
-                        #[deprecated]
-                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (structsy::Ref<Self>, Self,#index_type)>> {
-                            structsy::internal::find_range(st,#index_name,range)
-                        }
-                    };
-                    let range_tx = quote! {
-                        #[deprecated]
-                        fn #find_by_range_tx<'a, R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::RangeIterator<'a,#index_type,Self>> {
-                            structsy::internal::find_range_tx(st,#index_name,range)
-                        }
-                    };
-                    quote! {
-                        #find
-                        #range
-                        #range_tx
-                    }
-                } else {
-                    let find =quote!{
-                        #[deprecated]
-                        fn #find_by(st:&structsy::Structsy, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
-                            structsy::internal::find_unique(st,#index_name,val)
-                        }
-                        #[deprecated]
-                        fn #find_by_tx(st:&mut structsy::Sytx, val:&#index_type) -> structsy::SRes<Option<(structsy::Ref<Self>,Self)>> {
-                            structsy::internal::find_unique_tx(st,#index_name,val)
-                        }
-
-                    };
-                    let range = quote! {
-                        #[deprecated]
-                        fn #find_by_range<R:std::ops::RangeBounds<#index_type>>(st:&structsy::Structsy, range:R) -> structsy::SRes<impl Iterator<Item = (Ref<Self>, Self,#index_type)>> {
-                            structsy::internal::find_unique_range(st,#index_name,range)
-                        }
-                    };
-                    let range_tx = quote! {
-                        #[deprecated]
-                        fn #find_by_range_tx<'a,R:std::ops::RangeBounds<#index_type>>(st:&'a mut structsy::Sytx, range:R) -> structsy::SRes<structsy::UniqueRangeIterator<'a,#index_type,Self>> {
-                            structsy::internal::find_unique_range_tx(st,#index_name,range)
-                        }
-                    };
-
-                    quote! {
-                        #find
-                        #range
-                        #range_tx
-                    }
-                }
-            }).collect();
-    let impls = if lookup_methods.is_empty() {
-        quote! {}
-    } else {
-        quote! {
-            #( #lookup_methods )*
-        }
-    };
     let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
         snippets.into_iter().unzip();
     let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
@@ -566,7 +485,7 @@ fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenS
                 Ok(())
             }
     };
-    (indexes, impls)
+    indexes
 }
 
 fn sub_type(t: &Type) -> Option<&Type> {
