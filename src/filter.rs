@@ -126,12 +126,12 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
 
 struct ConditionSingleFilter<V, T> {
     value: V,
-    access: fn(&T) -> &Vec<V>,
+    field: Field<T, Vec<V>>,
 }
 
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionSingleFilter<V, T> {
-    fn new(access: fn(&T) -> &Vec<V>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(ConditionSingleFilter { access, value })
+    fn new(field: Field<T, Vec<V>>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(ConditionSingleFilter { field, value })
     }
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
@@ -140,18 +140,18 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         Box::new(ScanStarter::new(self.condition()))
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| (self.access)(x).contains(&self.value))
+        Box::new(move |_, x| (self.field.access)(x).contains(&self.value))
     }
 }
 
 struct ConditionFilter<V, T> {
     value: V,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
 }
 
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V, T> {
-    fn new(access: fn(&T) -> &V, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(ConditionFilter { access, value })
+    fn new(field: Field<T, V>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(ConditionFilter { field, value })
     }
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
@@ -160,24 +160,24 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
         Box::new(ScanStarter::new(self.condition()))
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| *(self.access)(x) == self.value)
+        Box::new(move |_, x| *(self.field.access)(x) == self.value)
     }
 }
 
 struct RangeSingleConditionFilter<V, T> {
     value_start: Bound<V>,
     value_end: Bound<V>,
-    access: fn(&T) -> &Vec<V>,
+    field: Field<T, Vec<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
     fn new(
-        access: fn(&T) -> &Vec<V>,
+        field: Field<T, Vec<V>>,
         value_start: Bound<V>,
         value_end: Bound<V>,
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeSingleConditionFilter {
-            access,
+            field,
             value_start,
             value_end,
         })
@@ -193,7 +193,7 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         let b2 = clone_bound(&self.value_end);
         let val = (b1, b2);
         Box::new(move |_, x| {
-            for el in (self.access)(x) {
+            for el in (self.field.access)(x) {
                 if val.contains(el) {
                     return true;
                 }
@@ -206,13 +206,13 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 struct RangeConditionFilter<V, T> {
     value_start: Bound<V>,
     value_end: Bound<V>,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFilter<V, T> {
-    fn new(access: fn(&T) -> &V, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+    fn new(field: Field<T, V>, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeConditionFilter {
-            access,
+            field,
             value_start,
             value_end,
         })
@@ -227,13 +227,13 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         let b1 = clone_bound(&self.value_start);
         let b2 = clone_bound(&self.value_end);
         let val = (b1, b2);
-        Box::new(move |_, x| val.contains((self.access)(x)))
+        Box::new(move |_, x| val.contains((self.field.access)(x)))
     }
 }
 
 struct RangeIndexFilter<V, T> {
     index_name: String,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
     value_start: Bound<V>,
     value_end: Bound<V>,
     data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
@@ -243,13 +243,13 @@ struct RangeIndexFilter<V, T> {
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
     fn new(
         index_name: String,
-        access: fn(&T) -> &V,
+        field: Field<T, V>,
         value_start: Bound<V>,
         value_end: Bound<V>,
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeIndexFilter {
             index_name,
-            access,
+            field,
             value_start,
             value_end,
             data: None,
@@ -325,14 +325,14 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
             let b1 = clone_bound(&self.value_start);
             let b2 = clone_bound(&self.value_end);
             let val = (b1, b2);
-            Box::new(move |_, x| val.contains((self.access)(x)))
+            Box::new(move |_, x| val.contains((self.field.access)(x)))
         }
     }
 }
 
 struct RangeSingleIndexFilter<V, T> {
     index_name: String,
-    access: fn(&T) -> &Vec<V>,
+    field: Field<T, Vec<V>>,
     value_start: Bound<V>,
     value_end: Bound<V>,
     data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
@@ -342,13 +342,13 @@ struct RangeSingleIndexFilter<V, T> {
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIndexFilter<V, T> {
     fn new(
         index_name: String,
-        access: fn(&T) -> &Vec<V>,
+        field: Field<T, Vec<V>>,
         value_start: Bound<V>,
         value_end: Bound<V>,
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeSingleIndexFilter {
             index_name,
-            access,
+            field,
             value_start,
             value_end,
             data: None,
@@ -423,7 +423,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
             let b2 = clone_bound(&self.value_end);
             let val = (b1, b2);
             Box::new(move |_, x| {
-                for el in (self.access)(x) {
+                for el in (self.field.access)(x) {
                     if val.contains(el) {
                         return true;
                     }
@@ -437,17 +437,17 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
 struct RangeOptionConditionFilter<V, T> {
     value_start: Bound<Option<V>>,
     value_end: Bound<Option<V>>,
-    access: fn(&T) -> &Option<V>,
+    field: Field<T, Option<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionConditionFilter<V, T> {
     fn new(
-        access: fn(&T) -> &Option<V>,
+        field: Field<T, Option<V>>,
         value_start: Bound<Option<V>>,
         value_end: Bound<Option<V>>,
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeOptionConditionFilter {
-            access,
+            field,
             value_start,
             value_end,
         })
@@ -476,7 +476,7 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         let val = (b1, b2);
         let include_none = none_end | none_start;
         Box::new(move |_, x| {
-            if let Some(z) = (self.access)(x) {
+            if let Some(z) = (self.field.access)(x) {
                 val.contains(z)
             } else {
                 include_none
@@ -487,12 +487,12 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 
 pub struct EmbeddedFieldFilter<V, T> {
     filter: EmbeddedFilter<V>,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
 }
 
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
-    fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { filter, access })
+    fn new(filter: EmbeddedFilter<V>, field: Field<T, V>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter { filter, field })
     }
 }
 
@@ -504,19 +504,19 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
     }
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let mut condition = self.filter.condition();
-        let access = self.access;
+        let access = self.field.access;
         Box::new(move |_, x| condition((access)(x)))
     }
 }
 
 pub struct QueryFilter<V: Persistent + 'static, T: Persistent> {
     query: StructsyQuery<V>,
-    access: fn(&T) -> &Ref<V>,
+    field: Field<T, Ref<V>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(QueryFilter { query, access })
+    fn new(query: StructsyQuery<V>, field: Field<T, Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(QueryFilter { query, field })
     }
 }
 
@@ -528,10 +528,10 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
         let mut condition = self.query.builder().condition();
-        let access = self.access;
+        let access = self.field.access;
         Box::new(move |_, x| {
-            let id = (access)(&x).clone();
-            if let Some(r) = st.read(&id).unwrap_or(None) {
+            let id = (access)(&x);
+            if let Some(r) = st.read(id).unwrap_or(None) {
                 condition(&id, &r)
             } else {
                 false
@@ -542,12 +542,12 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
 
 pub struct VecQueryFilter<V: Persistent + 'static, T: Persistent> {
     query: StructsyQuery<V>,
-    access: fn(&T) -> &Vec<Ref<V>>,
+    field: Field<T, Vec<Ref<V>>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Vec<Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(VecQueryFilter { query, access })
+    fn new(query: StructsyQuery<V>, field: Field<T, Vec<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(VecQueryFilter { query, field })
     }
 }
 
@@ -559,11 +559,10 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Vec
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
         let mut condition = self.query.builder().condition();
-        let access = self.access;
+        let access = self.field.access;
         Box::new(move |_, x| {
-            let ids = (access)(&x).clone();
-            for id in ids {
-                if let Some(r) = st.read(&id).unwrap_or(None) {
+            for id in (access)(&x) {
+                if let Some(r) = st.read(id).unwrap_or(None) {
                     if condition(&id, &r) {
                         return true;
                     }
@@ -576,12 +575,12 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Vec
 
 pub struct OptionQueryFilter<V: Persistent + 'static, T: Persistent> {
     query: StructsyQuery<V>,
-    access: fn(&T) -> &Option<Ref<V>>,
+    field: Field<T, Option<Ref<V>>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Option<Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(OptionQueryFilter { query, access })
+    fn new(query: StructsyQuery<V>, field: Field<T, Option<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(OptionQueryFilter { query, field })
     }
 }
 
@@ -593,10 +592,10 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Opt
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
         let mut condition = self.query.builder().condition();
-        let access = self.access;
+        let access = self.field.access;
         Box::new(move |_, x| {
-            if let Some(id) = (access)(&x).clone() {
-                if let Some(r) = st.read(&id).unwrap_or(None) {
+            if let Some(id) = (access)(&x) {
+                if let Some(r) = st.read(id).unwrap_or(None) {
                     condition(&id, &r)
                 } else {
                     false
@@ -701,13 +700,13 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeConditionFilter::new(field.access, start, end))
+        filter.add(RangeConditionFilter::new(field, start, end))
     }
 
     fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeSingleConditionFilter::new(field.access, start, end))
+        filter.add(RangeSingleConditionFilter::new(field, start, end))
     }
 
     fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
@@ -722,20 +721,20 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
             Bound::Unbounded => Bound::Unbounded,
         };
         // This may support index in future, but it does not now
-        filter.add(RangeOptionConditionFilter::new(field.access, start, end))
+        filter.add(RangeOptionConditionFilter::new(field, start, end))
     }
 }
 pub trait SimpleCondition<T: Persistent + 'static, V: Clone + PartialEq + 'static> {
     fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter.add(ConditionFilter::new(field.access, value))
+        filter.add(ConditionFilter::new(field, value))
     }
 
     fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter.add(ConditionSingleFilter::new(field.access, value))
+        filter.add(ConditionSingleFilter::new(field, value))
     }
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.add(ConditionFilter::new(field.access, Some(value)))
+        filter.add(ConditionFilter::new(field, Some(value)))
     }
 }
 
@@ -758,9 +757,9 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeIndexFilter::new(index_name, field.access, start, end))
+                    filter.add(RangeIndexFilter::new(index_name, field, start, end))
                 } else {
-                    filter.add(RangeConditionFilter::new(field.access, start, end))
+                    filter.add(RangeConditionFilter::new(field, start, end))
                 }
             }
 
@@ -768,9 +767,9 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeSingleIndexFilter::new(index_name, field.access, start, end))
+                    filter.add(RangeSingleIndexFilter::new(index_name, field, start, end))
                 } else {
-                    filter.add(RangeSingleConditionFilter::new(field.access, start, end))
+                    filter.add(RangeSingleConditionFilter::new(field, start, end))
                 }
             }
         }
@@ -780,21 +779,21 @@ macro_rules! index_conditions {
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                     filter.add(IndexFilter::new(index_name, value))
                 } else {
-                    filter.add(ConditionFilter::new(field.access, value))
+                    filter.add(ConditionFilter::new(field, value))
                 }
             }
             fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<$t>>, value: $t) {
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                     filter.add(IndexFilter::new(index_name, value))
                 } else {
-                    filter.add(ConditionSingleFilter::new(field.access, value))
+                    filter.add(ConditionSingleFilter::new(field, value))
                 }
             }
             fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: $t) {
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                     filter.add(IndexFilter::new(index_name, value))
                 } else {
-                    filter.add(ConditionFilter::new(field.access, Some(value)))
+                    filter.add(ConditionFilter::new(field, Some(value)))
                 }
             }
         }
@@ -803,10 +802,10 @@ macro_rules! index_conditions {
             fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Vec<$t>>, value: Vec<$t>) {
                 if let Some(_index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                     // TODO: support index search for vec types
-                    filter.add(ConditionFilter::new(field.access, value))
+                    filter.add(ConditionFilter::new(field, value))
                 //filter.add(IndexFilter::new(index_name, value))
                 } else {
-                    filter.add(ConditionFilter::new(field.access, value))
+                    filter.add(ConditionFilter::new(field, value))
                 }
             }
         }
@@ -819,7 +818,7 @@ macro_rules! index_conditions {
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
                     filter.add(IndexFilter::new(index_name, v));
                 } else {
-                    filter.add(ConditionFilter::<Option<$t>, T>::new(field.access, value));
+                    filter.add(ConditionFilter::<Option<$t>, T>::new(field, value));
                 }
             }
         }
@@ -829,7 +828,7 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 // This may support index in future, but it does not now
-                filter.add(RangeOptionConditionFilter::new(field.access, start, end))
+                filter.add(RangeOptionConditionFilter::new(field, start, end))
             }
         }
         )+
@@ -981,28 +980,28 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: PersistentEmbedded + 'static,
     {
-        self.add(EmbeddedFieldFilter::new(filter, field.access))
+        self.add(EmbeddedFieldFilter::new(filter, field))
     }
 
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(QueryFilter::new(query, field.access))
+        self.add(QueryFilter::new(query, field))
     }
 
     pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(VecQueryFilter::new(query, field.access))
+        self.add(VecQueryFilter::new(query, field))
     }
 
     pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(OptionQueryFilter::new(query, field.access))
+        self.add(OptionQueryFilter::new(query, field))
     }
 
     pub fn or(&mut self, filters: StructsyFilter<T>) {
