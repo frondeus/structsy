@@ -857,17 +857,38 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 {
 }
 
+trait OrderStep {}
+
+struct FieldOrder<T, V> {
+    field: Field<T, V>,
+}
+impl<T: 'static, V: 'static> FieldOrder<T, V> {
+    fn new(field: Field<T, V>) -> Box<dyn OrderStep> {
+        Box::new(Self { field })
+    }
+}
+
+impl<T, V> OrderStep for FieldOrder<T, V> {}
+
 pub struct FilterBuilder<T> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
+    order: Vec<Box<dyn OrderStep>>,
 }
 
 impl<T> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
-        FilterBuilder { steps: Vec::new() }
+        FilterBuilder {
+            steps: Vec::new(),
+            order: Vec::new(),
+        }
     }
 
     fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
         self.steps.push(filter);
+    }
+
+    fn add_order(&mut self, order: Box<dyn OrderStep>) {
+        self.order.push(order)
     }
 }
 
@@ -994,5 +1015,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
 
     pub fn not(&mut self, filters: StructsyFilter<T>) {
         self.add(NotFilter::new(filters.filter()))
+    }
+
+    pub fn order<V: 'static>(&mut self, field: Field<T, V>) {
+        self.add_order(FieldOrder::new(field))
     }
 }
