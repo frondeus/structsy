@@ -165,22 +165,13 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep 
 }
 
 struct RangeSingleConditionFilter<V, T> {
-    value_start: Bound<V>,
-    value_end: Bound<V>,
+    values: (Bound<V>, Bound<V>),
     field: Field<T, Vec<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
-    fn new(
-        field: Field<T, Vec<V>>,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
-    ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeSingleConditionFilter {
-            field,
-            value_start,
-            value_end,
-        })
+    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeSingleConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleConditionFilter<V, T> {
@@ -189,12 +180,9 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         Box::new(ScanStarter::new(self.condition()))
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
         Box::new(move |_, x| {
             for el in (self.field.access)(x) {
-                if val.contains(el) {
+                if self.values.contains(el) {
                     return true;
                 }
             }
@@ -204,18 +192,13 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 }
 
 struct RangeConditionFilter<V, T> {
-    value_start: Bound<V>,
-    value_end: Bound<V>,
+    values: (Bound<V>, Bound<V>),
     field: Field<T, V>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFilter<V, T> {
-    fn new(field: Field<T, V>, value_start: Bound<V>, value_end: Bound<V>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeConditionFilter {
-            field,
-            value_start,
-            value_end,
-        })
+    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(RangeConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeConditionFilter<V, T> {
@@ -224,18 +207,14 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         Box::new(ScanStarter::new(self.condition()))
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
-        Box::new(move |_, x| val.contains((self.field.access)(x)))
+        Box::new(move |_, x| self.values.contains((self.field.access)(x)))
     }
 }
 
 struct RangeIndexFilter<V, T> {
     index_name: String,
     field: Field<T, V>,
-    value_start: Bound<V>,
-    value_end: Bound<V>,
+    values: (Bound<V>, Bound<V>),
     data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
     score: Option<u32>,
 }
@@ -244,14 +223,12 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFil
     fn new(
         index_name: String,
         field: Field<T, V>,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
+        values: (Bound<V>, Bound<V>),
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeIndexFilter {
             index_name,
             field,
-            value_start,
-            value_end,
+            values,
             data: None,
             score: None,
         })
@@ -261,10 +238,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFil
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
     type Target = T;
     fn score(&mut self, structsy: &Structsy) -> u32 {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
-        if let Ok(iter) = find_range(&structsy, &self.index_name, val) {
+        if let Ok(iter) = find_range(&structsy, &self.index_name, self.values.clone()) {
             let mut no_key = iter.map(|(r, e, _)| (r, e));
             let mut i = 0;
             let mut vec = Vec::new();
@@ -282,10 +256,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
     }
 
     fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
-        if let Ok(iter) = find_range_tx(tx, &self.index_name, val) {
+        if let Ok(iter) = find_range_tx(tx, &self.index_name, self.values.clone()) {
             let mut no_key = iter.map(|(r, e, _)| (r, e));
             let mut i = 0;
             let mut vec = Vec::new();
@@ -322,10 +293,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
             Box::new(move |r, _x| to_filter.contains(r))
         } else {
-            let b1 = clone_bound(&self.value_start);
-            let b2 = clone_bound(&self.value_end);
-            let val = (b1, b2);
-            Box::new(move |_, x| val.contains((self.field.access)(x)))
+            Box::new(move |_, x| self.values.contains((self.field.access)(x)))
         }
     }
 }
@@ -333,8 +301,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
 struct RangeSingleIndexFilter<V, T> {
     index_name: String,
     field: Field<T, Vec<V>>,
-    value_start: Bound<V>,
-    value_end: Bound<V>,
+    values: (Bound<V>, Bound<V>),
     data: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
     score: Option<u32>,
 }
@@ -343,14 +310,12 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIn
     fn new(
         index_name: String,
         field: Field<T, Vec<V>>,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
+        values: (Bound<V>, Bound<V>),
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeSingleIndexFilter {
             index_name,
             field,
-            value_start,
-            value_end,
+            values,
             data: None,
             score: None,
         })
@@ -360,10 +325,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIn
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleIndexFilter<V, T> {
     type Target = T;
     fn score(&mut self, structsy: &Structsy) -> u32 {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
-        if let Ok(iter) = find_range(&structsy, &self.index_name, val) {
+        if let Ok(iter) = find_range(&structsy, &self.index_name, self.values.clone()) {
             let mut no_key = iter.map(|(r, e, _)| (r, e));
             let mut i = 0;
             let mut vec = Vec::new();
@@ -381,10 +343,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
     }
 
     fn score_tx<'a>(&mut self, tx: &'a mut OwnedSytx) -> (u32, &'a mut OwnedSytx) {
-        let b1 = clone_bound(&self.value_start);
-        let b2 = clone_bound(&self.value_end);
-        let val = (b1, b2);
-        if let Ok(iter) = find_range_tx(tx, &self.index_name, val) {
+        if let Ok(iter) = find_range_tx(tx, &self.index_name, self.values.clone()) {
             let mut no_key = iter.map(|(r, e, _)| (r, e));
             let mut i = 0;
             let mut vec = Vec::new();
@@ -419,12 +378,9 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
             let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
             Box::new(move |r, _x| to_filter.contains(r))
         } else {
-            let b1 = clone_bound(&self.value_start);
-            let b2 = clone_bound(&self.value_end);
-            let val = (b1, b2);
             Box::new(move |_, x| {
                 for el in (self.field.access)(x) {
-                    if val.contains(el) {
+                    if self.values.contains(el) {
                         return true;
                     }
                 }
@@ -435,22 +391,16 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
 }
 
 struct RangeOptionConditionFilter<V, T> {
-    value_start: Bound<Option<V>>,
-    value_end: Bound<Option<V>>,
+    values: (Bound<Option<V>>, Bound<Option<V>>),
     field: Field<T, Option<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionConditionFilter<V, T> {
     fn new(
         field: Field<T, Option<V>>,
-        value_start: Bound<Option<V>>,
-        value_end: Bound<Option<V>>,
+        values: (Bound<Option<V>>, Bound<Option<V>>),
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeOptionConditionFilter {
-            field,
-            value_start,
-            value_end,
-        })
+        Box::new(RangeOptionConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
@@ -459,14 +409,14 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         Box::new(ScanStarter::new(self.condition()))
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let (b1, none_end) = match &self.value_start {
+        let (b1, none_end) = match &self.values.start_bound() {
             Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
             Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
             Bound::Included(None) => (Bound::Unbounded, true),
             Bound::Excluded(None) => (Bound::Unbounded, true),
             Bound::Unbounded => (Bound::Unbounded, false),
         };
-        let (b2, none_start) = match &self.value_end {
+        let (b2, none_start) = match &self.values.end_bound() {
             Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
             Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
             Bound::Included(None) => (Bound::Unbounded, true),
@@ -680,14 +630,6 @@ impl<T: Persistent + 'static> FilterBuilderStep for NotFilter<T> {
     }
 }
 
-fn clone_bound<X: Clone>(bound: &Bound<X>) -> Bound<X> {
-    match bound {
-        Bound::Included(x) => Bound::Included(x.clone()),
-        Bound::Excluded(x) => Bound::Excluded(x.clone()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
-
 fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     match bound {
         Bound::Included(x) => Bound::Included((*x).clone()),
@@ -700,13 +642,13 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeConditionFilter::new(field, start, end))
+        filter.add(RangeConditionFilter::new(field, (start, end)))
     }
 
     fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeSingleConditionFilter::new(field, start, end))
+        filter.add(RangeSingleConditionFilter::new(field, (start, end)))
     }
 
     fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
@@ -721,7 +663,7 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
             Bound::Unbounded => Bound::Unbounded,
         };
         // This may support index in future, but it does not now
-        filter.add(RangeOptionConditionFilter::new(field, start, end))
+        filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
 }
 pub trait SimpleCondition<T: Persistent + 'static, V: Clone + PartialEq + 'static> {
@@ -757,9 +699,9 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeIndexFilter::new(index_name, field, start, end))
+                    filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
                 } else {
-                    filter.add(RangeConditionFilter::new(field, start, end))
+                    filter.add(RangeConditionFilter::new(field,( start, end)))
                 }
             }
 
@@ -767,9 +709,9 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeSingleIndexFilter::new(index_name, field, start, end))
+                    filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
                 } else {
-                    filter.add(RangeSingleConditionFilter::new(field, start, end))
+                    filter.add(RangeSingleConditionFilter::new(field, (start, end)))
                 }
             }
         }
@@ -828,7 +770,7 @@ macro_rules! index_conditions {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 // This may support index in future, but it does not now
-                filter.add(RangeOptionConditionFilter::new(field, start, end))
+                filter.add(RangeOptionConditionFilter::new(field, (start, end)))
             }
         }
         )+

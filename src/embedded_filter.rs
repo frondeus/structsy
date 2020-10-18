@@ -9,83 +9,65 @@ trait EmbeddedFilterBuilderStep {
 
 struct ConditionFilter<V, T> {
     value: V,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
 }
 
 impl<V: PartialEq + Clone + 'static, T: 'static> ConditionFilter<V, T> {
-    fn new(access: fn(&T) -> &V, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(ConditionFilter { access, value })
+    fn new(field: Field<T, V>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(ConditionFilter { field, value })
     }
 }
 impl<V: PartialEq + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
-        Box::new(move |s| *(self.access)(s) == self.value)
+        Box::new(move |s| *(self.field.access)(s) == self.value)
     }
 }
 
 struct ConditionSingleFilter<V, T> {
     value: V,
-    access: fn(&T) -> &Vec<V>,
+    field: Field<T, Vec<V>>,
 }
 
 impl<V: PartialEq + Clone + 'static, T: 'static> ConditionSingleFilter<V, T> {
-    fn new(access: fn(&T) -> &Vec<V>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(ConditionSingleFilter { access, value })
+    fn new(field: Field<T, Vec<V>>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(ConditionSingleFilter { field, value })
     }
 }
 
 impl<V: PartialEq + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for ConditionSingleFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
-        Box::new(move |s| (self.access)(s).contains(&self.value))
+        Box::new(move |s| (self.field.access)(s).contains(&self.value))
     }
 }
 
 struct RangeConditionFilter<V, T> {
-    value_start: Bound<V>,
-    value_end: Bound<V>,
-    access: fn(&T) -> &V,
+    values: (Bound<V>, Bound<V>),
+    field: Field<T, V>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeConditionFilter<V, T> {
-    fn new(
-        access: fn(&T) -> &V,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
-    ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeConditionFilter {
-            access,
-            value_start,
-            value_end,
-        })
+    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(RangeConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeConditionFilter<V, T> {
     type Target = T;
 
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
-        Box::new(move |s| (self.value_start.clone(), self.value_end.clone()).contains((self.access)(s)))
+        Box::new(move |s| self.values.contains((self.field.access)(s)))
     }
 }
 
 struct RangeSingleConditionFilter<V, T> {
-    value_start: Bound<V>,
-    value_end: Bound<V>,
-    access: fn(&T) -> &Vec<V>,
+    values: (Bound<V>, Bound<V>),
+    field: Field<T, Vec<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeSingleConditionFilter<V, T> {
-    fn new(
-        access: fn(&T) -> &Vec<V>,
-        value_start: Bound<V>,
-        value_end: Bound<V>,
-    ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeSingleConditionFilter {
-            access,
-            value_start,
-            value_end,
-        })
+    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(RangeSingleConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeSingleConditionFilter<V, T> {
@@ -93,8 +75,8 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
 
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         Box::new(move |s| {
-            for el in (self.access)(s) {
-                if (self.value_start.clone(), self.value_end.clone()).contains(el) {
+            for el in (self.field.access)(s) {
+                if self.values.contains(el) {
                     return true;
                 }
             }
@@ -104,35 +86,29 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
 }
 
 struct RangeOptionConditionFilter<V, T> {
-    value_start: Bound<Option<V>>,
-    value_end: Bound<Option<V>>,
-    access: fn(&T) -> &Option<V>,
+    values: (Bound<Option<V>>, Bound<Option<V>>),
+    field: Field<T, Option<V>>,
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeOptionConditionFilter<V, T> {
     fn new(
-        access: fn(&T) -> &Option<V>,
-        value_start: Bound<Option<V>>,
-        value_end: Bound<Option<V>>,
+        field: Field<T, Option<V>>,
+        values: (Bound<Option<V>>, Bound<Option<V>>),
     ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeOptionConditionFilter {
-            access,
-            value_start,
-            value_end,
-        })
+        Box::new(RangeOptionConditionFilter { field, values })
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeOptionConditionFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
-        let (b1, none_end) = match &self.value_start {
+        let (b1, none_end) = match &self.values.start_bound() {
             Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
             Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
             Bound::Included(None) => (Bound::Unbounded, true),
             Bound::Excluded(None) => (Bound::Unbounded, true),
             Bound::Unbounded => (Bound::Unbounded, false),
         };
-        let (b2, none_start) = match &self.value_end {
+        let (b2, none_start) = match &self.values.end_bound() {
             Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
             Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
             Bound::Included(None) => (Bound::Unbounded, true),
@@ -142,7 +118,7 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
         let val = (b1, b2);
         let include_none = none_end | none_start;
         Box::new(move |s| {
-            if let Some(z) = (self.access)(s) {
+            if let Some(z) = (self.field.access)(s) {
                 val.contains(z)
             } else {
                 include_none
@@ -153,19 +129,19 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
 
 pub struct EmbeddedFieldFilter<V, T> {
     filter: EmbeddedFilter<V>,
-    access: fn(&T) -> &V,
+    field: Field<T, V>,
 }
 
 impl<V: 'static, T: 'static> EmbeddedFieldFilter<V, T> {
-    fn new(filter: EmbeddedFilter<V>, access: fn(&T) -> &V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { filter, access })
+    fn new(filter: EmbeddedFilter<V>, field: Field<T, V>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter { filter, field })
     }
 }
 
 impl<V: 'static, T: 'static> EmbeddedFilterBuilderStep for EmbeddedFieldFilter<V, T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
-        let access = self.access;
+        let access = self.field.access;
         let mut condition = self.filter.condition();
         Box::new(move |r| condition((access)(r)))
     }
@@ -173,12 +149,12 @@ impl<V: 'static, T: 'static> EmbeddedFilterBuilderStep for EmbeddedFieldFilter<V
 
 pub struct QueryFilter<V: Persistent + 'static, T> {
     query: StructsyQuery<V>,
-    access: fn(&T) -> &Ref<V>,
+    field: Field<T, Ref<V>>,
 }
 
 impl<V: Persistent + 'static, T: 'static> QueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, access: fn(&T) -> &Ref<V>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(QueryFilter { query, access })
+    fn new(query: StructsyQuery<V>, field: Field<T, Ref<V>>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(QueryFilter { query, field })
     }
 }
 
@@ -187,7 +163,7 @@ impl<V: Persistent + 'static, T: 'static> EmbeddedFilterBuilderStep for QueryFil
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let st = self.query.structsy.clone();
         let mut condition = self.query.builder().condition();
-        let access = self.access;
+        let access = self.field.access;
         Box::new(move |x| {
             let id = (access)(&x).clone();
             if let Some(r) = st.read(&id).unwrap_or(None) {
@@ -265,15 +241,15 @@ impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
 
 pub trait SimpleEmbeddedCondition<T: 'static, V: Clone + PartialEq + 'static> {
     fn equal(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter.add(ConditionFilter::new(field.access, value))
+        filter.add(ConditionFilter::new(field, value))
     }
 
     fn contains(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter.add(ConditionSingleFilter::new(field.access, value))
+        filter.add(ConditionSingleFilter::new(field, value))
     }
 
     fn is(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.add(ConditionFilter::new(field.access, Some(value)))
+        filter.add(ConditionFilter::new(field, Some(value)))
     }
 }
 
@@ -281,13 +257,13 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + PartialOrd + 'static> {
     fn range<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeConditionFilter::new(field.access, start, end))
+        filter.add(RangeConditionFilter::new(field, (start, end)))
     }
 
     fn range_contains<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeSingleConditionFilter::new(field.access, start, end))
+        filter.add(RangeSingleConditionFilter::new(field, (start, end)))
     }
 
     fn range_is<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
@@ -302,7 +278,7 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + PartialOrd + 'static> {
             Bound::Unbounded => Bound::Unbounded,
         };
         // This may support index in future, but it does not now
-        filter.add(RangeOptionConditionFilter::new(field.access, start, end))
+        filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
 }
 impl<T: 'static, V: Clone + PartialOrd + 'static> EmbeddedRangeCondition<T, V> for V {}
@@ -359,21 +335,21 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             Bound::Excluded(x) => Bound::Excluded(x.to_string()),
             Bound::Unbounded => Bound::Unbounded,
         };
-        self.add(RangeConditionFilter::new(field.access, start, end))
+        self.add(RangeConditionFilter::new(field, (start, end)))
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
     where
         V: 'static,
     {
-        self.add(EmbeddedFieldFilter::new(filter, field.access))
+        self.add(EmbeddedFieldFilter::new(filter, field))
     }
 
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(QueryFilter::new(query, field.access))
+        self.add(QueryFilter::new(query, field))
     }
 
     pub fn or(&mut self, filters: EmbeddedFilter<T>) {
