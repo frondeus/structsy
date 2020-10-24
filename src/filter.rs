@@ -5,6 +5,7 @@ use crate::{
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy, StructsyQuery, StructsyTx,
 };
 use persy::IndexType;
+use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
 pub(crate) type FIter<'a, P> = Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>;
@@ -122,14 +123,12 @@ trait FilterBuilderStep {
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx);
-
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool>;
 }
 
 struct IndexFilter<V, T> {
     index_name: String,
     index_value: V,
-    data: Option<Vec<(Ref<T>, T)>>,
+    phantom: PhantomData<T>,
 }
 
 impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
@@ -137,7 +136,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
         Box::new(IndexFilter {
             index_name,
             index_value,
-            data: None,
+            phantom: PhantomData,
         })
     }
 }
@@ -157,14 +156,6 @@ impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for Inde
         let len = data.len();
         (Box::new(DataExecution::new(data, len as u32)), tx)
     }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        if let Some(found) = self.data {
-            let to_filter = found.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
-            Box::new(move |id, _| to_filter.contains(id))
-        } else {
-            Box::new(|_, _| true)
-        }
-    }
 }
 
 struct ConditionSingleFilter<V, T> {
@@ -180,16 +171,17 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionSingleFil
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| (self.field.access)(x).contains(&self.value));
+        Box::new(FilterExecution::new(condition, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| (self.field.access)(x).contains(&self.value))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| (self.field.access)(x).contains(&self.value));
+        (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
     }
 }
 
@@ -206,16 +198,17 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V,
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| *(self.field.access)(x) == self.value);
+        Box::new(FilterExecution::new(condition, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| *(self.field.access)(x) == self.value)
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| *(self.field.access)(x) == self.value);
+        (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
     }
 }
 
@@ -228,6 +221,16 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleCondit
     fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeSingleConditionFilter { field, values })
     }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
+        Box::new(move |_, x| {
+            for el in (self.field.access)(x) {
+                if self.values.contains(el) {
+                    return true;
+                }
+            }
+            false
+        })
+    }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleConditionFilter<V, T> {
     type Target = T;
@@ -239,16 +242,6 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
         (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| {
-            for el in (self.field.access)(x) {
-                if self.values.contains(el) {
-                    return true;
-                }
-            }
-            false
-        })
     }
 }
 
@@ -265,16 +258,17 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFil
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeConditionFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| self.values.contains((self.field.access)(x)));
+        Box::new(FilterExecution::new(condition, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| self.values.contains((self.field.access)(x)))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| self.values.contains((self.field.access)(x)));
+        (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
     }
 }
 
@@ -320,7 +314,9 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
                 return (Box::new(DataExecution::new(vec, len as u32)), tx);
             }
         }
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| self.values.contains((self.field.access)(x)));
+        (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
     }
     fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         if let Ok(iter) = find_range(&structsy, &self.index_name, self.values.clone()) {
@@ -339,11 +335,9 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
                 return Box::new(DataExecution::new(vec, len as u32));
             }
         }
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
-    }
-
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| self.values.contains((self.field.access)(x)))
+        let condition: Box<dyn FnMut(&Ref<T>, &T) -> bool> =
+            Box::new(move |_, x| self.values.contains((self.field.access)(x)));
+        Box::new(FilterExecution::new(condition, u32::MAX))
     }
 }
 
@@ -363,6 +357,16 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIn
             index_name,
             field,
             values,
+        })
+    }
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
+        Box::new(move |_, x| {
+            for el in (self.field.access)(x) {
+                if self.values.contains(el) {
+                    return true;
+                }
+            }
+            false
         })
     }
 }
@@ -410,16 +414,6 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilder
         }
         Box::new(FilterExecution::new(self.condition(), u32::MAX))
     }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        Box::new(move |_, x| {
-            for el in (self.field.access)(x) {
-                if self.values.contains(el) {
-                    return true;
-                }
-            }
-            false
-        })
-    }
 }
 
 struct RangeOptionConditionFilter<V, T> {
@@ -434,19 +428,7 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionCondit
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(RangeOptionConditionFilter { field, values })
     }
-}
-impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
-    type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
-    }
-    fn prepare_tx<'a>(
-        self: Box<Self>,
-        tx: &'a mut OwnedSytx,
-    ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
+    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
         let (b1, none_end) = match &self.values.start_bound() {
             Bound::Included(Some(x)) => (Bound::Included(x.clone()), false),
             Bound::Excluded(Some(x)) => (Bound::Excluded(x.clone()), false),
@@ -472,6 +454,18 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
         })
     }
 }
+impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
+    type Target = T;
+    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    }
+    fn prepare_tx<'a>(
+        self: Box<Self>,
+        tx: &'a mut OwnedSytx,
+    ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
+        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+    }
+}
 
 pub struct EmbeddedFieldFilter<V, T> {
     filter: EmbeddedFilter<V>,
@@ -481,6 +475,11 @@ pub struct EmbeddedFieldFilter<V, T> {
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
     fn new(filter: EmbeddedFilter<V>, field: Field<T, V>) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(EmbeddedFieldFilter { filter, field })
+    }
+    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
+        let mut condition = self.filter.condition();
+        let access = self.field.access;
+        Box::new(move |_, x| condition((access)(x)))
     }
 }
 
@@ -495,11 +494,6 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
         (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
-    }
-    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let mut condition = self.filter.condition();
-        let access = self.field.access;
-        Box::new(move |_, x| condition((access)(x)))
     }
 }
 
@@ -547,19 +541,6 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
             }
         });
         (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
-    }
-    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let st = self.query.structsy.clone();
-        let mut condition = self.query.builder().condition();
-        let access = self.field.access;
-        Box::new(move |_, x| {
-            let id = (access)(&x);
-            if let Some(r) = st.read(id).unwrap_or(None) {
-                condition(&id, &r)
-            } else {
-                false
-            }
-        })
     }
 }
 
@@ -611,21 +592,6 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Vec
             false
         });
         (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
-    }
-    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let st = self.query.structsy.clone();
-        let mut condition = self.query.builder().condition();
-        let access = self.field.access;
-        Box::new(move |_, x| {
-            for id in (access)(&x) {
-                if let Some(r) = st.read(id).unwrap_or(None) {
-                    if condition(&id, &r) {
-                        return true;
-                    }
-                }
-            }
-            false
-        })
     }
 }
 
@@ -680,22 +646,6 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Opt
         });
         (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
-    fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let st = self.query.structsy.clone();
-        let mut condition = self.query.builder().condition();
-        let access = self.field.access;
-        Box::new(move |_, x| {
-            if let Some(id) = (access)(&x) {
-                if let Some(r) = st.read(id).unwrap_or(None) {
-                    condition(&id, &r)
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        })
-    }
 }
 
 pub struct OrFilter<T> {
@@ -710,10 +660,10 @@ impl<T: Persistent + 'static> OrFilter<T> {
 
 impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         let mut conditions = Vec::new();
         for step in self.filters.steps {
-            conditions.push(step.condition());
+            conditions.push(step.prepare(structsy).condition());
         }
         let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, x| {
             for condition in &mut conditions {
@@ -729,9 +679,12 @@ impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
+        let mut cur_tx = tx;
         let mut conditions = Vec::new();
         for step in self.filters.steps {
-            conditions.push(step.condition());
+            let (c, t) = step.prepare_tx(cur_tx);
+            conditions.push(c.condition());
+            cur_tx = t;
         }
         let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, x| {
             for condition in &mut conditions {
@@ -741,21 +694,7 @@ impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
             }
             false
         });
-        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let mut conditions = Vec::new();
-        for step in self.filters.steps {
-            conditions.push(step.condition());
-        }
-        Box::new(move |id, x| {
-            for condition in &mut conditions {
-                if condition(id, x) {
-                    return true;
-                }
-            }
-            false
-        })
+        (Box::new(FilterExecution::new(cond, u32::MAX)), cur_tx)
     }
 }
 
@@ -781,10 +720,6 @@ impl<T: Persistent + 'static> FilterBuilderStep for AndFilter<T> {
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
         let condition = self.filters.fill_conditions_step_tx(tx);
         (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let mut condition = self.filters.condition();
-        Box::new(move |id, r| condition(id, r))
     }
 }
 
@@ -812,10 +747,6 @@ impl<T: Persistent + 'static> FilterBuilderStep for NotFilter<T> {
         let mut condition = self.filters.fill_conditions_step_tx(tx);
         let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, r| !condition(id, r));
         (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
-    }
-    fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
-        let mut condition = self.filters.condition();
-        Box::new(move |id, r| !condition(id, r))
     }
 }
 
@@ -1038,21 +969,6 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         } else {
             None
         }
-    }
-
-    pub(crate) fn condition(self) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
-        let mut conditions = Vec::new();
-        for filter in self.steps {
-            conditions.push(filter.condition());
-        }
-        Box::new(move |id, t| {
-            for condition in &mut conditions {
-                if !condition(id, t) {
-                    return false;
-                }
-            }
-            return true;
-        })
     }
 
     pub(crate) fn fill_conditions_step(self, structsy: &Structsy) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
