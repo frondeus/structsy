@@ -516,16 +516,37 @@ impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
 
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for QueryFilter<V, T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        // TODO: replace with a query based execution
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let st = structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step(structsy);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            let id = (access)(&x);
+            if let Some(r) = st.read(id).unwrap_or(None) {
+                condition(&id, &r)
+            } else {
+                false
+            }
+        });
+        Box::new(FilterExecution::new(cond, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        // TODO: replace with a query based execution
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let st = self.query.structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step_tx(tx);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            let id = (access)(&x);
+            //TODO: Reading using structsy when actually should use the tx
+            if let Some(r) = st.read(id).unwrap_or(None) {
+                condition(&id, &r)
+            } else {
+                false
+            }
+        });
+        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
@@ -555,14 +576,41 @@ impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
 
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for VecQueryFilter<V, T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let st = structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step(structsy);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            for id in (access)(&x) {
+                if let Some(r) = st.read(id).unwrap_or(None) {
+                    if condition(&id, &r) {
+                        return true;
+                    }
+                }
+            }
+            false
+        });
+        Box::new(FilterExecution::new(cond, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let st = self.query.structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step_tx(tx);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            for id in (access)(&x) {
+                //TODO: Reading using structsy when actually should use the tx
+                if let Some(r) = st.read(id).unwrap_or(None) {
+                    if condition(&id, &r) {
+                        return true;
+                    }
+                }
+            }
+            false
+        });
+        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
@@ -594,14 +642,43 @@ impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
 
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for OptionQueryFilter<V, T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let st = structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step(structsy);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            if let Some(id) = (access)(&x) {
+                if let Some(r) = st.read(id).unwrap_or(None) {
+                    condition(&id, &r)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        });
+        Box::new(FilterExecution::new(cond, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let structsy = self.query.structsy.clone();
+        let mut condition = self.query.builder().fill_conditions_step_tx(tx);
+        let access = self.field.access;
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |_, x| {
+            if let Some(id) = (access)(&x) {
+                //TODO: Reading using structsy when actually should use the tx
+                if let Some(r) = structsy.read(id).unwrap_or(None) {
+                    condition(&id, &r)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        });
+        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
     fn condition<'a>(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let st = self.query.structsy.clone();
@@ -634,13 +711,37 @@ impl<T: Persistent + 'static> OrFilter<T> {
 impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
     type Target = T;
     fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+        let mut conditions = Vec::new();
+        for step in self.filters.steps {
+            conditions.push(step.condition());
+        }
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, x| {
+            for condition in &mut conditions {
+                if condition(id, x) {
+                    return true;
+                }
+            }
+            false
+        });
+        Box::new(FilterExecution::new(cond, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let mut conditions = Vec::new();
+        for step in self.filters.steps {
+            conditions.push(step.condition());
+        }
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, x| {
+            for condition in &mut conditions {
+                if condition(id, x) {
+                    return true;
+                }
+            }
+            false
+        });
+        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let mut conditions = Vec::new();
@@ -670,14 +771,16 @@ impl<T: Persistent + 'static> AndFilter<T> {
 
 impl<T: Persistent + 'static> FilterBuilderStep for AndFilter<T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let condition = self.filters.fill_conditions_step(structsy);
+        Box::new(FilterExecution::new(condition, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let condition = self.filters.fill_conditions_step_tx(tx);
+        (Box::new(FilterExecution::new(condition, u32::MAX)), tx)
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let mut condition = self.filters.condition();
@@ -697,14 +800,18 @@ impl<T: Persistent + 'static> NotFilter<T> {
 
 impl<T: Persistent + 'static> FilterBuilderStep for NotFilter<T> {
     type Target = T;
-    fn prepare(self: Box<Self>, _structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        Box::new(FilterExecution::new(self.condition(), u32::MAX))
+    fn prepare(self: Box<Self>, structsy: &Structsy) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let mut condition = self.filters.fill_conditions_step(structsy);
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, r| !condition(id, r));
+        Box::new(FilterExecution::new(cond, u32::MAX))
     }
     fn prepare_tx<'a>(
         self: Box<Self>,
         tx: &'a mut OwnedSytx,
     ) -> (Box<dyn ExecutionStep<Target = Self::Target>>, &'a mut OwnedSytx) {
-        (Box::new(FilterExecution::new(self.condition(), u32::MAX)), tx)
+        let mut condition = self.filters.fill_conditions_step_tx(tx);
+        let cond: Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> = Box::new(move |id, r| !condition(id, r));
+        (Box::new(FilterExecution::new(cond, u32::MAX)), tx)
     }
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Ref<Self::Target>, &Self::Target) -> bool> {
         let mut condition = self.filters.condition();
@@ -947,6 +1054,23 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             return true;
         })
     }
+
+    pub(crate) fn fill_conditions_step(self, structsy: &Structsy) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
+        let mut executions = self.steps.into_iter().map(|e| e.prepare(structsy)).collect::<Vec<_>>();
+        executions.sort_by_key(|x| x.get_score());
+        Self::fill_conditions(executions)
+    }
+    pub(crate) fn fill_conditions_step_tx<'a>(self, mut tx: &'a mut OwnedSytx) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
+        let mut executions = Vec::new();
+        for x in self.steps {
+            let (e, r_tx) = x.prepare_tx(tx);
+            tx = r_tx;
+            executions.push(e);
+        }
+        executions.sort_by_key(|x| x.get_score());
+        Self::fill_conditions(executions)
+    }
+
     fn fill_conditions(executions: Vec<Box<dyn ExecutionStep<Target = T>>>) -> Box<dyn FnMut(&Ref<T>, &T) -> bool> {
         let mut conditions = Vec::new();
         for filter in executions {

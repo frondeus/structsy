@@ -162,7 +162,7 @@ impl<V: Persistent + 'static, T: 'static> EmbeddedFilterBuilderStep for QueryFil
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target) -> bool> {
         let st = self.query.structsy.clone();
-        let mut condition = self.query.builder().condition();
+        let mut condition = self.query.builder().fill_conditions_step(&st.clone());
         let access = self.field.access;
         Box::new(move |x| {
             let id = (access)(&x).clone();
