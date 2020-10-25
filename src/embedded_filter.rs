@@ -1,4 +1,4 @@
-use crate::filter::Reader;
+use crate::filter::{Item, Reader};
 use crate::internal::Field;
 use crate::{EmbeddedFilter, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
@@ -171,7 +171,7 @@ impl<V: Persistent + 'static, T: 'static> EmbeddedFilterBuilderStep for QueryFil
         Box::new(move |x| {
             let id = (access)(&x).clone();
             if let Some(r) = st.read(&id).unwrap_or(None) {
-                condition(&id, &r)
+                condition(&Item::new((id.clone(), r)))
             } else {
                 false
             }
