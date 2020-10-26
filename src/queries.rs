@@ -1,6 +1,6 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{RangeCondition, SimpleCondition},
+    filter::{RangeCondition, Reader, SimpleCondition},
     internal::Field,
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
@@ -136,7 +136,7 @@ impl<T: 'static> EmbeddedFilter<T> {
         }
     }
 
-    pub(crate) fn condition(self) -> Box<dyn FnMut(&T) -> bool> {
+    pub(crate) fn condition(self) -> Box<dyn FnMut(&T, &mut Reader) -> bool> {
         self.builder.condition()
     }
     pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {

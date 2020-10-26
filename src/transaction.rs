@@ -51,6 +51,12 @@ impl OwnedSytx {
             builder: FilterBuilder::new(),
         }
     }
+    pub(crate) fn reference(&mut self) -> RefSytx {
+        RefSytx {
+            trans: &mut self.trans,
+            structsy_impl: self.structsy_impl.clone(),
+        }
+    }
 }
 
 /// Reference transaction to use with [`StructsyTx`] trait
