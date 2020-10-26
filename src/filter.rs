@@ -2,6 +2,7 @@ use crate::{
     index::{find, find_range, find_range_tx, find_tx},
     internal::{Description, EmbeddedDescription, Field},
     queries::StructsyFilter,
+    transaction::TxRecordIter,
     EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyQuery, StructsyTx,
 };
 use persy::IndexType;
@@ -19,11 +20,49 @@ impl<P> Item<P> {
     }
 }
 
-pub(crate) type FIter<'a, P> = Box<dyn Iterator<Item = Item<P>> + 'a>;
+enum Iter<'a, P: Persistent> {
+    TxIter(TxRecordIter<'a, P>),
+    Iter(Box<dyn Iterator<Item = (Ref<P>, P)>>),
+}
 
-trait StartStep<'a, T> {
-    fn start(self: Box<Self>, structsy: &Structsy) -> FIter<'a, T>;
-    fn start_tx(self: Box<Self>, tx: &'a mut OwnedSytx) -> FIter<'a, T>;
+struct ExecutionIterator<'a, P: Persistent> {
+    base: Iter<'a, P>,
+    conditions: Conditions<P>,
+}
+impl<'a, P: Persistent> ExecutionIterator<'a, P> {
+    fn new(base: Box<dyn Iterator<Item = (Ref<P>, P)>>, conditions: Conditions<P>) -> Self {
+        ExecutionIterator {
+            base: Iter::Iter(base),
+            conditions,
+        }
+    }
+    fn new_tx(base: TxRecordIter<'a, P>, conditions: Conditions<P>) -> Self {
+        ExecutionIterator {
+            base: Iter::TxIter(base),
+            conditions,
+        }
+    }
+}
+impl<'a, P: Persistent + 'static> Iterator for ExecutionIterator<'a, P> {
+    type Item = (Ref<P>, P);
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(read) = match &mut self.base {
+            Iter::Iter(ref mut it) => it.next(),
+            Iter::TxIter(ref mut it) => it.next(),
+        } {
+            let item = Item::new(read);
+            if self.conditions.check(&item) {
+                return Some((item.id, item.record));
+            }
+        }
+
+        None
+    }
+}
+
+trait StartStep<'a, T: Persistent> {
+    fn start(self: Box<Self>, conditions: Conditions<T>, structsy: &Structsy) -> ExecutionIterator<'a, T>;
+    fn start_tx(self: Box<Self>, conditions: Conditions<T>, tx: &'a mut OwnedSytx) -> ExecutionIterator<'a, T>;
 }
 
 struct ScanStartStep<T> {
@@ -35,36 +74,36 @@ impl<T> ScanStartStep<T> {
     }
 }
 impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep<T> {
-    fn start(self: Box<Self>, structsy: &Structsy) -> FIter<'a, T> {
+    fn start(self: Box<Self>, conditions: Conditions<T>, structsy: &Structsy) -> ExecutionIterator<'a, T> {
         if let Ok(found) = structsy.scan::<T>() {
-            Box::new(found.map(Item::new))
+            ExecutionIterator::new(Box::new(found), conditions)
         } else {
-            Box::new(Vec::new().into_iter())
+            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions)
         }
     }
-    fn start_tx(self: Box<Self>, tx: &'a mut OwnedSytx) -> FIter<'a, T> {
+    fn start_tx(self: Box<Self>, conditions: Conditions<T>, tx: &'a mut OwnedSytx) -> ExecutionIterator<T> {
         if let Ok(found) = StructsyTx::scan::<T>(tx) {
-            Box::new(found.map(Item::new))
+            ExecutionIterator::new_tx(found, conditions)
         } else {
-            Box::new(Vec::new().into_iter())
+            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions)
         }
     }
 }
 
 struct DataStartStep<T> {
-    data: Box<dyn Iterator<Item = Item<T>>>,
+    data: Box<dyn Iterator<Item = (Ref<T>, T)>>,
 }
 impl<'a, T> DataStartStep<T> {
-    fn new(data: Box<dyn Iterator<Item = Item<T>>>) -> Self {
+    fn new(data: Box<dyn Iterator<Item = (Ref<T>, T)>>) -> Self {
         Self { data }
     }
 }
 impl<'a, T: Persistent + 'static> StartStep<'a, T> for DataStartStep<T> {
-    fn start(self: Box<Self>, _structsy: &Structsy) -> FIter<'a, T> {
-        self.data
+    fn start(self: Box<Self>, conditions: Conditions<T>, _structsy: &Structsy) -> ExecutionIterator<'a, T> {
+        ExecutionIterator::new(Box::new(self.data), conditions)
     }
-    fn start_tx(self: Box<Self>, _tx: &'a mut OwnedSytx) -> FIter<'a, T> {
-        self.data
+    fn start_tx(self: Box<Self>, conditions: Conditions<T>, _tx: &'a mut OwnedSytx) -> ExecutionIterator<T> {
+        ExecutionIterator::new(Box::new(self.data), conditions)
     }
 }
 
@@ -84,10 +123,10 @@ trait ExecutionStep {
 
 struct DataExecution<T> {
     score: u32,
-    data: Vec<Item<T>>,
+    data: Vec<(Ref<T>, T)>,
 }
 impl<T> DataExecution<T> {
-    fn new(data: Vec<Item<T>>, score: u32) -> Self {
+    fn new(data: Vec<(Ref<T>, T)>, score: u32) -> Self {
         Self { score, data }
     }
 }
@@ -108,8 +147,8 @@ impl<T: 'static + Persistent> ExecutionStep for DataExecution<T> {
     }
 
     fn check(&mut self, item: &Item<Self::Target>) -> bool {
-        for x in &self.data {
-            if x.id == item.id {
+        for (id, _) in &self.data {
+            if id == &item.id {
                 return true;
             }
         }
@@ -165,20 +204,19 @@ pub enum Reader<'a> {
     Tx(&'a mut OwnedSytx),
 }
 impl<'a> Reader<'a> {
-    pub(crate) fn find<K: IndexType, P: Persistent>(&mut self, name: &str, k: &K) -> SRes<Vec<Item<P>>> {
+    pub(crate) fn find<K: IndexType, P: Persistent>(&mut self, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
         Ok(match self {
             Reader::Structsy(st) => find(&st, name, k),
             Reader::Tx(tx) => find_tx(*tx, name, k),
         }?
         .into_iter()
-        .map(Item::new)
         .collect())
     }
     pub(crate) fn find_range_first<K: IndexType + 'static, P: Persistent + 'static, R: RangeBounds<K> + 'static>(
         &mut self,
         name: &str,
         range: R,
-    ) -> SRes<Option<Vec<Item<P>>>> {
+    ) -> SRes<Option<Vec<(Ref<P>, P)>>> {
         let mut vec = Vec::new();
         match self {
             Reader::Structsy(st) => {
@@ -203,7 +241,7 @@ impl<'a> Reader<'a> {
             }
         };
         if vec.len() < 1000 {
-            Ok(Some(vec.into_iter().map(Item::new).collect()))
+            Ok(Some(vec))
         } else {
             Ok(None)
         }
@@ -273,8 +311,7 @@ impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V,
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, _reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let condition: Box<dyn FnMut(&Item<T>) -> bool> =
-            Box::new(move |it| *(self.field.access)(&it.record) == self.value);
+        let condition = move |it:&Item<T>| *(self.field.access)(&it.record) == self.value;
         Box::new(FilterExecution::new(condition, u32::MAX))
     }
 }
@@ -890,9 +927,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             if let Some(es) = step {
                 executions.insert(0, es);
             }
-            let mut cond = Self::fill_conditions(executions);
-            let res = start.start(structsy);
-            Box::new(res.filter(move |it| cond.check(it)).map(|it| (it.id, it.record)))
+            let cond = Self::fill_conditions(executions);
+            Box::new(start.start(cond, structsy))
         }
     }
 
@@ -910,9 +946,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             if let Some(es) = step {
                 executions.insert(0, es);
             }
-            let mut cond = Self::fill_conditions(executions);
-            let res = start.start_tx(tx);
-            Box::new(res.filter(move |it| cond.check(it)).map(|it| (it.id, it.record)))
+            let cond = Self::fill_conditions(executions);
+            Box::new(start.start_tx(cond, tx))
         }
     }
 
