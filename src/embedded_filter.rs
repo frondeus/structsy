@@ -171,7 +171,7 @@ impl<V: Persistent + 'static, T: 'static> EmbeddedFilterBuilderStep for QueryFil
         Box::new(move |x| {
             let id = (access)(&x).clone();
             if let Some(r) = st.read(&id).unwrap_or(None) {
-                condition(&Item::new((id.clone(), r)))
+                condition.check(&Item::new((id.clone(), r)))
             } else {
                 false
             }
