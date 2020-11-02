@@ -1,6 +1,6 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{RangeCondition, Reader, SimpleCondition},
+    filter::{Order, RangeCondition, Reader, SimpleCondition},
     internal::Field,
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
@@ -555,6 +555,32 @@ where
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
         self.1.ref_vec_query(self.0, value);
+    }
+}
+
+pub trait OrderAction {
+    fn order(self, value: Order);
+}
+
+impl<T, V> OrderAction for (Field<T, V>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Ord + 'static,
+{
+    #[inline]
+    fn order(self, value: Order) {
+        self.1.order(self.0, value)
+    }
+}
+
+impl<T, V> OrderAction for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Ord + 'static,
+{
+    #[inline]
+    fn order(self, value: Order) {
+        self.1.order(self.0, value)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::filter::{Item, Reader};
+use crate::filter::{FieldOrder, Item, Order, OrderStep, Reader};
 use crate::internal::Field;
 use crate::{EmbeddedFilter, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
@@ -287,6 +287,7 @@ impl<T: 'static, V: Clone + PartialEq + 'static> SimpleEmbeddedCondition<T, V> f
 
 pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
+    order: Vec<Box<dyn OrderStep<T>>>,
 }
 
 fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
@@ -299,7 +300,10 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
 
 impl<T: 'static> EmbeddedFilterBuilder<T> {
     pub fn new() -> EmbeddedFilterBuilder<T> {
-        EmbeddedFilterBuilder { steps: Vec::new() }
+        EmbeddedFilterBuilder {
+            steps: Vec::new(),
+            order: Vec::new(),
+        }
     }
 
     pub(crate) fn condition(self) -> Box<dyn FnMut(&T, &mut Reader) -> bool> {
@@ -362,5 +366,8 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
 
     pub fn not(&mut self, filters: EmbeddedFilter<T>) {
         self.add(NotFilter::new(filters.filter()))
+    }
+    pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
+        self.order.push(FieldOrder::new(field, order))
     }
 }

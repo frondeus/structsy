@@ -38,6 +38,7 @@ use desc::InternalDescription;
 mod index;
 pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
+pub use filter::Order;
 mod structsy;
 use crate::structsy::{RecordIter, StructsyImpl};
 mod id;

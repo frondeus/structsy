@@ -575,6 +575,7 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
     type Target = T;
 
     fn prepare(self: Box<Self>, _reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        // TODO: extract embedded filters
         let mut condition = self.filter.condition();
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| condition((access)(&it.record), reader);
@@ -927,18 +928,18 @@ pub enum Order {
     Desc,
 }
 
-struct FieldOrder<T, V> {
+pub(crate) struct FieldOrder<T, V> {
     field: Field<T, V>,
     order: Order,
 }
 
 impl<T: 'static, V: Ord + 'static> FieldOrder<T, V> {
-    fn new(field: Field<T, V>, order: Order) -> Box<dyn OrderStep<T>> {
+    pub(crate) fn new(field: Field<T, V>, order: Order) -> Box<dyn OrderStep<T>> {
         Box::new(Self { field, order })
     }
 }
 
-trait OrderStep<P> {
+pub(crate) trait OrderStep<P> {
     fn compare(&self, first: &Item<P>, second: &Item<P>) -> std::cmp::Ordering;
 }
 impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
