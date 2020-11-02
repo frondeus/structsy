@@ -30,16 +30,27 @@ struct ExecutionIterator<'a, P: Persistent> {
     base: Iter<'a, P>,
     conditions: Conditions<P>,
     structsy: Structsy,
+    buffered: Option<Box<dyn BufferedExection<P>>>,
 }
-impl<'a, P: Persistent> ExecutionIterator<'a, P> {
-    fn new(base: Box<dyn Iterator<Item = (Ref<P>, P)>>, conditions: Conditions<P>, structsy: Structsy) -> Self {
+impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
+    fn new(
+        base: Box<dyn Iterator<Item = (Ref<P>, P)>>,
+        conditions: Conditions<P>,
+        structsy: Structsy,
+        buffered: Option<Box<dyn BufferedExection<P>>>,
+    ) -> Self {
         ExecutionIterator {
             base: Iter::Iter(base),
             conditions,
             structsy,
+            buffered,
         }
     }
-    fn new_tx(mut base: TxRecordIter<'a, P>, conditions: Conditions<P>) -> Self {
+    fn new_tx(
+        mut base: TxRecordIter<'a, P>,
+        conditions: Conditions<P>,
+        buffered: Option<Box<dyn BufferedExection<P>>>,
+    ) -> Self {
         let structsy = Structsy {
             structsy_impl: base.tx().structsy_impl.clone(),
         };
@@ -47,33 +58,65 @@ impl<'a, P: Persistent> ExecutionIterator<'a, P> {
             base: Iter::TxIter(base),
             conditions,
             structsy,
+            buffered,
         }
     }
-}
-impl<'a, P: Persistent + 'static> Iterator for ExecutionIterator<'a, P> {
-    type Item = (Ref<P>, P);
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(read) = match &mut self.base {
+
+    fn filtered_next(base: &mut Iter<P>, conditions: &mut Conditions<P>, structsy: &Structsy) -> Option<Item<P>> {
+        while let Some(read) = match base {
             Iter::Iter(ref mut it) => it.next(),
             Iter::TxIter(ref mut it) => it.next(),
         } {
-            let mut reader = match &mut self.base {
-                Iter::Iter(_) => Reader::Structsy(self.structsy.clone()),
+            let mut reader = match base {
+                Iter::Iter(_) => Reader::Structsy(structsy.clone()),
                 Iter::TxIter(ref mut it) => Reader::Tx(it.tx()),
             };
             let item = Item::new(read);
-            if self.conditions.check(&item, &mut reader) {
-                return Some((item.id, item.record));
+            if conditions.check(&item, &mut reader) {
+                return Some(item);
             }
         }
 
         None
     }
+    fn buffered_next(&mut self) -> Option<Item<P>> {
+        let mut source = (&mut self.base, &mut self.conditions, &self.structsy);
+        if let Some(buffered) = &mut self.buffered {
+            buffered.next(&mut source)
+        } else {
+            ExecutionIterator::filtered_next(&mut self.base, &mut self.conditions, &self.structsy)
+        }
+    }
+}
+trait Source<T> {
+    fn next_item(&mut self) -> Option<Item<T>>;
+}
+impl<'a, T: Persistent + 'static> Source<T> for (&mut Iter<'a, T>, &mut Conditions<T>, &Structsy) {
+    fn next_item(&mut self) -> Option<Item<T>> {
+        ExecutionIterator::filtered_next(self.0, self.1, self.2)
+    }
+}
+
+impl<'a, P: Persistent + 'static> Iterator for ExecutionIterator<'a, P> {
+    type Item = (Ref<P>, P);
+    fn next(&mut self) -> Option<Self::Item> {
+        self.buffered_next().map(|i| (i.id, i.record))
+    }
 }
 
 trait StartStep<'a, T: Persistent> {
-    fn start(self: Box<Self>, conditions: Conditions<T>, structsy: &Structsy) -> ExecutionIterator<'a, T>;
-    fn start_tx(self: Box<Self>, conditions: Conditions<T>, tx: &'a mut OwnedSytx) -> ExecutionIterator<'a, T>;
+    fn start(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        structsy: &Structsy,
+    ) -> ExecutionIterator<'a, T>;
+    fn start_tx(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        tx: &'a mut OwnedSytx,
+    ) -> ExecutionIterator<T>;
 }
 
 struct ScanStartStep<T> {
@@ -85,21 +128,31 @@ impl<T> ScanStartStep<T> {
     }
 }
 impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep<T> {
-    fn start(self: Box<Self>, conditions: Conditions<T>, structsy: &Structsy) -> ExecutionIterator<'a, T> {
+    fn start(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        structsy: &Structsy,
+    ) -> ExecutionIterator<'a, T> {
         if let Ok(found) = structsy.scan::<T>() {
-            ExecutionIterator::new(Box::new(found), conditions, structsy.clone())
+            ExecutionIterator::new(Box::new(found), conditions, structsy.clone(), buffered)
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy.clone())
+            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy.clone(), buffered)
         }
     }
-    fn start_tx(self: Box<Self>, conditions: Conditions<T>, tx: &'a mut OwnedSytx) -> ExecutionIterator<T> {
+    fn start_tx(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        tx: &'a mut OwnedSytx,
+    ) -> ExecutionIterator<T> {
         let structsy = Structsy {
             structsy_impl: tx.structsy_impl.clone(),
         };
         if let Ok(found) = StructsyTx::scan::<T>(tx) {
-            ExecutionIterator::new_tx(found, conditions)
+            ExecutionIterator::new_tx(found, conditions, buffered)
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy)
+            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, buffered)
         }
     }
 }
@@ -113,14 +166,24 @@ impl<'a, T> DataStartStep<T> {
     }
 }
 impl<'a, T: Persistent + 'static> StartStep<'a, T> for DataStartStep<T> {
-    fn start(self: Box<Self>, conditions: Conditions<T>, structsy: &Structsy) -> ExecutionIterator<'a, T> {
-        ExecutionIterator::new(Box::new(self.data), conditions, structsy.clone())
+    fn start(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        structsy: &Structsy,
+    ) -> ExecutionIterator<'a, T> {
+        ExecutionIterator::new(Box::new(self.data), conditions, structsy.clone(), buffered)
     }
-    fn start_tx(self: Box<Self>, conditions: Conditions<T>, tx: &'a mut OwnedSytx) -> ExecutionIterator<T> {
+    fn start_tx(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        buffered: Option<Box<dyn BufferedExection<T>>>,
+        tx: &'a mut OwnedSytx,
+    ) -> ExecutionIterator<T> {
         let structsy = Structsy {
             structsy_impl: tx.structsy_impl.clone(),
         };
-        ExecutionIterator::new(Box::new(self.data), conditions, structsy)
+        ExecutionIterator::new(Box::new(self.data), conditions, structsy, buffered)
     }
 }
 
@@ -845,8 +908,6 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 {
 }
 
-trait OrderStep {}
-
 pub(crate) struct Conditions<T> {
     conditions: Vec<Box<dyn ExecutionStep<Target = T>>>,
 }
@@ -860,21 +921,83 @@ impl<T: 'static> Conditions<T> {
         return true;
     }
 }
+#[derive(Debug, Eq, PartialEq)]
+pub enum Order {
+    Asc,
+    Desc,
+}
 
 struct FieldOrder<T, V> {
     field: Field<T, V>,
+    order: Order,
 }
-impl<T: 'static, V: 'static> FieldOrder<T, V> {
-    fn new(field: Field<T, V>) -> Box<dyn OrderStep> {
-        Box::new(Self { field })
+
+impl<T: 'static, V: Ord + 'static> FieldOrder<T, V> {
+    fn new(field: Field<T, V>, order: Order) -> Box<dyn OrderStep<T>> {
+        Box::new(Self { field, order })
     }
 }
 
-impl<T, V> OrderStep for FieldOrder<T, V> {}
+trait OrderStep<P> {
+    fn compare(&self, first: &Item<P>, second: &Item<P>) -> std::cmp::Ordering;
+}
+impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
+    fn compare(&self, first: &Item<P>, second: &Item<P>) -> std::cmp::Ordering {
+        let ord = (self.field.access)(&first.record).cmp((self.field.access)(&second.record));
+        if self.order == Order::Asc {
+            ord
+        } else {
+            ord.reverse()
+        }
+    }
+}
+trait BufferedExection<P> {
+    fn next(&mut self, source: &mut dyn Source<P>) -> Option<Item<P>>;
+}
+struct BufferedOrderExecution<T> {
+    buffer: Option<std::vec::IntoIter<Item<T>>>,
+    orders: Vec<Box<dyn OrderStep<T>>>,
+}
+impl<T: 'static> BufferedOrderExecution<T> {
+    fn new(orders: Vec<Box<dyn OrderStep<T>>>) -> Box<dyn BufferedExection<T>> {
+        Box::new(BufferedOrderExecution { buffer: None, orders })
+    }
+}
+
+impl<T> BufferedOrderExecution<T> {
+    fn order_item(&self, first: &Item<T>, second: &Item<T>) -> std::cmp::Ordering {
+        for order in &self.orders {
+            let ord = order.compare(first, second);
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+}
+
+impl<T> BufferedExection<T> for BufferedOrderExecution<T> {
+    fn next(&mut self, source: &mut dyn Source<T>) -> Option<Item<T>> {
+        if let Some(b) = &mut self.buffer {
+            b.next()
+        } else {
+            let mut buffer = Vec::<Item<T>>::new();
+            while let Some(item) = source.next_item() {
+                let index = match buffer.binary_search_by(|e| self.order_item(e, &item)) {
+                    Ok(index) => index,
+                    Err(index) => index,
+                };
+                buffer.insert(index, item);
+            }
+            self.buffer = Some(buffer.into_iter());
+            self.buffer.as_mut().unwrap().next()
+        }
+    }
+}
 
 pub struct FilterBuilder<T> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
-    order: Vec<Box<dyn OrderStep>>,
+    order: Vec<Box<dyn OrderStep<T>>>,
 }
 
 impl<T> FilterBuilder<T> {
@@ -889,7 +1012,7 @@ impl<T> FilterBuilder<T> {
         self.steps.push(filter);
     }
 
-    fn add_order(&mut self, order: Box<dyn OrderStep>) {
+    fn add_order(&mut self, order: Box<dyn OrderStep<T>>) {
         self.order.push(order)
     }
 }
@@ -938,7 +1061,12 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            Box::new(start.start(cond, structsy))
+            let ordering = if self.order.is_empty() {
+                None
+            } else {
+                Some(BufferedOrderExecution::new(self.order))
+            };
+            Box::new(start.start(cond, ordering, structsy))
         }
     }
 
@@ -957,7 +1085,12 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            Box::new(start.start_tx(cond, tx))
+            let ordering = if self.order.is_empty() {
+                None
+            } else {
+                Some(BufferedOrderExecution::new(self.order))
+            };
+            Box::new(start.start_tx(cond, ordering, tx))
         }
     }
 
@@ -1018,7 +1151,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(NotFilter::new(filters.filter()))
     }
 
-    pub fn order<V: 'static>(&mut self, field: Field<T, V>) {
-        self.add_order(FieldOrder::new(field))
+    pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
+        self.add_order(FieldOrder::new(field, order))
     }
 }
