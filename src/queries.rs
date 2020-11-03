@@ -136,7 +136,7 @@ impl<T: 'static> EmbeddedFilter<T> {
         }
     }
 
-    pub(crate) fn components(self) -> (Box<dyn FnMut(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
+    pub(crate) fn components(self) -> (Box<dyn Fn(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
         self.builder.components()
     }
     pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {

@@ -198,7 +198,7 @@ trait ExecutionStep {
         Box<dyn StartStep<'a, Self::Target>>,
     );
 
-    fn check(&mut self, item: &Item<Self::Target>, reader: &mut Reader) -> bool;
+    fn check(&self, item: &Item<Self::Target>, reader: &mut Reader) -> bool;
 }
 
 struct DataExecution<T> {
@@ -226,7 +226,7 @@ impl<T: 'static + Persistent> ExecutionStep for DataExecution<T> {
         (None, Box::new(DataStartStep::new(Box::new(self.data.into_iter()))))
     }
 
-    fn check(&mut self, item: &Item<Self::Target>, _reader: &mut Reader) -> bool {
+    fn check(&self, item: &Item<Self::Target>, _reader: &mut Reader) -> bool {
         for (id, _) in &self.data {
             if id == &item.id {
                 return true;
@@ -237,7 +237,7 @@ impl<T: 'static + Persistent> ExecutionStep for DataExecution<T> {
 }
 struct FilterExecution<T, F>
 where
-    F: FnMut(&Item<T>, &mut Reader) -> bool + 'static,
+    F: Fn(&Item<T>, &mut Reader) -> bool + 'static,
 {
     condition: F,
     phantom: PhantomData<T>,
@@ -245,7 +245,7 @@ where
 }
 impl<T, F> FilterExecution<T, F>
 where
-    F: FnMut(&Item<T>, &mut Reader) -> bool + 'static,
+    F: Fn(&Item<T>, &mut Reader) -> bool + 'static,
 {
     fn new(condition: F, score: u32) -> Self {
         Self {
@@ -258,7 +258,7 @@ where
 
 impl<T: 'static + Persistent, F> ExecutionStep for FilterExecution<T, F>
 where
-    F: FnMut(&Item<T>, &mut Reader) -> bool + 'static,
+    F: Fn(&Item<T>, &mut Reader) -> bool + 'static,
 {
     type Target = T;
     fn get_score(&self) -> u32 {
@@ -274,7 +274,7 @@ where
         (Some(self), Box::new(ScanStartStep::new()))
     }
 
-    fn check(&mut self, item: &Item<Self::Target>, reader: &mut Reader) -> bool {
+    fn check(&self, item: &Item<Self::Target>, reader: &mut Reader) -> bool {
         (self.condition)(item, reader)
     }
 }
@@ -561,13 +561,13 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 }
 
 pub struct EmbeddedFieldFilter<V, T> {
-    condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
+    condition: Box<dyn Fn(&V, &mut Reader) -> bool>,
     field: Field<T, V>,
 }
 
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
     fn new(
-        condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
+        condition: Box<dyn Fn(&V, &mut Reader) -> bool>,
         field: Field<T, V>,
     ) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(EmbeddedFieldFilter { condition, field })
@@ -578,8 +578,7 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
     type Target = T;
 
     fn prepare(self: Box<Self>, _reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        // TODO: extract embedded filters
-        let mut condition = self.condition;
+        let condition = self.condition;
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| condition((access)(&it.record), reader);
         Box::new(FilterExecution::new(cond, u32::MAX))
@@ -600,7 +599,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for QueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let mut condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.builder().fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             let id = (access)(&it.record);
@@ -628,7 +627,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for VecQueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let mut condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.builder().fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             for id in (access)(&it.record) {
@@ -658,7 +657,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for OptionQueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let mut condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.builder().fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             if let Some(id) = (access)(&it.record) {
@@ -693,7 +692,7 @@ impl<T: Persistent + 'static> FilterBuilderStep for OrFilter<T> {
             conditions.push(step.prepare(reader));
         }
         let cond = move |it: &Item<T>, reader: &mut Reader| {
-            for condition in &mut conditions {
+            for condition in &conditions {
                 if condition.check(it, reader) {
                     return true;
                 }
@@ -717,7 +716,7 @@ impl<T: Persistent + 'static> AndFilter<T> {
 impl<T: Persistent + 'static> FilterBuilderStep for AndFilter<T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let mut condition = self.filters.fill_conditions_step(reader);
+        let condition = self.filters.fill_conditions_step(reader);
         Box::new(FilterExecution::new(
             move |it: &Item<T>, reader: &mut Reader| condition.check(it, reader),
             u32::MAX,
@@ -738,7 +737,7 @@ impl<T: Persistent + 'static> NotFilter<T> {
 impl<T: Persistent + 'static> FilterBuilderStep for NotFilter<T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let mut condition = self.filters.fill_conditions_step(reader);
+        let condition = self.filters.fill_conditions_step(reader);
         let cond = move |it: &Item<T>, reader: &mut Reader| !condition.check(it, reader);
         Box::new(FilterExecution::new(cond, u32::MAX))
     }
@@ -916,8 +915,8 @@ pub(crate) struct Conditions<T> {
     conditions: Vec<Box<dyn ExecutionStep<Target = T>>>,
 }
 impl<T: 'static> Conditions<T> {
-    pub(crate) fn check(&mut self, item: &Item<T>, reader: &mut Reader) -> bool {
-        for condition in &mut self.conditions {
+    pub(crate) fn check(&self, item: &Item<T>, reader: &mut Reader) -> bool {
+        for condition in &self.conditions {
             if !condition.check(item, reader) {
                 return false;
             }
