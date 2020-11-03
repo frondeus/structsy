@@ -21,18 +21,18 @@ impl<P> Item<P> {
     }
 }
 
-enum Iter<'a, P: Persistent> {
+enum Iter<'a, P> {
     TxIter(TxRecordIter<'a, P>),
     Iter(Box<dyn Iterator<Item = (Ref<P>, P)>>),
 }
 
-struct ExecutionIterator<'a, P: Persistent> {
+struct ExecutionIterator<'a, P> {
     base: Iter<'a, P>,
     conditions: Conditions<P>,
     structsy: Structsy,
     buffered: Option<Box<dyn BufferedExection<P>>>,
 }
-impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
+impl<'a, P: 'static> ExecutionIterator<'a, P> {
     fn new(
         base: Box<dyn Iterator<Item = (Ref<P>, P)>>,
         conditions: Conditions<P>,
@@ -61,7 +61,9 @@ impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
             buffered,
         }
     }
+}
 
+impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
     fn filtered_next(base: &mut Iter<P>, conditions: &mut Conditions<P>, structsy: &Structsy) -> Option<Item<P>> {
         while let Some(read) = match base {
             Iter::Iter(ref mut it) => it.next(),
@@ -79,6 +81,7 @@ impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
 
         None
     }
+
     fn buffered_next(&mut self) -> Option<Item<P>> {
         let mut source = (&mut self.base, &mut self.conditions, &self.structsy);
         if let Some(buffered) = &mut self.buffered {
@@ -104,7 +107,7 @@ impl<'a, P: Persistent + 'static> Iterator for ExecutionIterator<'a, P> {
     }
 }
 
-trait StartStep<'a, T: Persistent> {
+trait StartStep<'a, T> {
     fn start(
         self: Box<Self>,
         conditions: Conditions<T>,
@@ -119,15 +122,13 @@ trait StartStep<'a, T: Persistent> {
     ) -> ExecutionIterator<T>;
 }
 
-struct ScanStartStep<T> {
-    phantom: PhantomData<T>,
-}
-impl<T> ScanStartStep<T> {
+struct ScanStartStep {}
+impl ScanStartStep {
     fn new() -> Self {
-        Self { phantom: PhantomData }
+        ScanStartStep {}
     }
 }
-impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep<T> {
+impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
     fn start(
         self: Box<Self>,
         conditions: Conditions<T>,
@@ -165,7 +166,7 @@ impl<'a, T> DataStartStep<T> {
         Self { data }
     }
 }
-impl<'a, T: Persistent + 'static> StartStep<'a, T> for DataStartStep<T> {
+impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
     fn start(
         self: Box<Self>,
         conditions: Conditions<T>,
@@ -211,7 +212,7 @@ impl<T> DataExecution<T> {
     }
 }
 
-impl<T: 'static + Persistent> ExecutionStep for DataExecution<T> {
+impl<T: 'static> ExecutionStep for DataExecution<T> {
     type Target = T;
     fn get_score(&self) -> u32 {
         self.score
@@ -1080,7 +1081,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Some(BufferedOrderExecution::new(self.order))
         };
         if self.steps.is_empty() {
-            let start = Box::new(ScanStartStep::<T>::new());
+            let start = Box::new(ScanStartStep::new());
             let cond = Self::fill_conditions(Vec::new());
             Box::new(start.start(cond, ordering, structsy))
         } else {
@@ -1103,7 +1104,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Some(BufferedOrderExecution::new(self.order))
         };
         if self.steps.is_empty() {
-            let start = Box::new(ScanStartStep::<T>::new());
+            let start = Box::new(ScanStartStep::new());
             let cond = Self::fill_conditions(Vec::new());
             Box::new(start.start_tx(cond, ordering, tx))
         } else {

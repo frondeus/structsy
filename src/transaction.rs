@@ -344,13 +344,13 @@ pub trait StructsyTx: Sytx + Sized {
 }
 
 /// Iterator for record instances aware of transactions changes
-pub struct TxRecordIter<'a, T: Persistent> {
+pub struct TxRecordIter<'a, T> {
     iter: persy::TxSegmentIter<'a>,
     marker: PhantomData<T>,
     structsy_impl: Arc<StructsyImpl>,
 }
 
-impl<'a, T: Persistent> TxRecordIter<'a, T> {
+impl<'a, T> TxRecordIter<'a, T> {
     fn new(iter: persy::TxSegmentIter<'a>, structsy_impl: Arc<StructsyImpl>) -> TxRecordIter<'a, T> {
         TxRecordIter {
             iter,
@@ -365,7 +365,9 @@ impl<'a, T: Persistent> TxRecordIter<'a, T> {
             structsy_impl: self.structsy_impl.clone(),
         }
     }
+}
 
+impl<'a, T: Persistent> TxRecordIter<'a, T> {
     pub fn next_tx(&mut self) -> Option<(Ref<T>, T, RefSytx)> {
         if let Some((id, buff, tx)) = self.iter.next_tx() {
             if let Ok(x) = T::read(&mut Cursor::new(buff)) {
