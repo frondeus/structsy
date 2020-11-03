@@ -1,4 +1,4 @@
-use crate::filter::{FieldOrder, Item, Order, OrderStep, Reader};
+use crate::filter::{EmbeddedOrder, FieldOrder, Item, Order, OrderStep, Reader};
 use crate::internal::Field;
 use crate::{EmbeddedFilter, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
@@ -128,13 +128,16 @@ impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for 
 }
 
 pub struct EmbeddedFieldFilter<V, T> {
-    filter: EmbeddedFilter<V>,
+    condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
     field: Field<T, V>,
 }
 
 impl<V: 'static, T: 'static> EmbeddedFieldFilter<V, T> {
-    fn new(filter: EmbeddedFilter<V>, field: Field<T, V>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { filter, field })
+    fn new(
+        condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
+        field: Field<T, V>,
+    ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter { condition, field })
     }
 }
 
@@ -142,7 +145,7 @@ impl<V: 'static, T: 'static> EmbeddedFilterBuilderStep for EmbeddedFieldFilter<V
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target, &mut Reader) -> bool> {
         let access = self.field.access;
-        let mut condition = self.filter.condition();
+        let mut condition = self.condition;
         Box::new(move |r, reader| condition((access)(r), reader))
     }
 }
@@ -216,7 +219,7 @@ impl<T: 'static> AndFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target, &mut Reader) -> bool> {
-        let mut condition = self.filters.condition();
+        let (mut condition, _) = self.filters.components();
         Box::new(move |r, reader| condition(r, reader))
     }
 }
@@ -234,7 +237,7 @@ impl<T: 'static> NotFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>) -> Box<dyn FnMut(&Self::Target, &mut Reader) -> bool> {
-        let mut condition = self.filters.condition();
+        let (mut condition, _) = self.filters.components();
         Box::new(move |r, reader| !condition(r, reader))
     }
 }
@@ -306,19 +309,22 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         }
     }
 
-    pub(crate) fn condition(self) -> Box<dyn FnMut(&T, &mut Reader) -> bool> {
+    pub(crate) fn components(self) -> (Box<dyn FnMut(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
         let mut conditions = Vec::new();
         for filter in self.steps {
             conditions.push(filter.condition());
         }
-        Box::new(move |t, reader| {
-            for condition in &mut conditions {
-                if !condition(t, reader) {
-                    return false;
+        (
+            Box::new(move |t, reader| {
+                for condition in &mut conditions {
+                    if !condition(t, reader) {
+                        return false;
+                    }
                 }
-            }
-            return true;
-        })
+                return true;
+            }),
+            self.order,
+        )
     }
 
     fn add(&mut self, filter: Box<dyn EmbeddedFilterBuilderStep<Target = T>>) {
@@ -346,7 +352,9 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     where
         V: 'static,
     {
-        self.add(EmbeddedFieldFilter::new(filter, field))
+        let (conditions, orders) = filter.components();
+        self.order.push(EmbeddedOrder::new(field.clone(), orders));
+        self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)

@@ -23,6 +23,14 @@ pub struct Field<T, V> {
     pub(crate) name: &'static str,
     pub(crate) access: fn(&T) -> &V,
 }
+impl<T, V> Clone for Field<T, V> {
+    fn clone(&self) -> Self {
+        Field {
+            name: self.name,
+            access: self.access,
+        }
+    }
+}
 impl<T, V> Field<T, V> {
     #[inline]
     pub fn new(name: &'static str, access: fn(&T) -> &V) -> Self {

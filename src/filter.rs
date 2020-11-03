@@ -561,13 +561,16 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 }
 
 pub struct EmbeddedFieldFilter<V, T> {
-    filter: EmbeddedFilter<V>,
+    condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
     field: Field<T, V>,
 }
 
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
-    fn new(filter: EmbeddedFilter<V>, field: Field<T, V>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { filter, field })
+    fn new(
+        condition: Box<dyn FnMut(&V, &mut Reader) -> bool>,
+        field: Field<T, V>,
+    ) -> Box<dyn FilterBuilderStep<Target = T>> {
+        Box::new(EmbeddedFieldFilter { condition, field })
     }
 }
 
@@ -576,7 +579,7 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
 
     fn prepare(self: Box<Self>, _reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         // TODO: extract embedded filters
-        let mut condition = self.filter.condition();
+        let mut condition = self.condition;
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| condition((access)(&it.record), reader);
         Box::new(FilterExecution::new(cond, u32::MAX))
@@ -940,11 +943,11 @@ impl<T: 'static, V: Ord + 'static> FieldOrder<T, V> {
 }
 
 pub(crate) trait OrderStep<P> {
-    fn compare(&self, first: &Item<P>, second: &Item<P>) -> std::cmp::Ordering;
+    fn compare(&self, first: &P, second: &P) -> std::cmp::Ordering;
 }
 impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
-    fn compare(&self, first: &Item<P>, second: &Item<P>) -> std::cmp::Ordering {
-        let ord = (self.field.access)(&first.record).cmp((self.field.access)(&second.record));
+    fn compare(&self, first: &P, second: &P) -> std::cmp::Ordering {
+        let ord = (self.field.access)(&first).cmp((self.field.access)(&second));
         if self.order == Order::Asc {
             ord
         } else {
@@ -952,6 +955,31 @@ impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
         }
     }
 }
+pub(crate) struct EmbeddedOrder<T, V> {
+    field: Field<T, V>,
+    orders: Vec<Box<dyn OrderStep<V>>>,
+}
+
+impl<T: 'static, V: 'static> EmbeddedOrder<T, V> {
+    pub(crate) fn new(field: Field<T, V>, orders: Vec<Box<dyn OrderStep<V>>>) -> Box<dyn OrderStep<T>> {
+        Box::new(Self { field, orders })
+    }
+}
+
+impl<P, V> OrderStep<P> for EmbeddedOrder<P, V> {
+    fn compare(&self, first: &P, second: &P) -> std::cmp::Ordering {
+        let emb_first = (self.field.access)(&first);
+        let emb_second = (self.field.access)(&second);
+        for order in &self.orders {
+            let ord = order.compare(emb_first, emb_second);
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+}
+
 trait BufferedExection<P> {
     fn next(&mut self, source: &mut dyn Source<P>) -> Option<Item<P>>;
 }
@@ -968,7 +996,7 @@ impl<T: 'static> BufferedOrderExecution<T> {
 impl<T> BufferedOrderExecution<T> {
     fn order_item(&self, first: &Item<T>, second: &Item<T>) -> std::cmp::Ordering {
         for order in &self.orders {
-            let ord = order.compare(first, second);
+            let ord = order.compare(&first.record, &second.record);
             if ord != std::cmp::Ordering::Equal {
                 return ord;
             }
@@ -1112,7 +1140,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: PersistentEmbedded + 'static,
     {
-        self.add(EmbeddedFieldFilter::new(filter, field))
+        let (conditions, order) = filter.components();
+        self.add_order(EmbeddedOrder::new(field.clone(), order));
+        self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)

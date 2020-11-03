@@ -1,6 +1,6 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{Order, RangeCondition, Reader, SimpleCondition},
+    filter::{Order, OrderStep, RangeCondition, Reader, SimpleCondition},
     internal::Field,
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
@@ -136,8 +136,8 @@ impl<T: 'static> EmbeddedFilter<T> {
         }
     }
 
-    pub(crate) fn condition(self) -> Box<dyn FnMut(&T, &mut Reader) -> bool> {
-        self.builder.condition()
+    pub(crate) fn components(self) -> (Box<dyn FnMut(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
+        self.builder.components()
     }
     pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
         self.builder
@@ -575,7 +575,7 @@ where
 
 impl<T, V> OrderAction for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: PersistentEmbedded + 'static,
     V: Ord + 'static,
 {
     #[inline]
