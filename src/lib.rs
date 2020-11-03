@@ -310,14 +310,14 @@ impl Structsy {
     ///
     /// # Example
     /// ```
-    /// use structsy::Structsy;
+    /// use structsy::{Structsy, StructsyTx};
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// let stry = Structsy::open("path/to/file.stry")?;
     /// //....
     /// let mut tx = stry.begin()?;
     /// // ... operate on tx.
-    /// stry.commit(tx)?;
+    /// tx.commit()?;
     /// # Ok(())
     /// # }
     /// ```

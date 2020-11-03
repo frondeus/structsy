@@ -1047,12 +1047,15 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn finish<'a>(self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+        let ordering = if self.order.is_empty() {
+            None
+        } else {
+            Some(BufferedOrderExecution::new(self.order))
+        };
         if self.steps.is_empty() {
-            if let Ok(ok) = structsy.scan::<T>() {
-                Box::new(ok)
-            } else {
-                Box::new(Vec::new().into_iter())
-            }
+            let start = Box::new(ScanStartStep::<T>::new());
+            let cond = Self::fill_conditions(Vec::new());
+            Box::new(start.start(cond, ordering, structsy))
         } else {
             let reader = &mut Reader::Structsy(structsy.clone());
             let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
@@ -1062,22 +1065,20 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            let ordering = if self.order.is_empty() {
-                None
-            } else {
-                Some(BufferedOrderExecution::new(self.order))
-            };
             Box::new(start.start(cond, ordering, structsy))
         }
     }
 
     pub fn finish_tx<'a>(self, tx: &'a mut OwnedSytx) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+        let ordering = if self.order.is_empty() {
+            None
+        } else {
+            Some(BufferedOrderExecution::new(self.order))
+        };
         if self.steps.is_empty() {
-            if let Ok(ok) = tx.scan::<T>() {
-                Box::new(ok)
-            } else {
-                Box::new(Vec::new().into_iter())
-            }
+            let start = Box::new(ScanStartStep::<T>::new());
+            let cond = Self::fill_conditions(Vec::new());
+            Box::new(start.start_tx(cond, ordering, tx))
         } else {
             let reader = &mut Reader::Tx(tx.reference());
             let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
@@ -1086,11 +1087,6 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            let ordering = if self.order.is_empty() {
-                None
-            } else {
-                Some(BufferedOrderExecution::new(self.order))
-            };
             Box::new(start.start_tx(cond, ordering, tx))
         }
     }

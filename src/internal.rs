@@ -12,6 +12,7 @@ pub use crate::index::{
 };
 pub use crate::projection::Projection;
 pub use crate::queries::EqualAction;
+pub use crate::queries::OrderAction;
 pub use crate::queries::Query;
 pub use crate::queries::QueryAction;
 pub use crate::queries::RangeAction;

@@ -6,6 +6,7 @@ use syn::{
     Signature, TraitItem, Type, TypeParamBound,
 };
 enum Operation {
+    Order(String, String, Option<String>),
     Equals(String, String, Option<String>),
     Query(String, String, Option<String>),
     Range(String, String, Option<String>),
@@ -98,7 +99,9 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         }
         if !range {
             if let (Some(n), Some(t)) = (name, ty) {
-                if t.0 == "EmbeddedFilter" || t.0 == "StructsyQuery" {
+                if t.0 == "Order" {
+                    res.push(Operation::Order(n, t.0, t.1));
+                } else if t.0 == "EmbeddedFilter" || t.0 == "StructsyQuery" {
                     res.push(Operation::Query(n, t.0, t.1));
                 } else {
                     res.push(Operation::Equals(n, t.0, t.1));
@@ -185,6 +188,13 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             let type_ident = Ident::new(target_type, Span::call_site());
             let fields = extract_fields(&m.sig);
             let conditions = fields.into_iter().map(|f| match f {
+                Operation::Order(f, _, _) => {
+                    let par_ident = Ident::new(&f, Span::call_site());
+                    let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
+                    quote! {
+                        structsy::internal::OrderAction::order((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
+                    }
+                }
                 Operation::Equals(f, _, _) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
