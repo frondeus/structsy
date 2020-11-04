@@ -9,6 +9,7 @@ edition = "2018"
 readme = "README.md"
 
 [badges]
+maintenance = { status = "actively-developed" }
 gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
