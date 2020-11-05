@@ -292,6 +292,11 @@ pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
     order: Vec<Box<dyn OrderStep<T>>>,
 }
+impl<T> Default for EmbeddedFilterBuilder<T> {
+    fn default() -> Self {
+        EmbeddedFilterBuilder::<T>::new()
+    }
+}
 
 fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     match bound {
@@ -300,15 +305,16 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
         Bound::Unbounded => Bound::Unbounded,
     }
 }
-
-impl<T: 'static> EmbeddedFilterBuilder<T> {
+impl<T> EmbeddedFilterBuilder<T> {
     pub fn new() -> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder {
             steps: Vec::new(),
             order: Vec::new(),
         }
     }
+}
 
+impl<T: 'static> EmbeddedFilterBuilder<T> {
     pub(crate) fn components(self) -> (Box<dyn Fn(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
         let mut conditions = Vec::new();
         for filter in self.steps {

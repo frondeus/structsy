@@ -1028,6 +1028,11 @@ pub struct FilterBuilder<T> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Vec<Box<dyn OrderStep<T>>>,
 }
+impl<T> Default for FilterBuilder<T> {
+    fn default() -> Self {
+        FilterBuilder::new()
+    }
+}
 
 impl<T> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {

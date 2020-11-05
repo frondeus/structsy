@@ -1,7 +1,7 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::{Order, OrderStep, RangeCondition, Reader, SimpleCondition},
-    internal::Field,
+    internal::{EmbeddedDescription, Field, FilterDefinition},
     FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 use std::ops::RangeBounds;
@@ -129,6 +129,20 @@ pub trait Operators<F> {
     fn not<FN: Fn(F) -> F>(self, builder: FN) -> Self;
 }
 
+pub trait EmbeddedQuery<T: PersistentEmbedded + 'static>: Sized {
+    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T>;
+}
+impl<T: PersistentEmbedded + 'static> EmbeddedQuery<T> for EmbeddedFilter<T> {
+    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
+        &mut self.builder
+    }
+}
+impl<T: EmbeddedDescription + 'static> EmbeddedQuery<T> for Filter<T> {
+    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
+        &mut self.filter_builder
+    }
+}
+
 impl<T: 'static> EmbeddedFilter<T> {
     pub fn new() -> EmbeddedFilter<T> {
         EmbeddedFilter {
@@ -173,6 +187,23 @@ impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
     fn not<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().not(builder(StructsyFilter::<T>::new()));
         self
+    }
+}
+
+pub struct Filter<T: FilterDefinition> {
+    filter_builder: T::Filter,
+}
+impl<T: FilterDefinition> Default for Filter<T> {
+    fn default() -> Self {
+        Filter {
+            filter_builder: T::Filter::default(),
+        }
+    }
+}
+
+impl<T: Persistent + 'static> Query<T> for Filter<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.filter_builder
     }
 }
 
@@ -304,7 +335,6 @@ impl<T: Persistent + 'static> StructsyFilter<T> {
         self.builder
     }
 }
-
 impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
@@ -586,9 +616,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{EqualAction, Query, StructsyFilter};
+    use super::{EqualAction, FilterBuilder, Query, StructsyFilter};
     use crate::{
-        internal::{Description, Field},
+        internal::{Description, Field, FilterDefinition},
         Persistent, Ref, SRes, Sytx,
     };
 
@@ -596,6 +626,9 @@ mod tests {
     struct ToQuery {
         first: String,
         second: Vec<String>,
+    }
+    impl FilterDefinition for ToQuery {
+        type Filter = FilterBuilder<Self>;
     }
     impl Persistent for ToQuery {
         fn get_name() -> &'static str {

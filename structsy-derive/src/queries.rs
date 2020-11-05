@@ -262,7 +262,7 @@ pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded: bool) -> 
         quote! {
             #parsed
 
-            impl #name for structsy::EmbeddedFilter<#expeted_type_ident>  {
+            impl <Q:structsy::internal::EmbeddedQuery<#expeted_type_ident>>  #name for Q {
                 #( #methods )*
             }
         }

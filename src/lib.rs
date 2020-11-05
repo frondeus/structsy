@@ -437,6 +437,9 @@ mod test {
         name: String,
         length: u32,
     }
+    impl crate::internal::FilterDefinition for ToTest {
+        type Filter = crate::internal::FilterBuilder<Self>;
+    }
     impl Persistent for ToTest {
         fn get_name() -> &'static str {
             "ToTest"
@@ -596,6 +599,9 @@ mod test {
     #[derive(Debug)]
     struct Pers {}
 
+    impl crate::internal::FilterDefinition for Pers {
+        type Filter = crate::internal::FilterBuilder<Self>;
+    }
     impl Persistent for Pers {
         fn get_name() -> &'static str {
             "Pers"
