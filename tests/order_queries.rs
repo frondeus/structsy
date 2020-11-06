@@ -1,4 +1,4 @@
-use structsy::{EmbeddedFilter, Order, SRes, Structsy, StructsyTx};
+use structsy::{EmbeddedFilter, Filter, Order, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -33,10 +33,10 @@ fn basic_order() {
         tx.insert(&Basic::new("bbb"))?;
         tx.insert(&Basic::new("aaa"))?;
         tx.commit()?;
-        let mut iter = db.query::<Basic>().order(Order::Asc).into_iter();
+        let mut iter = db.into_iter(Filter::<Basic>::new().order(Order::Asc));
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         assert_eq!(iter.next().unwrap().1.name, "bbb");
-        let mut iter = db.query::<Basic>().order(Order::Desc).into_iter();
+        let mut iter = db.into_iter(Filter::<Basic>::new().order(Order::Desc));
         assert_eq!(iter.next().unwrap().1.name, "bbb");
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         Ok(())

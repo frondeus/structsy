@@ -1,10 +1,11 @@
 use crate::{
+    embedded_filter::EmbeddedFilterBuilder,
     index::{find, find_range, find_range_tx, find_tx},
     internal::{Description, EmbeddedDescription, Field},
     queries::StructsyFilter,
     transaction::RefSytx,
     transaction::TxRecordIter,
-    EmbeddedFilter, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyQuery, StructsyTx,
+    OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyQuery, StructsyTx,
 };
 use persy::IndexType;
 use std::marker::PhantomData;
@@ -587,12 +588,12 @@ impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFil
 }
 
 pub struct QueryFilter<V: Persistent + 'static, T: Persistent> {
-    query: StructsyQuery<V>,
+    query: FilterBuilder<V>,
     field: Field<T, Ref<V>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, field: Field<T, Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+    fn new(query: FilterBuilder<V>, field: Field<T, Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(QueryFilter { query, field })
     }
 }
@@ -600,7 +601,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for QueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             let id = (access)(&it.record);
@@ -615,12 +616,12 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Que
 }
 
 pub struct VecQueryFilter<V: Persistent + 'static, T: Persistent> {
-    query: StructsyQuery<V>,
+    query: FilterBuilder<V>,
     field: Field<T, Vec<Ref<V>>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, field: Field<T, Vec<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+    fn new(query: FilterBuilder<V>, field: Field<T, Vec<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(VecQueryFilter { query, field })
     }
 }
@@ -628,7 +629,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for VecQueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             for id in (access)(&it.record) {
@@ -645,12 +646,12 @@ impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for Vec
 }
 
 pub struct OptionQueryFilter<V: Persistent + 'static, T: Persistent> {
-    query: StructsyQuery<V>,
+    query: FilterBuilder<V>,
     field: Field<T, Option<Ref<V>>>,
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, field: Field<T, Option<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
+    fn new(query: FilterBuilder<V>, field: Field<T, Option<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
         Box::new(OptionQueryFilter { query, field })
     }
 }
@@ -658,7 +659,7 @@ impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
 impl<V: Persistent + 'static, T: Persistent + 'static> FilterBuilderStep for OptionQueryFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let condition = self.query.builder().fill_conditions_step(reader);
+        let condition = self.query.fill_conditions_step(reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| {
             if let Some(id) = (access)(&it.record) {
@@ -1141,7 +1142,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         String::range(self, field, (start, end))
     }
 
-    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
+    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)
     where
         V: PersistentEmbedded + 'static,
     {
@@ -1150,21 +1151,21 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
-    pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: StructsyQuery<V>)
+    pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {
         self.add(QueryFilter::new(query, field))
     }
 
-    pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: StructsyQuery<V>)
+    pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {
         self.add(VecQueryFilter::new(query, field))
     }
 
-    pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: StructsyQuery<V>)
+    pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {

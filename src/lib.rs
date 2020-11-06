@@ -54,6 +54,7 @@ use filter::FilterBuilder;
 pub mod internal;
 pub use internal::{Persistent, PersistentEmbedded};
 mod projection;
+pub use queries::Filter;
 
 /// Main API to persist structs with structsy.
 ///
@@ -369,6 +370,11 @@ impl Structsy {
             builder: FilterBuilder::new(),
         }
     }
+
+    pub fn into_iter<T: Persistent + 'static>(&self, filter: Filter<T>) -> StructsyIter<T> {
+        StructsyIter::new(filter.extract_filter().finish(&self))
+    }
+
     /// Create a new filter for an embedded structure
     ///
     ///

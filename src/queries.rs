@@ -160,17 +160,18 @@ impl<T: 'static> EmbeddedFilter<T> {
         &mut self.builder
     }
 }
-impl<T: PersistentEmbedded + 'static> Operators<EmbeddedFilter<T>> for EmbeddedFilter<T> {
+
+impl<T: PersistentEmbedded + 'static, Q: EmbeddedQuery<T>> Operators<EmbeddedFilter<T>> for Q {
     fn or<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()));
+        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()).filter());
         self
     }
     fn and<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()));
+        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()).filter());
         self
     }
     fn not<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()));
+        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()).filter());
         self
     }
 }
@@ -193,11 +194,19 @@ impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
 pub struct Filter<T: FilterDefinition> {
     filter_builder: T::Filter,
 }
-impl<T: FilterDefinition> Default for Filter<T> {
-    fn default() -> Self {
+impl<T: FilterDefinition> Filter<T> {
+    pub fn new() -> Self {
         Filter {
             filter_builder: T::Filter::default(),
         }
+    }
+    pub(crate) fn extract_filter(self) -> T::Filter {
+        self.filter_builder
+    }
+}
+impl<T: FilterDefinition> Default for Filter<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -552,7 +561,29 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
-        self.1.ref_option_query(self.0, value);
+        self.1.ref_option_query(self.0, value.builder());
+    }
+}
+
+impl<T, V> QueryAction<Filter<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: Filter<V>) {
+        self.1.ref_option_query(self.0, value.extract_filter());
+    }
+}
+
+impl<T, V> QueryAction<Filter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: EmbeddedDescription + 'static,
+{
+    #[inline]
+    fn query(self, value: Filter<V>) {
+        self.1.simple_persistent_embedded(self.0, value.extract_filter());
     }
 }
 
@@ -563,9 +594,20 @@ where
 {
     #[inline]
     fn query(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value);
+        self.1.simple_persistent_embedded(self.0, value.filter());
     }
 }
+impl<T, V> QueryAction<Filter<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: Filter<V>) {
+        self.1.ref_query(self.0, value.extract_filter());
+    }
+}
+
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
@@ -573,7 +615,7 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
-        self.1.ref_query(self.0, value);
+        self.1.ref_query(self.0, value.builder());
     }
 }
 
@@ -584,7 +626,18 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
-        self.1.ref_vec_query(self.0, value);
+        self.1.ref_vec_query(self.0, value.builder());
+    }
+}
+
+impl<T, V> QueryAction<Filter<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: Filter<V>) {
+        self.1.ref_vec_query(self.0, value.extract_filter());
     }
 }
 

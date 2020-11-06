@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, Operators, SRes, Structsy, StructsyTx};
+use structsy::{EmbeddedFilter, Filter, Operators, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -542,7 +542,7 @@ impl WithEmbedded {
 
 #[queries(WithEmbedded)]
 trait WithEmbeddedQuery {
-    fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> Self;
+    fn embedded(self, embedded: Filter<Embedded>) -> Self;
 }
 
 #[embedded_queries(Embedded)]
@@ -559,7 +559,7 @@ pub fn test_embeeded_query() {
         tx.insert(&WithEmbedded::new("anto"))?;
         tx.insert(&WithEmbedded::new("zzz"))?;
         tx.commit()?;
-        let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string());
+        let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
         let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
         assert_eq!(count, 1);
         Ok(())
@@ -576,7 +576,7 @@ pub fn basic_embedded_or_query() {
         tx.insert(&WithEmbedded::new("zzz"))?;
         tx.commit()?;
         let embedded_filter =
-            Structsy::embedded_filter::<Embedded>().or(|or| or.by_name("aaa".to_string()).by_name("zzz".to_string()));
+            Filter::<Embedded>::new().or(|or| or.by_name("aaa".to_string()).by_name("zzz".to_string()));
         let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
         assert_eq!(count, 2);
         Ok(())
@@ -592,8 +592,8 @@ pub fn basic_embedded_and_query() {
         tx.insert(&WithEmbedded::new("anto"))?;
         tx.insert(&WithEmbedded::new("zzz"))?;
         tx.commit()?;
-        let embedded_filter = Structsy::embedded_filter::<Embedded>()
-            .and(|and| and.by_name("aaa".to_string()).by_name("zzz".to_string()));
+        let embedded_filter =
+            Filter::<Embedded>::new().and(|and| and.by_name("aaa".to_string()).by_name("zzz".to_string()));
         let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
         assert_eq!(count, 0);
         Ok(())
@@ -609,7 +609,7 @@ pub fn basic_embeddded_not_query() {
         tx.insert(&WithEmbedded::new("anto"))?;
         tx.insert(&WithEmbedded::new("zzz"))?;
         tx.commit()?;
-        let embedded_filter = Structsy::embedded_filter::<Embedded>().not(|not| not.by_name("aaa".to_string()));
+        let embedded_filter = Filter::<Embedded>::new().not(|not| not.by_name("aaa".to_string()));
         let count = db.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
         assert_eq!(count, 2);
         Ok(())

@@ -370,16 +370,16 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(QueryFilter::new(query, field))
     }
 
-    pub fn or(&mut self, filters: EmbeddedFilter<T>) {
-        self.add(OrFilter::new(filters.filter()))
+    pub fn or(&mut self, filters: EmbeddedFilterBuilder<T>) {
+        self.add(OrFilter::new(filters))
     }
 
-    pub fn and(&mut self, filters: EmbeddedFilter<T>) {
-        self.add(AndFilter::new(filters.filter()))
+    pub fn and(&mut self, filters: EmbeddedFilterBuilder<T>) {
+        self.add(AndFilter::new(filters))
     }
 
-    pub fn not(&mut self, filters: EmbeddedFilter<T>) {
-        self.add(NotFilter::new(filters.filter()))
+    pub fn not(&mut self, filters: EmbeddedFilterBuilder<T>) {
+        self.add(NotFilter::new(filters))
     }
     pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
         self.order.push(FieldOrder::new(field, order))
