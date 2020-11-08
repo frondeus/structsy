@@ -1,19 +1,19 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::{Order, OrderStep, RangeCondition, Reader, SimpleCondition},
-    internal::{EmbeddedDescription, Field, FilterDefinition},
-    FilterBuilder, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
+    internal::{EmbeddedDescription, Field, FilterDefinition, Projection},
+    FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 use std::ops::RangeBounds;
 /// Iterator for query results
-pub struct StructsyIter<'a, T: Persistent> {
-    iterator: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
+pub struct StructsyIter<'a, T> {
+    iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
 
-impl<'a, T: Persistent> StructsyIter<'a, T> {
+impl<'a, T> StructsyIter<'a, T> {
     pub fn new<I>(iterator: I) -> StructsyIter<'a, T>
     where
-        I: Iterator<Item = (Ref<T>, T)>,
+        I: Iterator<Item = T>,
         I: 'a,
     {
         StructsyIter {
@@ -22,8 +22,8 @@ impl<'a, T: Persistent> StructsyIter<'a, T> {
     }
 }
 
-impl<'a, T: Persistent> Iterator for StructsyIter<'a, T> {
-    type Item = (Ref<T>, T);
+impl<'a, T> Iterator for StructsyIter<'a, T> {
+    type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iterator.next()
@@ -191,9 +191,27 @@ impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
     }
 }
 
+pub struct ProjectionResult<P: Projection<T>, T: FilterDefinition> {
+    filter: FilterBuilder<T>,
+    phantom: std::marker::PhantomData<P>,
+}
+
+impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResult<P, T> {
+    fn into(self, structsy: &Structsy) -> StructsyIter<P> {
+        let data = self.filter.finish(&structsy);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
+
+    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, P> {
+        let data = self.filter.finish_tx(tx);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
+}
+
 pub struct Filter<T: FilterDefinition> {
     filter_builder: T::Filter,
 }
+
 impl<T: FilterDefinition> Filter<T> {
     pub fn new() -> Self {
         Filter {
@@ -204,12 +222,33 @@ impl<T: FilterDefinition> Filter<T> {
         self.filter_builder
     }
 }
+
+impl<T: Persistent> Filter<T> {
+    pub fn projection<P: Projection<T>>(self) -> ProjectionResult<P, T> {
+        ProjectionResult {
+            filter: self.filter_builder,
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
 impl<T: FilterDefinition> Default for Filter<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
+impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
+    fn into(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
+        let data = self.extract_filter().finish(&structsy);
+        StructsyIter::new(data)
+    }
+
+    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, (Ref<T>, T)> {
+        let data = self.extract_filter().finish_tx(tx);
+        StructsyIter::new(data)
+    }
+}
 impl<T: Persistent + 'static> Query<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.filter_builder
@@ -267,13 +306,35 @@ impl<T: Persistent + 'static> StructsyQuery<T> {
     pub(crate) fn builder(self) -> FilterBuilder<T> {
         self.builder
     }
+    pub fn projection<P: Projection<T>>(self) -> ProjectionQuery<P, T> {
+        ProjectionQuery {
+            builder: self.builder,
+            structsy: self.structsy,
+            phantom: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     type Item = (Ref<T>, T);
-    type IntoIter = StructsyIter<'static, T>;
+    type IntoIter = StructsyIter<'static, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
         StructsyIter::new(self.builder.finish(&self.structsy))
+    }
+}
+
+pub struct ProjectionQuery<P: Projection<T>, T: FilterDefinition> {
+    builder: FilterBuilder<T>,
+    structsy: Structsy,
+    phantom: std::marker::PhantomData<P>,
+}
+
+impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQuery<P, T> {
+    type Item = P;
+    type IntoIter = StructsyIter<'static, P>;
+    fn into_iter(self) -> Self::IntoIter {
+        let data = self.builder.finish(&self.structsy);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
 
@@ -321,10 +382,33 @@ impl<'a, T: Persistent + 'static> Query<T> for StructsyQueryTx<'a, T> {
         &mut self.builder
     }
 }
+impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
+    pub fn projection<P: Projection<T>>(self) -> ProjectionQueryTx<'a, P, T> {
+        ProjectionQueryTx {
+            tx: self.tx,
+            builder: self.builder,
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+pub struct ProjectionQueryTx<'a, P, T> {
+    tx: &'a mut OwnedSytx,
+    builder: FilterBuilder<T>,
+    phantom: std::marker::PhantomData<P>,
+}
+
+impl<'a, P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQueryTx<'a, P, T> {
+    type Item = P;
+    type IntoIter = StructsyIter<'a, P>;
+    fn into_iter(self) -> Self::IntoIter {
+        let data = self.builder.finish_tx(self.tx);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
+}
 
 impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
     type Item = (Ref<T>, T);
-    type IntoIter = StructsyIter<'a, T>;
+    type IntoIter = StructsyIter<'a, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
         StructsyIter::new(self.builder.finish_tx(self.tx))
     }

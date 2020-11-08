@@ -1,4 +1,4 @@
-use crate::{Filter, FilterBuilder, Persistent, Ref, SRes, StructsyImpl, StructsyIter, StructsyQueryTx};
+use crate::{FilterBuilder, IntoResult, Persistent, Ref, SRes, StructsyImpl, StructsyIter, StructsyQueryTx};
 use persy::Transaction;
 use std::{io::Cursor, marker::PhantomData, sync::Arc};
 
@@ -51,8 +51,10 @@ impl OwnedSytx {
             builder: FilterBuilder::new(),
         }
     }
-    pub fn into_iter<T: Persistent + 'static>(&mut self, filter: Filter<T>) -> StructsyIter<T> {
-        StructsyIter::new(filter.extract_filter().finish_tx(self))
+
+    pub fn into_iter<R: IntoResult<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
+        //StructsyIter::new(filter.extract_filter().finish_tx(self))
+        filter.into_tx(self)
     }
     pub(crate) fn reference(&mut self) -> RefSytx {
         RefSytx {

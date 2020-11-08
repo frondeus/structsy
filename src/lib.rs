@@ -98,6 +98,11 @@ impl<T: AsRef<Path>> From<T> for StructsyConfig {
     }
 }
 
+pub trait IntoResult<T> {
+    fn into(self, structsy: &Structsy) -> StructsyIter<T>;
+    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, T>;
+}
+
 impl Structsy {
     /// Config builder for open and/or create a structsy file.
     ///
@@ -371,8 +376,9 @@ impl Structsy {
         }
     }
 
-    pub fn into_iter<T: Persistent + 'static>(&self, filter: Filter<T>) -> StructsyIter<T> {
-        StructsyIter::new(filter.extract_filter().finish(&self))
+    pub fn into_iter<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
+        //StructsyIter::new(filter.extract_filter().finish(&self))
+        filter.into(&self)
     }
 
     /// Create a new filter for an embedded structure

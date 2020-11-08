@@ -5,7 +5,7 @@ use crate::{
     queries::StructsyFilter,
     transaction::RefSytx,
     transaction::TxRecordIter,
-    OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyQuery, StructsyTx,
+    OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyTx,
 };
 use persy::IndexType;
 use std::marker::PhantomData;
