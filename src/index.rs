@@ -1,3 +1,4 @@
+use crate::transaction::TxIterator;
 use crate::{structsy::tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
 use persy::{IndexType, PersyId, Transaction, Value, ValueMode};
 use std::marker::PhantomData;
@@ -170,7 +171,7 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
     db: &Structsy,
     name: &str,
     range: R,
-) -> SRes<impl Iterator<Item = (Ref<P>, P, K)>> {
+) -> SRes<impl DoubleEndedIterator<Item = (Ref<P>, P, K)>> {
     let db1: Structsy = db.clone();
     Ok(db
         .structsy_impl
@@ -207,6 +208,12 @@ pub struct RangeIterator<'a, K: IndexType, P: Persistent> {
     iter: Option<IntoIter<(Ref<P>, P, K)>>,
 }
 
+impl<'a, K: IndexType, P: Persistent> TxIterator<'a> for RangeIterator<'a, K, P> {
+    fn tx(&mut self) -> RefSytx {
+        self.tx()
+    }
+}
+
 impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
     fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> RangeIterator<'a, K, P> {
         RangeIterator {
@@ -215,7 +222,8 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
             iter: None,
         }
     }
-    pub fn tx(&'a mut self) -> RefSytx<'a> {
+
+    pub fn tx(&mut self) -> RefSytx {
         RefSytx {
             structsy_impl: self.structsy.clone(),
             trans: self.persy_iter.tx(),
@@ -255,6 +263,34 @@ impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
             }
 
             if let Some((k, v)) = self.persy_iter.next() {
+                let name = P::get_description().get_name();
+                let mut pv = Vec::new();
+                for id in v {
+                    let tx = self.persy_iter.tx();
+                    if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                        let r = Ref::new(id);
+                        pv.push((r, val, k.clone()));
+                    }
+                }
+                self.iter = Some(pv.into_iter());
+            } else {
+                return None;
+            }
+        }
+    }
+}
+
+impl<'a, P: Persistent, K: IndexType> DoubleEndedIterator for RangeIterator<'a, K, P> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(it) = &mut self.iter {
+                let next = it.next_back();
+                if next.is_some() {
+                    return next;
+                }
+            }
+
+            if let Some((k, v)) = self.persy_iter.next_back() {
                 let name = P::get_description().get_name();
                 let mut pv = Vec::new();
                 for id in v {

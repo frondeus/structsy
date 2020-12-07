@@ -359,7 +359,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         V: 'static,
     {
         let (conditions, orders) = filter.components();
-        self.order.push(EmbeddedOrder::new(field.clone(), orders));
+        self.order.push(EmbeddedOrder::new_emb(field.clone(), orders));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
@@ -382,6 +382,6 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(NotFilter::new(filters))
     }
     pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
-        self.order.push(FieldOrder::new(field, order))
+        self.order.push(FieldOrder::new_emb(field, order))
     }
 }

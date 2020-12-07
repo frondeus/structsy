@@ -732,7 +732,7 @@ pub trait OrderAction {
 impl<T, V> OrderAction for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: Ord + 'static,
+    V: Ord + crate::filter::Scan<T> + 'static,
 {
     #[inline]
     fn order(self, value: Order) {

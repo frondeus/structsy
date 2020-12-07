@@ -53,7 +53,6 @@ impl OwnedSytx {
     }
 
     pub fn into_iter<R: IntoResult<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
-        //StructsyIter::new(filter.extract_filter().finish_tx(self))
         filter.into_tx(self)
     }
     pub(crate) fn reference(&mut self) -> RefSytx {
@@ -346,6 +345,16 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn prepare_commit(self) -> SRes<Prepared>;
+}
+
+pub trait TxIterator<'a>: Iterator {
+    fn tx(&mut self) -> RefSytx;
+}
+
+impl<'a, T: Persistent> TxIterator<'a> for TxRecordIter<'a, T> {
+    fn tx(&mut self) -> RefSytx {
+        self.tx()
+    }
 }
 
 /// Iterator for record instances aware of transactions changes

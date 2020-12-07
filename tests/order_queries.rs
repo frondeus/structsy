@@ -94,3 +94,38 @@ fn nested_order() {
         Ok(())
     });
 }
+
+#[derive(Persistent)]
+struct BasicIndexed {
+    #[index(mode = "cluster")]
+    name: String,
+}
+
+impl BasicIndexed {
+    fn new(name: &str) -> BasicIndexed {
+        BasicIndexed { name: name.to_string() }
+    }
+}
+
+#[queries(BasicIndexed)]
+trait BasicIndexedQuery {
+    fn order(self, name: Order) -> Self;
+}
+
+#[test]
+fn basic_indexed_order() {
+    structsy_inst("basic_indexed_order", |db| {
+        db.define::<BasicIndexed>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&BasicIndexed::new("bbb"))?;
+        tx.insert(&BasicIndexed::new("aaa"))?;
+        tx.commit()?;
+        let mut iter = db.into_iter(Filter::<BasicIndexed>::new().order(Order::Asc));
+        assert_eq!(iter.next().unwrap().1.name, "aaa");
+        assert_eq!(iter.next().unwrap().1.name, "bbb");
+        let mut iter = db.into_iter(Filter::<BasicIndexed>::new().order(Order::Desc));
+        assert_eq!(iter.next().unwrap().1.name, "bbb");
+        assert_eq!(iter.next().unwrap().1.name, "aaa");
+        Ok(())
+    });
+}
