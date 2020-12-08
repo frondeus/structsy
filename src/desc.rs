@@ -3,7 +3,7 @@ use super::{
     Ref, SRes,
 };
 use crate::format::PersistentEmbedded;
-use persy::ValueMode;
+use persy::{PersyId, ValueMode};
 use std::io::{Read, Write};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -266,7 +266,9 @@ impl FieldDescription {
 pub struct InternalDescription {
     pub desc: Description,
     pub checked: bool,
+    pub id: PersyId,
 }
+
 impl InternalDescription {
     pub fn has_refer_to(&self, name: &str) -> bool {
         self.desc.has_refer_to(name)

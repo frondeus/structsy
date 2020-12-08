@@ -208,7 +208,9 @@ impl Structsy {
         D: Persistent,
         D: From<S>,
     {
-        self.structsy_impl.check_defined::<S>()?;
+        if !self.structsy_impl.is_defined::<S>()? {
+            return Ok(());
+        }
         self.structsy_impl.check_defined::<S>()?;
         if self.structsy_impl.is_referred_by_others::<S>()? {
             return Err(StructsyError::MigrationNotSupported(format!(
@@ -217,7 +219,6 @@ impl Structsy {
             )));
         }
         // TODO: Handle update of references
-        // TODO: Handle partial migration
         let batch = 1000;
         let mut tx = self.begin()?;
         let mut count = 0;
@@ -231,7 +232,12 @@ impl Structsy {
             }
         }
         tx.commit()?;
+        self.drop_defined::<S>()?;
         Ok(())
+    }
+
+    pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
+        self.structsy_impl.drop_defined::<T>()
     }
 
     /// Begin a new transaction needed to manipulate data.

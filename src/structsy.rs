@@ -49,7 +49,7 @@ impl Definitions {
 
     pub fn define<T: Persistent, F>(&self, create: F) -> SRes<bool>
     where
-        F: Fn(&Description) -> SRes<()>,
+        F: Fn(&Description) -> SRes<PersyId>,
     {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
@@ -61,10 +61,25 @@ impl Definitions {
                 Ok(false)
             }
             Entry::Vacant(x) => {
-                create(&desc)?;
-                x.insert(InternalDescription { desc, checked: true });
+                let id = create(&desc)?;
+                x.insert(InternalDescription {
+                    desc,
+                    checked: true,
+                    id,
+                });
                 Ok(true)
             }
+        }
+    }
+
+    pub fn drop_defined<T: Persistent>(&self) -> SRes<PersyId> {
+        let desc = T::get_description();
+        let mut lock = self.definitions.lock()?;
+        let removed = lock.remove(&desc.get_name());
+        if let Some(rem) = removed {
+            Ok(rem.id)
+        } else {
+            Err(StructsyError::StructNotDefined(desc.get_name()))
         }
     }
 
@@ -102,13 +117,14 @@ impl StructsyImpl {
         let persy = Persy::open(&config.path, Config::new())?;
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
-            .filter_map(|(_, r)| Description::read(&mut Cursor::new(r)).ok())
-            .map(|d| {
+            .filter_map(|(id, r)| Description::read(&mut Cursor::new(r)).ok().map(|x| (id, x)))
+            .map(|(id, d)| {
                 (
                     d.get_name(),
                     InternalDescription {
                         desc: d,
                         checked: false,
+                        id,
                     },
                 )
             })
@@ -132,12 +148,22 @@ impl StructsyImpl {
             let mut buff = Vec::new();
             desc.write(&mut buff)?;
             let mut tx = structsy.begin()?;
-            tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
+            let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
             tx.trans.create_segment(&desc.get_name())?;
             T::declare(&mut tx)?;
             tx.commit()?;
-            Ok(())
+            Ok(id)
         })
+    }
+
+    pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
+        let desc = T::get_description();
+        let id = self.definitions.drop_defined::<T>()?;
+        let mut tx = self.persy.begin()?;
+        tx.delete(INTERNAL_SEGMENT_NAME, &id)?;
+        tx.drop_segment(&desc.get_name())?;
+        tx.prepare()?.commit()?;
+        Ok(())
     }
 
     pub fn begin(&self) -> SRes<Transaction> {
@@ -152,14 +178,17 @@ impl StructsyImpl {
             Ok(None)
         }
     }
+
     pub fn commit(&self, tx: Transaction) -> SRes<()> {
         let to_finalize = tx.prepare()?;
         to_finalize.commit()?;
         Ok(())
     }
+
     pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
         self.definitions.is_referred_by_others::<T>()
     }
+
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
         self.check_defined::<T>()?;
         let name = T::get_description().get_name();
