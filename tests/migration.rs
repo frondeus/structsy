@@ -38,8 +38,8 @@ fn test_migration() {
     }
     {
         let db = Structsy::open(file).unwrap();
-        db.define::<DataV1>().unwrap();
         db.migrate::<DataV0, DataV1>().unwrap();
+        db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
         assert_eq!(found.1.size, 0);
@@ -62,16 +62,16 @@ fn test_double_migration() {
     }
     {
         let db = Structsy::open(file.clone()).unwrap();
-        db.define::<DataV1>().unwrap();
         db.migrate::<DataV0, DataV1>().unwrap();
+        db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
         assert_eq!(found.1.size, 0);
     }
     {
         let db = Structsy::open(file).unwrap();
-        db.define::<DataV1>().unwrap();
         db.migrate::<DataV0, DataV1>().unwrap();
+        db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
         assert_eq!(found.1.size, 0);

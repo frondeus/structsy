@@ -211,7 +211,7 @@ impl Structsy {
         if !self.structsy_impl.is_defined::<S>()? {
             return Ok(());
         }
-        self.structsy_impl.check_defined::<S>()?;
+        self.define::<D>()?;
         if self.structsy_impl.is_referred_by_others::<S>()? {
             return Err(StructsyError::MigrationNotSupported(format!(
                 "Struct referred with Ref<{}> by other struct, migration of referred struct is not supported yet",
