@@ -1,6 +1,5 @@
 use crate::{
     internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig, StructsyError,
-    StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -10,7 +9,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-const INTERNAL_SEGMENT_NAME: &str = "__#internal";
+pub(crate) const INTERNAL_SEGMENT_NAME: &str = "__#internal";
 
 struct Definitions {
     definitions: Mutex<HashMap<String, InternalDescription>>,
@@ -49,7 +48,7 @@ impl Definitions {
 
     pub fn define<T: Persistent, F>(&self, create: F) -> SRes<bool>
     where
-        F: Fn(&Description) -> SRes<PersyId>,
+        F: Fn(Description) -> SRes<InternalDescription>,
     {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
@@ -61,12 +60,8 @@ impl Definitions {
                 Ok(false)
             }
             Entry::Vacant(x) => {
-                let id = create(&desc)?;
-                x.insert(InternalDescription {
-                    desc,
-                    checked: true,
-                    id,
-                });
+                let desc = create(desc)?;
+                x.insert(desc);
                 Ok(true)
             }
         }
@@ -117,17 +112,8 @@ impl StructsyImpl {
         let persy = Persy::open(&config.path, Config::new())?;
         let definitions = persy
             .scan(INTERNAL_SEGMENT_NAME)?
-            .filter_map(|(id, r)| Description::read(&mut Cursor::new(r)).ok().map(|x| (id, x)))
-            .map(|(id, d)| {
-                (
-                    d.get_name(),
-                    InternalDescription {
-                        desc: d,
-                        checked: false,
-                        id,
-                    },
-                )
-            })
+            .filter_map(|(id, r)| InternalDescription::read(id, &mut Cursor::new(r)).ok())
+            .map(|d| (d.desc.get_name(), d))
             .collect();
         Ok(StructsyImpl {
             definitions: Arc::new(Definitions::new(definitions)),
@@ -144,16 +130,8 @@ impl StructsyImpl {
     }
 
     pub fn define<T: Persistent>(&self, structsy: &Structsy) -> SRes<bool> {
-        self.definitions.define::<T, _>(|desc| {
-            let mut buff = Vec::new();
-            desc.write(&mut buff)?;
-            let mut tx = structsy.begin()?;
-            let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
-            tx.trans.create_segment(&desc.get_name())?;
-            T::declare(&mut tx)?;
-            tx.commit()?;
-            Ok(id)
-        })
+        self.definitions
+            .define::<T, _>(|desc| InternalDescription::create::<T>(desc, structsy))
     }
 
     pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {

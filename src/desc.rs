@@ -1,8 +1,9 @@
-use super::{
+use crate::{
+    format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
-    Ref, SRes,
+    structsy::INTERNAL_SEGMENT_NAME,
+    Ref, SRes, Structsy, StructsyTx,
 };
-use crate::format::PersistentEmbedded;
 use persy::{PersyId, ValueMode};
 use std::io::{Read, Write};
 
@@ -272,6 +273,29 @@ pub struct InternalDescription {
 impl InternalDescription {
     pub fn has_refer_to(&self, name: &str) -> bool {
         self.desc.has_refer_to(name)
+    }
+
+    pub fn read(id: PersyId, read: &mut dyn Read) -> SRes<Self> {
+        let desc = Description::read(read)?;
+        Ok(InternalDescription {
+            desc,
+            checked: false,
+            id,
+        })
+    }
+    pub fn create<T: Persistent>(desc: Description, structsy: &Structsy) -> SRes<InternalDescription> {
+        let mut buff = Vec::new();
+        desc.write(&mut buff)?;
+        let mut tx = structsy.begin()?;
+        let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
+        tx.trans.create_segment(&desc.get_name())?;
+        T::declare(&mut tx)?;
+        tx.commit()?;
+        Ok(InternalDescription {
+            desc,
+            checked: true,
+            id,
+        })
     }
 }
 
