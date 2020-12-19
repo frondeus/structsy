@@ -177,11 +177,10 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn insert<T: Persistent>(&mut self, sct: &T) -> SRes<Ref<T>> {
-        self.structsy().structsy_impl.check_defined::<T>()?;
+        let def = self.structsy().structsy_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
-        let segment = T::get_description().get_name();
-        let id = self.tx().trans.insert(&segment, &buff)?;
+        let id = self.tx().trans.insert(def.segment_name(), &buff)?;
         let id_ref = Ref::new(id);
         sct.put_indexes(self, &id_ref)?;
         Ok(id_ref)
@@ -209,14 +208,14 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn update<T: Persistent>(&mut self, sref: &Ref<T>, sct: &T) -> SRes<()> {
-        self.structsy().structsy_impl.check_defined::<T>()?;
+        let def = self.structsy().structsy_impl.check_defined::<T>()?;
         let mut buff = Vec::new();
         sct.write(&mut buff)?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tx().trans.update(&sref.type_name, &sref.raw_id, &buff)?;
+        self.tx().trans.update(def.segment_name(), &sref.raw_id, &buff)?;
         sct.put_indexes(self, &sref)?;
         Ok(())
     }
@@ -243,12 +242,12 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn delete<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<()> {
-        self.structsy().structsy_impl.check_defined::<T>()?;
+        let def = self.structsy().structsy_impl.check_defined::<T>()?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
             old_rec.remove_indexes(self, &sref)?;
         }
-        self.tx().trans.delete(&sref.type_name, &sref.raw_id)?;
+        self.tx().trans.delete(def.segment_name(), &sref.raw_id)?;
         Ok(())
     }
 
@@ -275,8 +274,8 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn read<T: Persistent>(&mut self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.structsy().structsy_impl.check_defined::<T>()?;
-        crate::structsy::tx_read(&sref.type_name, &mut self.tx().trans, &sref.raw_id)
+        let def = self.structsy().structsy_impl.check_defined::<T>()?;
+        crate::structsy::tx_read(def.segment_name(), &mut self.tx().trans, &sref.raw_id)
     }
 
     /// Scan persistent instances of a struct considering changes in transaction.
@@ -302,10 +301,9 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
-        self.structsy().structsy_impl.check_defined::<T>()?;
-        let name = T::get_description().get_name();
+        let def = self.structsy().structsy_impl.check_defined::<T>()?;
         let implc = self.structsy().structsy_impl.clone();
-        let iter = self.tx().trans.scan(&name)?;
+        let iter = self.tx().trans.scan(def.segment_name())?;
         Ok(TxRecordIter::new(iter, implc))
     }
 

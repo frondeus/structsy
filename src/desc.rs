@@ -270,11 +270,27 @@ pub struct InternalDescription {
     pub id: PersyId,
 }
 
+#[derive(Clone)]
+pub(crate) struct DefinitionInfo {
+    segment_name: String,
+}
+
+impl DefinitionInfo {
+    pub(crate) fn segment_name(&self) -> &str {
+        &self.segment_name
+    }
+}
+
 impl InternalDescription {
     pub fn has_refer_to(&self, name: &str) -> bool {
         self.desc.has_refer_to(name)
     }
 
+    pub(crate) fn info(&self) -> DefinitionInfo {
+        DefinitionInfo {
+            segment_name: self.desc.get_name(),
+        }
+    }
     pub fn read(id: PersyId, read: &mut dyn Read) -> SRes<Self> {
         let desc = Description::read(read)?;
         Ok(InternalDescription {

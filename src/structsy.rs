@@ -1,5 +1,6 @@
 use crate::{
-    internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig, StructsyError,
+    desc::DefinitionInfo, internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig,
+    StructsyError,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -22,19 +23,19 @@ impl Definitions {
         }
     }
 
-    pub fn check_defined<T: Persistent>(&self) -> SRes<()> {
+    pub(crate) fn check_defined<T: Persistent>(&self) -> SRes<DefinitionInfo> {
         let mut lock = self.definitions.lock()?;
         let name = T::get_name();
         if let Some(x) = lock.get_mut(name) {
             if x.checked {
-                Ok(())
+                Ok(x.info())
             } else {
                 let desc = T::get_description();
                 if x.desc != desc {
                     Err(StructsyError::StructNotDefined(desc.get_name()))
                 } else {
                     x.checked = true;
-                    Ok(())
+                    Ok(x.info())
                 }
             }
         } else {
@@ -67,12 +68,12 @@ impl Definitions {
         }
     }
 
-    pub fn drop_defined<T: Persistent>(&self) -> SRes<PersyId> {
+    pub fn drop_defined<T: Persistent>(&self) -> SRes<InternalDescription> {
         let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         let removed = lock.remove(&desc.get_name());
         if let Some(rem) = removed {
-            Ok(rem.id)
+            Ok(rem)
         } else {
             Err(StructsyError::StructNotDefined(desc.get_name()))
         }
@@ -121,7 +122,7 @@ impl StructsyImpl {
         })
     }
 
-    pub fn check_defined<T: Persistent>(&self) -> SRes<()> {
+    pub fn check_defined<T: Persistent>(&self) -> SRes<DefinitionInfo> {
         self.definitions.check_defined::<T>()
     }
 
@@ -135,11 +136,10 @@ impl StructsyImpl {
     }
 
     pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
-        let desc = T::get_description();
-        let id = self.definitions.drop_defined::<T>()?;
+        let int_def = self.definitions.drop_defined::<T>()?;
         let mut tx = self.persy.begin()?;
-        tx.delete(INTERNAL_SEGMENT_NAME, &id)?;
-        tx.drop_segment(&desc.get_name())?;
+        tx.delete(INTERNAL_SEGMENT_NAME, &int_def.id)?;
+        tx.drop_segment(&int_def.info().segment_name())?;
         tx.prepare()?.commit()?;
         Ok(())
     }
@@ -149,8 +149,8 @@ impl StructsyImpl {
     }
 
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.check_defined::<T>()?;
-        if let Some(buff) = self.persy.read(&sref.type_name, &sref.raw_id)? {
+        let def = self.check_defined::<T>()?;
+        if let Some(buff) = self.persy.read(def.segment_name(), &sref.raw_id)? {
             Ok(Some(T::read(&mut Cursor::new(buff))?))
         } else {
             Ok(None)
@@ -168,10 +168,9 @@ impl StructsyImpl {
     }
 
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {
-        self.check_defined::<T>()?;
-        let name = T::get_description().get_name();
+        let def = self.check_defined::<T>()?;
         Ok(RecordIter {
-            iter: self.persy.scan(&name)?,
+            iter: self.persy.scan(def.segment_name())?,
             marker: PhantomData,
         })
     }
