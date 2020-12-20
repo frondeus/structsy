@@ -1,6 +1,7 @@
 use crate::{
     desc::DefinitionInfo, internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig,
     StructsyError,
+    transaction::OwnedSytx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -144,8 +145,11 @@ impl StructsyImpl {
         Ok(())
     }
 
-    pub fn begin(&self) -> SRes<Transaction> {
-        Ok(self.persy.begin()?)
+    pub fn begin(self:&Arc<Self>) -> SRes<OwnedSytx> {
+        Ok(OwnedSytx {
+            structsy_impl: self.clone(),
+            trans: self.persy.begin()?,
+        })
     }
 
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
@@ -157,8 +161,8 @@ impl StructsyImpl {
         }
     }
 
-    pub fn commit(&self, tx: Transaction) -> SRes<()> {
-        let to_finalize = tx.prepare()?;
+    pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
+        let to_finalize = tx.trans.prepare()?;
         to_finalize.commit()?;
         Ok(())
     }

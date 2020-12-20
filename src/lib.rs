@@ -260,10 +260,7 @@ impl Structsy {
     /// # }
     /// ```
     pub fn begin(&self) -> SRes<OwnedSytx> {
-        Ok(OwnedSytx {
-            structsy_impl: self.structsy_impl.clone(),
-            trans: self.structsy_impl.begin()?,
-        })
+        self.structsy_impl.begin()
     }
 
     /// Read a persistent instance.
@@ -335,7 +332,7 @@ impl Structsy {
     /// ```
     #[deprecated]
     pub fn commit(&self, tx: OwnedSytx) -> SRes<()> {
-        self.structsy_impl.commit(tx.trans)
+        self.structsy_impl.commit(tx)
     }
 
     /// Check if a struct is defined
