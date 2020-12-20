@@ -106,10 +106,14 @@ fn map_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Vec<(Ref<P>
         .collect()
 }
 
-fn map_unique_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId>) -> Option<(Ref<P>, P)> {
-    let name = P::get_description().get_name();
+fn map_unique_entry_tx<P: Persistent>(
+    tx: &mut Transaction,
+    st: &StructsyImpl,
+    entry: Value<PersyId>,
+) -> Option<(Ref<P>, P)> {
+    let info = st.check_defined::<P>().expect("already checked here");
     if let Some(id) = entry.into_iter().next() {
-        if let Ok(val) = tx_read::<P>(&name, tx, &id) {
+        if let Ok(val) = tx_read::<P>(&info.segment_name(), tx, &id) {
             let r = Ref::new(id);
             val.map(|c| (r, c))
         } else {
@@ -120,12 +124,12 @@ fn map_unique_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId
     }
 }
 
-fn map_entry_tx<P: Persistent>(tx: &mut Transaction, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
-    let name = P::get_description().get_name();
+fn map_entry_tx<P: Persistent>(tx: &mut Transaction, st: &StructsyImpl, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
+    let info = st.check_defined::<P>().expect("already checked here");
     entry
         .into_iter()
         .filter_map(|id| {
-            if let Ok(val) = tx_read::<P>(&name, tx, &id) {
+            if let Ok(val) = tx_read::<P>(&info.segment_name(), tx, &id) {
                 let r = Ref::new(id);
                 val.map(|x| (r, x))
             } else {
@@ -187,7 +191,8 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 
 pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
     if let Some(id_container) = db.tx().trans.get::<K, PersyId>(name, k)? {
-        Ok(map_unique_entry_tx(&mut db.tx().trans, id_container))
+        let st = db.structsy().structsy_impl;
+        Ok(map_unique_entry_tx(&mut db.tx().trans, &st, id_container))
     } else {
         Ok(None)
     }
@@ -195,7 +200,8 @@ pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str
 
 pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
     if let Some(e) = db.tx().trans.get::<K, PersyId>(name, k)? {
-        Ok(map_entry_tx(&mut db.tx().trans, e))
+        let st = db.structsy().structsy_impl;
+        Ok(map_entry_tx(&mut db.tx().trans, &st, e))
     } else {
         Ok(Vec::new())
     }
@@ -232,10 +238,10 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
 
     pub fn next_tx<'b: 'a>(&'b mut self) -> Option<(Vec<(Ref<P>, P)>, K, RefSytx<'a>)> {
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
-            let name = P::get_description().get_name();
+            let info = self.structsy.check_defined::<P>().expect("already checked here");
             let mut pv = Vec::new();
             for id in v {
-                if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                if let Ok(Some(val)) = tx_read::<P>(&info.segment_name(), tx, &id) {
                     let r = Ref::new(id);
                     pv.push((r, val));
                 }
@@ -263,11 +269,11 @@ impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
             }
 
             if let Some((k, v)) = self.persy_iter.next() {
-                let name = P::get_description().get_name();
+                let info = self.structsy.check_defined::<P>().expect("already checked here");
                 let mut pv = Vec::new();
                 for id in v {
                     let tx = self.persy_iter.tx();
-                    if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                    if let Ok(Some(val)) = tx_read::<P>(&info.segment_name(), tx, &id) {
                         let r = Ref::new(id);
                         pv.push((r, val, k.clone()));
                     }
@@ -291,11 +297,11 @@ impl<'a, P: Persistent, K: IndexType> DoubleEndedIterator for RangeIterator<'a, 
             }
 
             if let Some((k, v)) = self.persy_iter.next_back() {
-                let name = P::get_description().get_name();
+                let info = self.structsy.check_defined::<P>().expect("already checked here");
                 let mut pv = Vec::new();
                 for id in v {
                     let tx = self.persy_iter.tx();
-                    if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                    if let Ok(Some(val)) = tx_read::<P>(&info.segment_name(), tx, &id) {
                         let r = Ref::new(id);
                         pv.push((r, val, k.clone()));
                     }
@@ -331,10 +337,10 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
     }
 
     pub fn next_tx(&'a mut self) -> Option<(Ref<P>, P, K, RefSytx<'a>)> {
-        let name = P::get_description().get_name();
+        let info = self.structsy.check_defined::<P>().expect("already checked here");
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
             if let Some(id) = v.into_iter().next() {
-                if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                if let Ok(Some(val)) = tx_read::<P>(&info.segment_name(), tx, &id) {
                     let r = Ref::new(id);
                     Some((r, val, k, self.tx()))
                 } else {
@@ -352,10 +358,10 @@ impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
 impl<'a, P: Persistent, K: IndexType> Iterator for UniqueRangeIterator<'a, K, P> {
     type Item = (Ref<P>, P, K);
     fn next(&mut self) -> Option<Self::Item> {
-        let name = P::get_description().get_name();
+        let info = self.structsy.check_defined::<P>().expect("already checked here");
         if let Some((k, v, tx)) = self.persy_iter.next_tx() {
             if let Some(id) = v.into_iter().next() {
-                if let Ok(Some(val)) = tx_read::<P>(&name, tx, &id) {
+                if let Ok(Some(val)) = tx_read::<P>(&info.segment_name(), tx, &id) {
                     let r = Ref::new(id);
                     Some((r, val, k))
                 } else {

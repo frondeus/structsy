@@ -4,6 +4,7 @@ use crate::{
     structsy::INTERNAL_SEGMENT_NAME,
     Ref, SRes, Structsy, StructsyTx,
 };
+use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
 use std::io::{Read, Write};
 
@@ -268,6 +269,7 @@ pub struct InternalDescription {
     pub desc: Description,
     pub checked: bool,
     pub id: PersyId,
+    segment_name: String,
 }
 
 #[derive(Clone)]
@@ -288,29 +290,37 @@ impl InternalDescription {
 
     pub(crate) fn info(&self) -> DefinitionInfo {
         DefinitionInfo {
-            segment_name: self.desc.get_name(),
+            segment_name: self.segment_name.clone(),
         }
     }
+
     pub fn read(id: PersyId, read: &mut dyn Read) -> SRes<Self> {
         let desc = Description::read(read)?;
+        let segment_name = String::read(read)?;
         Ok(InternalDescription {
             desc,
             checked: false,
             id,
+            segment_name,
         })
     }
+
     pub fn create<T: Persistent>(desc: Description, structsy: &Structsy) -> SRes<InternalDescription> {
+        let rnd = rand::random::<u32>();
+        let segment_name = format!("{}_{}", BASE32_DNSSEC.encode(&rnd.to_be_bytes()), desc.get_name());
         let mut buff = Vec::new();
         desc.write(&mut buff)?;
+        segment_name.write(&mut buff)?;
         let mut tx = structsy.begin()?;
         let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
-        tx.trans.create_segment(&desc.get_name())?;
+        tx.trans.create_segment(&segment_name)?;
         T::declare(&mut tx)?;
         tx.commit()?;
         Ok(InternalDescription {
             desc,
             checked: true,
             id,
+            segment_name,
         })
     }
 }
