@@ -1,7 +1,6 @@
 use crate::{
-    desc::DefinitionInfo, internal::Description, InternalDescription, Persistent, Ref, SRes, Structsy, StructsyConfig,
-    StructsyError,
-    transaction::OwnedSytx,
+    desc::DefinitionInfo, internal::Description, transaction::OwnedSytx, InternalDescription, Persistent,
+    PersistentEmbedded, Ref, SRes, StructsyConfig, StructsyError, StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -43,6 +42,7 @@ impl Definitions {
             Err(StructsyError::StructNotDefined(String::from(name)))
         }
     }
+
     pub fn is_defined<T: Persistent>(&self) -> SRes<bool> {
         let lock = self.definitions.lock()?;
         Ok(lock.contains_key(T::get_name()))
@@ -80,6 +80,17 @@ impl Definitions {
         }
     }
 
+    pub fn referred_by<T: Persistent>(&self) -> SRes<Vec<String>> {
+        let mut refs = Vec::new();
+        let name = T::get_name();
+        for def in self.definitions.lock()?.values() {
+            if def.has_refer_to(name) {
+                refs.push(def.desc.get_name().to_string());
+            }
+        }
+        Ok(refs)
+    }
+
     pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
         let name = T::get_name();
         for def in self.definitions.lock()?.values() {
@@ -89,6 +100,37 @@ impl Definitions {
         }
         Ok(false)
     }
+
+    pub fn is_migration_started<T: Persistent>(&self) -> SRes<bool> {
+        let name = T::get_name();
+        let lock = self.definitions.lock()?;
+        Ok(if let Some(to_check) = lock.get(name) {
+            to_check.is_migration_started()
+        } else {
+            false
+        })
+    }
+
+    pub fn start_migration<T: Persistent>(&self, st: &Arc<StructsyImpl>) -> SRes<()> {
+        let name = T::get_name();
+        let mut lock = self.definitions.lock()?;
+        if let Some(to_change) = lock.get_mut(name) {
+            to_change.start_migration();
+            to_change.update(st)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn finish_migration<S: Persistent, D: Persistent>(&self, st: &Arc<StructsyImpl>) -> SRes<()> {
+        let name = S::get_name();
+        let mut lock = self.definitions.lock()?;
+        if let Some(mut to_change) = lock.remove(name) {
+            to_change.migrate::<D>(st)?;
+            lock.insert(D::get_name().to_string(), to_change);
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct StructsyImpl {
@@ -97,6 +139,71 @@ pub(crate) struct StructsyImpl {
 }
 
 impl StructsyImpl {
+    pub fn migrate<S, D>(self: &Arc<Self>) -> SRes<()>
+    where
+        S: Persistent,
+        D: Persistent,
+        D: From<S>,
+    {
+        if !self.is_defined::<S>()? {
+            return Ok(());
+        }
+        let info = self.check_defined::<S>()?;
+        let migration_batches = format!("--migration-{}-{}", S::get_name(), D::get_name());
+        if self.persy.exists_segment(&migration_batches)? && !self.definitions.is_migration_started::<S>()? {
+            let mut tx = self.begin()?;
+            tx.trans.drop_segment(&migration_batches)?;
+            tx.commit()?;
+        }
+        if !self.persy.exists_segment(&migration_batches)? {
+            let mut tx = self.begin()?;
+            tx.trans.create_segment(&migration_batches)?;
+            tx.commit()?;
+            let batch_size = 1000;
+            let batch_commit_size = batch_size * 1000;
+            let mut count = 0;
+            tx = self.begin()?;
+            let mut mig_batch = Vec::new();
+            for (id, _record) in self.scan::<S>()? {
+                mig_batch.push(id);
+                count += 1;
+                if count % batch_size == 0 {
+                    let mut buff = Vec::new();
+                    PersistentEmbedded::write(&mig_batch, &mut buff)?;
+                    tx.trans.insert(&migration_batches, &buff)?;
+                    mig_batch.clear();
+                }
+                if count % batch_commit_size == 0 {
+                    tx.commit()?;
+                    tx = self.begin()?;
+                }
+            }
+            if !mig_batch.is_empty() {
+                let mut buff = Vec::new();
+                PersistentEmbedded::write(&mig_batch, &mut buff)?;
+                tx.trans.insert(&migration_batches, &buff)?;
+                mig_batch.clear();
+            }
+            tx.commit()?;
+        }
+        self.definitions.start_migration::<S>(self)?;
+        let mut tx = self.begin()?;
+        for (batch_id, record) in self.persy.scan(&migration_batches)? {
+            let batch: Vec<Ref<S>> = PersistentEmbedded::read(&mut Cursor::new(record))?;
+            for id in batch {
+                let mut buff = Vec::new();
+                D::from(tx.read(&id)?.unwrap()).write(&mut buff)?;
+                tx.trans.update(info.segment_name(), &id.raw_id, &buff)?;
+            }
+            tx.trans.delete(&migration_batches, &batch_id)?;
+            tx.commit()?;
+            tx = self.begin()?;
+        }
+        tx.commit()?;
+        self.definitions.finish_migration::<S, D>(&self)?;
+        Ok(())
+    }
+
     fn init_segment<P: AsRef<Path>>(path: P) -> SRes<()> {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
@@ -131,9 +238,9 @@ impl StructsyImpl {
         self.definitions.is_defined::<T>()
     }
 
-    pub fn define<T: Persistent>(&self, structsy: &Structsy) -> SRes<bool> {
+    pub fn define<T: Persistent>(self: &Arc<StructsyImpl>) -> SRes<bool> {
         self.definitions
-            .define::<T, _>(|desc| InternalDescription::create::<T>(desc, structsy))
+            .define::<T, _>(|desc| InternalDescription::create::<T>(desc, self))
     }
 
     pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
@@ -145,7 +252,7 @@ impl StructsyImpl {
         Ok(())
     }
 
-    pub fn begin(self:&Arc<Self>) -> SRes<OwnedSytx> {
+    pub fn begin(self: &Arc<Self>) -> SRes<OwnedSytx> {
         Ok(OwnedSytx {
             structsy_impl: self.clone(),
             trans: self.persy.begin()?,
@@ -169,6 +276,10 @@ impl StructsyImpl {
 
     pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
         self.definitions.is_referred_by_others::<T>()
+    }
+
+    pub fn referred_by<T: Persistent>(&self) -> SRes<Vec<String>> {
+        self.definitions.referred_by::<T>()
     }
 
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {

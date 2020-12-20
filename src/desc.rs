@@ -1,12 +1,13 @@
 use crate::{
     format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
-    structsy::INTERNAL_SEGMENT_NAME,
-    Ref, SRes, Structsy, StructsyTx,
+    structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
+    Ref, SRes, StructsyTx,
 };
 use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
 use std::io::{Read, Write};
+use std::sync::Arc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum FieldValueType {
@@ -270,6 +271,7 @@ pub struct InternalDescription {
     pub checked: bool,
     pub id: PersyId,
     segment_name: String,
+    migration_started: bool,
 }
 
 #[derive(Clone)]
@@ -297,20 +299,23 @@ impl InternalDescription {
     pub fn read(id: PersyId, read: &mut dyn Read) -> SRes<Self> {
         let desc = Description::read(read)?;
         let segment_name = String::read(read)?;
+        let migration_started = bool::read(read)?;
         Ok(InternalDescription {
             desc,
             checked: false,
             id,
             segment_name,
+            migration_started,
         })
     }
 
-    pub fn create<T: Persistent>(desc: Description, structsy: &Structsy) -> SRes<InternalDescription> {
+    pub(crate) fn create<T: Persistent>(desc: Description, structsy: &Arc<StructsyImpl>) -> SRes<InternalDescription> {
         let rnd = rand::random::<u32>();
         let segment_name = format!("{}_{}", BASE32_DNSSEC.encode(&rnd.to_be_bytes()), desc.get_name());
         let mut buff = Vec::new();
         desc.write(&mut buff)?;
         segment_name.write(&mut buff)?;
+        false.write(&mut buff)?;
         let mut tx = structsy.begin()?;
         let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
         tx.trans.create_segment(&segment_name)?;
@@ -321,7 +326,33 @@ impl InternalDescription {
             checked: true,
             id,
             segment_name,
+            migration_started: false,
         })
+    }
+
+    pub(crate) fn start_migration(&mut self) {
+        self.migration_started = true;
+    }
+
+    pub(crate) fn is_migration_started(&self) -> bool {
+        self.migration_started
+    }
+
+    pub(crate) fn update(&self, st: &Arc<StructsyImpl>) -> SRes<()> {
+        let mut buff = Vec::new();
+        self.desc.write(&mut buff)?;
+        self.segment_name.write(&mut buff)?;
+        self.migration_started.write(&mut buff)?;
+        let mut tx = st.begin()?;
+        tx.trans.update(INTERNAL_SEGMENT_NAME, &self.id, &buff)?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn migrate<T: Persistent>(&mut self, st: &Arc<StructsyImpl>) -> SRes<()> {
+        self.migration_started = false;
+        self.desc = T::get_description();
+        self.update(st)?;
+        Ok(())
     }
 }
 

@@ -159,7 +159,7 @@ impl Structsy {
     /// # }
     /// ```
     pub fn define<T: Persistent>(&self) -> SRes<bool> {
-        self.structsy_impl.define::<T>(&self)
+        self.structsy_impl.define::<T>()
     }
 
     /// Migrate an existing persistent struct to a new struct.
@@ -208,32 +208,7 @@ impl Structsy {
         D: Persistent,
         D: From<S>,
     {
-        if !self.structsy_impl.is_defined::<S>()? {
-            return Ok(());
-        }
-        self.define::<D>()?;
-        if self.structsy_impl.is_referred_by_others::<S>()? {
-            return Err(StructsyError::MigrationNotSupported(format!(
-                "Struct referred with Ref<{}> by other struct, migration of referred struct is not supported yet",
-                S::get_name()
-            )));
-        }
-        // TODO: Handle update of references
-        let batch = 1000;
-        let mut tx = self.begin()?;
-        let mut count = 0;
-        for (id, record) in self.scan::<S>()? {
-            tx.delete(&id)?;
-            tx.insert(&D::from(record))?;
-            count += 1;
-            if count % batch == 0 {
-                tx.commit()?;
-                tx = self.begin()?;
-            }
-        }
-        tx.commit()?;
-        self.drop_defined::<S>()?;
-        Ok(())
+        self.structsy_impl.migrate::<S, D>()
     }
 
     pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
