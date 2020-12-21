@@ -2,7 +2,7 @@ use crate::{
     format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
     structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
-    Ref, SRes, StructsyTx,
+    Ref, SRes, StructsyTx, Sytx,
 };
 use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
@@ -93,10 +93,18 @@ impl FieldValueType {
         }
         Ok(())
     }
-    fn has_refer_to(&self, name: &str) -> bool {
+
+    fn remap_refer(&mut self, old: &str, new: &str) -> bool {
         match self {
-            FieldValueType::Ref(t) => t == name,
-            FieldValueType::Embedded(t) => t.has_refer_to(name),
+            FieldValueType::Ref(ref mut t) => {
+                if t == old {
+                    *t = new.to_string();
+                    true
+                } else {
+                    false
+                }
+            }
+            FieldValueType::Embedded(t) => t.remap_refer(old, new),
             _ => false,
         }
     }
@@ -204,6 +212,14 @@ impl FieldType {
         }
         Ok(())
     }
+    fn remap_refer(&mut self, new: &str, old: &str) -> bool {
+        match self {
+            FieldType::Array(ref mut t) => t.remap_refer(new, old),
+            FieldType::Option(ref mut t) => t.remap_refer(new, old),
+            FieldType::OptionArray(ref mut t) => t.remap_refer(new, old),
+            FieldType::Value(ref mut t) => t.remap_refer(new, old),
+        }
+    }
 }
 
 /// Field metadata for internal use
@@ -256,13 +272,8 @@ impl FieldDescription {
         Ok(())
     }
 
-    fn has_refer_to(&self, name: &str) -> bool {
-        match &self.field_type {
-            FieldType::Array(t) => t.has_refer_to(name),
-            FieldType::Option(t) => t.has_refer_to(name),
-            FieldType::OptionArray(t) => t.has_refer_to(name),
-            FieldType::Value(t) => t.has_refer_to(name),
-        }
+    fn remap_refer(&mut self, new: &str, old: &str) -> bool {
+        self.field_type.remap_refer(new, old)
     }
 }
 
@@ -286,10 +297,6 @@ impl DefinitionInfo {
 }
 
 impl InternalDescription {
-    pub fn has_refer_to(&self, name: &str) -> bool {
-        self.desc.has_refer_to(name)
-    }
-
     pub(crate) fn info(&self) -> DefinitionInfo {
         DefinitionInfo {
             segment_name: self.segment_name.clone(),
@@ -339,20 +346,30 @@ impl InternalDescription {
     }
 
     pub(crate) fn update(&self, st: &Arc<StructsyImpl>) -> SRes<()> {
+        let mut tx = st.begin()?;
+        self.update_tx(&mut tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn update_tx(&self, tx: &mut dyn Sytx) -> SRes<()> {
         let mut buff = Vec::new();
         self.desc.write(&mut buff)?;
         self.segment_name.write(&mut buff)?;
         self.migration_started.write(&mut buff)?;
-        let mut tx = st.begin()?;
-        tx.trans.update(INTERNAL_SEGMENT_NAME, &self.id, &buff)?;
-        tx.commit()?;
+        tx.tx().trans.update(INTERNAL_SEGMENT_NAME, &self.id, &buff)?;
         Ok(())
     }
-    pub(crate) fn migrate<T: Persistent>(&mut self, st: &Arc<StructsyImpl>) -> SRes<()> {
+
+    pub(crate) fn migrate<T: Persistent>(&mut self, tx: &mut dyn Sytx) -> SRes<()> {
         self.migration_started = false;
         self.desc = T::get_description();
-        self.update(st)?;
+        self.update_tx(tx)?;
         Ok(())
+    }
+
+    pub(crate) fn remap_refer(&mut self, old: &str, new: &str) -> bool {
+        self.desc.remap_refer(old, new)
     }
 }
 
@@ -388,13 +405,14 @@ impl StructDescription {
         Ok(())
     }
 
-    pub(crate) fn has_refer_to(&self, name: &str) -> bool {
-        for f in &self.fields {
-            if f.has_refer_to(name) {
-                return true;
+    pub(crate) fn remap_refer(&mut self, old: &str, new: &str) -> bool {
+        let mut changed = false;
+        for f in &mut self.fields {
+            if f.remap_refer(old, new) {
+                changed = true;
             }
         }
-        false
+        changed
     }
 
     pub(crate) fn get_field(&self, name: &str) -> Option<&FieldDescription> {
@@ -449,6 +467,13 @@ impl VariantDescription {
         };
         Ok(Self { name, position, ty })
     }
+    fn remap_refer(&mut self, new: &str, old: &str) -> bool {
+        if let Some(ref mut r) = self.ty {
+            r.remap_refer(new, old)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -485,6 +510,16 @@ impl EnumDescription {
     fn get_name(&self) -> String {
         self.name.clone()
     }
+
+    fn remap_refer(&mut self, new: &str, old: &str) -> bool {
+        let mut changed = false;
+        for v in &mut self.variants {
+            if v.remap_refer(old, new) {
+                changed = true;
+            }
+        }
+        changed
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -501,10 +536,10 @@ impl Description {
         }
     }
 
-    pub fn has_refer_to(&self, name: &str) -> bool {
+    pub fn remap_refer(&mut self, old: &str, new: &str) -> bool {
         match self {
-            Description::Struct(s) => s.has_refer_to(name),
-            Description::Enum(_e) => unimplemented!(),
+            Description::Struct(s) => s.remap_refer(old, new),
+            Description::Enum(e) => e.remap_refer(old, new),
         }
     }
 

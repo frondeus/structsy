@@ -80,27 +80,6 @@ impl Definitions {
         }
     }
 
-    pub fn referred_by<T: Persistent>(&self) -> SRes<Vec<String>> {
-        let mut refs = Vec::new();
-        let name = T::get_name();
-        for def in self.definitions.lock()?.values() {
-            if def.has_refer_to(name) {
-                refs.push(def.desc.get_name().to_string());
-            }
-        }
-        Ok(refs)
-    }
-
-    pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
-        let name = T::get_name();
-        for def in self.definitions.lock()?.values() {
-            if def.has_refer_to(name) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-
     pub fn is_migration_started<T: Persistent>(&self) -> SRes<bool> {
         let name = T::get_name();
         let lock = self.definitions.lock()?;
@@ -124,11 +103,18 @@ impl Definitions {
 
     pub fn finish_migration<S: Persistent, D: Persistent>(&self, st: &Arc<StructsyImpl>) -> SRes<()> {
         let name = S::get_name();
+        let mut tx = st.begin()?;
         let mut lock = self.definitions.lock()?;
         if let Some(mut to_change) = lock.remove(name) {
-            to_change.migrate::<D>(st)?;
+            to_change.migrate::<D>(&mut tx)?;
             lock.insert(D::get_name().to_string(), to_change);
         }
+        for (_, v) in lock.iter_mut() {
+            if v.remap_refer(name, D::get_name()) {
+                v.update_tx(&mut tx)?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 }
@@ -272,14 +258,6 @@ impl StructsyImpl {
         let to_finalize = tx.trans.prepare()?;
         to_finalize.commit()?;
         Ok(())
-    }
-
-    pub fn is_referred_by_others<T: Persistent>(&self) -> SRes<bool> {
-        self.definitions.is_referred_by_others::<T>()
-    }
-
-    pub fn referred_by<T: Persistent>(&self) -> SRes<Vec<String>> {
-        self.definitions.referred_by::<T>()
     }
 
     pub fn scan<T: Persistent>(&self) -> SRes<RecordIter<T>> {

@@ -155,7 +155,6 @@ mod second {
 }
 
 #[test]
-#[ignore]
 fn test_ref_migration() {
     let dir = tempdir().expect("can make a tempdir");
     let file = dir.path().join("test_migration.stry");
