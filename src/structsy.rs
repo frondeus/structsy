@@ -229,7 +229,7 @@ impl StructsyImpl {
             .define::<T, _>(|desc| InternalDescription::create::<T>(desc, self))
     }
 
-    pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
+    pub fn undefine<T: Persistent>(&self) -> SRes<()> {
         let int_def = self.definitions.drop_defined::<T>()?;
         let mut tx = self.persy.begin()?;
         tx.delete(INTERNAL_SEGMENT_NAME, &int_def.id)?;

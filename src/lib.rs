@@ -98,6 +98,78 @@ impl<T: AsRef<Path>> From<T> for StructsyConfig {
     }
 }
 
+pub struct PreparedStructsy {
+    structsy_impl: Arc<StructsyImpl>,
+}
+impl PreparedStructsy {
+    /// Migrate an existing persistent struct to a new struct.
+    ///
+    /// In structsy the name and order of the fields matter for the persistence, so each change
+    /// need to migrate existing data from existing struct layout to the new struct.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct PersonV0 {
+    ///     name:String,
+    /// }
+    ///
+    /// #[derive(Persistent)]
+    /// struct PersonV1 {
+    ///     name:String,
+    ///     surname:String,
+    /// }
+    ///
+    /// impl From<PersonV0> for PersonV1 {
+    ///     fn from(f: PersonV0)  -> Self {
+    ///         PersonV1 {
+    ///             name: f.name,
+    ///             surname: "Doe".to_string(),
+    ///         }
+    ///     }
+    /// }
+    ///
+    ///
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let prepare = Structsy::prepare_open("path/to/file.stry")?;
+    /// prepare.migrate::<PersonV0,PersonV1>()?;
+    /// let stry = prepare.open()?;
+    /// stry.define::<PersonV1>()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    pub fn migrate<S, D>(&self) -> SRes<()>
+    where
+        S: Persistent,
+        D: Persistent,
+        D: From<S>,
+    {
+        self.structsy_impl.migrate::<S, D>()
+    }
+    /// Open a structsy instance from a prepare context.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let prepare = Structsy::prepare_open("path/to/file.stry")?;
+    /// let stry = prepare.open()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn open(self) -> SRes<Structsy> {
+        Ok(Structsy {
+            structsy_impl: self.structsy_impl,
+        })
+    }
+}
+
 pub trait IntoResult<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
     fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, T>;
@@ -121,6 +193,12 @@ impl Structsy {
         let mut c = StructsyConfig::from(path);
         c.create = false;
         c
+    }
+
+    pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PreparedStructsy> {
+        Ok(PreparedStructsy {
+            structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
+        })
     }
 
     /// Open a Structsy file, following the configuration as parameter, if the parameter is just a
@@ -162,57 +240,26 @@ impl Structsy {
         self.structsy_impl.define::<T>()
     }
 
-    /// Migrate an existing persistent struct to a new struct.
-    ///
-    /// In structsy the name and order of the fields matter for the persistence, so each change
-    /// need to migrate existing data from existing struct layout to the new struct.
+    /// Remove a defined struct deleting all the contained data.
     ///
     /// # Example
     /// ```
     /// use structsy::Structsy;
     /// use structsy_derive::Persistent;
     /// #[derive(Persistent)]
-    /// struct PersonV0 {
+    /// struct Simple {
     ///     name:String,
     /// }
-    ///
-    /// #[derive(Persistent)]
-    /// struct PersonV1 {
-    ///     name:String,
-    ///     surname:String,
-    /// }
-    ///
-    /// impl From<PersonV0> for PersonV1 {
-    ///     fn from(f: PersonV0)  -> Self {
-    ///         PersonV1 {
-    ///             name: f.name,
-    ///             surname: "Doe".to_string(),
-    ///         }
-    ///     }
-    /// }
-    ///
-    ///
     /// # use structsy::SRes;
     /// # fn example() -> SRes<()> {
     /// let stry = Structsy::open("path/to/file.stry")?;
-    /// stry.define::<PersonV0>()?;
-    /// stry.define::<PersonV1>()?;
-    /// stry.migrate::<PersonV0,PersonV1>()?;
+    /// stry.define::<Simple>()?;
+    /// stry.undefine::<Simple>()?;
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    pub fn migrate<S, D>(&self) -> SRes<()>
-    where
-        S: Persistent,
-        D: Persistent,
-        D: From<S>,
-    {
-        self.structsy_impl.migrate::<S, D>()
-    }
-
-    pub fn drop_defined<T: Persistent>(&self) -> SRes<()> {
-        self.structsy_impl.drop_defined::<T>()
+    pub fn undefine<T: Persistent>(&self) -> SRes<()> {
+        self.structsy_impl.undefine::<T>()
     }
 
     /// Begin a new transaction needed to manipulate data.

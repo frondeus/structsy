@@ -37,8 +37,9 @@ fn test_migration() {
         tx.commit().unwrap();
     }
     {
-        let db = Structsy::open(file).unwrap();
-        db.migrate::<DataV0, DataV1>().unwrap();
+        let prep = Structsy::prepare_open(file).unwrap();
+        prep.migrate::<DataV0, DataV1>().unwrap();
+        let db = prep.open().unwrap();
         db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
@@ -61,16 +62,18 @@ fn test_double_migration() {
         tx.commit().unwrap();
     }
     {
-        let db = Structsy::open(file.clone()).unwrap();
-        db.migrate::<DataV0, DataV1>().unwrap();
+        let prep = Structsy::prepare_open(file.clone()).unwrap();
+        prep.migrate::<DataV0, DataV1>().unwrap();
+        let db = prep.open().unwrap();
         db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
         assert_eq!(found.1.size, 0);
     }
     {
-        let db = Structsy::open(file).unwrap();
-        db.migrate::<DataV0, DataV1>().unwrap();
+        let prep = Structsy::prepare_open(file).unwrap();
+        prep.migrate::<DataV0, DataV1>().unwrap();
+        let db = prep.open().unwrap();
         db.define::<DataV1>().unwrap();
         let found = db.scan::<DataV1>().unwrap().next().unwrap();
         assert_eq!(&found.1.name, "aaa");
@@ -141,8 +144,9 @@ mod second {
     }
 
     pub fn second_operation(file: PathBuf) -> SRes<()> {
-        let db = Structsy::open(file)?;
-        db.migrate::<DataV0, DataV1>()?;
+        let prep = Structsy::prepare_open(file)?;
+        prep.migrate::<DataV0, DataV1>()?;
+        let db = prep.open()?;
         db.define::<Data>()?;
         db.define::<DataRef>()?;
         let found = db.scan::<Data>()?.next().unwrap();
