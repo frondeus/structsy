@@ -1,8 +1,8 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{Order, OrderStep, RangeCondition, Reader, SimpleCondition},
+    filter::{OrderStep, RangeCondition, Reader, SimpleCondition},
     internal::{EmbeddedDescription, Field, FilterDefinition, Projection},
-    FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
+    FilterBuilder, IntoResult, Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 use std::ops::RangeBounds;
 /// Iterator for query results
@@ -208,6 +208,53 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResu
     }
 }
 
+/// Generic filter for any Persistent structures
+///
+///
+/// # Example
+/// ```rust
+/// use structsy::{ Structsy, StructsyTx, StructsyError, Filter};
+/// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
+///
+/// #[derive(Persistent)]
+/// struct WithEmbedded {
+///     embedded: Embedded,
+/// }
+///
+/// #[derive(PersistentEmbedded)]
+/// struct Embedded {
+///     name: String,
+/// }
+/// impl WithEmbedded {
+///     fn new(name: &str) -> WithEmbedded {
+///         WithEmbedded {
+///             embedded: Embedded { name: name.to_string() },
+///         }
+///     }
+/// }
+///
+/// #[queries(WithEmbedded)]
+/// trait WithEmbeddedQuery {
+///     fn embedded(self, embedded: Filter<Embedded>) -> Self;
+/// }
+///
+/// #[embedded_queries(Embedded)]
+/// trait EmbeddedQuery {
+///     fn by_name(self, name: String) -> Self;
+/// }
+///
+/// fn main() -> Result<(), StructsyError> {
+///     let structsy = Structsy::memory()?;
+///     structsy.define::<WithEmbedded>()?;
+///     let mut tx = structsy.begin()?;
+///     tx.insert(&WithEmbedded::new("aaa"))?;
+///     tx.commit()?;
+///     let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
+///     let query = Filter::<WithEmbedded>::new().embedded(embedded_filter);
+///     assert_eq!(structsy.into_iter(query).count(), 1);
+///     Ok(())
+/// }
+/// ```
 pub struct Filter<T: FilterDefinition> {
     filter_builder: T::Filter,
 }

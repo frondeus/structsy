@@ -1,6 +1,6 @@
-use crate::filter::{EmbeddedOrder, FieldOrder, Item, Order, OrderStep, Reader};
+use crate::filter::{EmbeddedOrder, FieldOrder, Item, OrderStep, Reader};
 use crate::internal::Field;
-use crate::{EmbeddedFilter, Persistent, Ref, StructsyQuery};
+use crate::{EmbeddedFilter, Order, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
 
 trait EmbeddedFilterBuilderStep {

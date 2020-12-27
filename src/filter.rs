@@ -4,7 +4,7 @@ use crate::{
     internal::{Description, EmbeddedDescription, Field},
     queries::StructsyFilter,
     transaction::{RefSytx, TxIterator},
-    OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyTx,
+    Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyTx,
 };
 use persy::IndexType;
 use std::marker::PhantomData;
@@ -1030,11 +1030,6 @@ impl<T: 'static> Conditions<T> {
         }
         return true;
     }
-}
-#[derive(Debug, Eq, PartialEq)]
-pub enum Order {
-    Asc,
-    Desc,
 }
 
 pub(crate) struct FieldOrder<T, V> {

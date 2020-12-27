@@ -38,7 +38,6 @@ use desc::InternalDescription;
 mod index;
 pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
-pub use filter::Order;
 mod structsy;
 use crate::structsy::{RecordIter, StructsyImpl};
 mod id;
@@ -97,11 +96,11 @@ impl<T: AsRef<Path>> From<T> for StructsyConfig {
         }
     }
 }
-
-pub struct PreparedStructsy {
+/// Prepare open of a structsy file, with migrations possibilities
+pub struct PrepareOpenStructsy {
     structsy_impl: Arc<StructsyImpl>,
 }
-impl PreparedStructsy {
+impl PrepareOpenStructsy {
     /// Migrate an existing persistent struct to a new struct.
     ///
     /// In structsy the name and order of the fields matter for the persistence, so each change
@@ -195,8 +194,8 @@ impl Structsy {
         c
     }
 
-    pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PreparedStructsy> {
-        Ok(PreparedStructsy {
+    pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PrepareOpenStructsy> {
+        Ok(PrepareOpenStructsy {
             structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
         })
     }
@@ -464,6 +463,13 @@ impl Structsy {
             builder: embedded_filter::EmbeddedFilterBuilder::new(),
         }
     }
+}
+
+/// Query ordering
+#[derive(Debug, Eq, PartialEq)]
+pub enum Order {
+    Asc,
+    Desc,
 }
 
 #[cfg(test)]

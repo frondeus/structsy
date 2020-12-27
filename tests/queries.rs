@@ -42,6 +42,12 @@ pub fn basic_query() {
         assert_eq!(count, 1);
         let count = db.query::<Basic>().by_name_str("aaa").into_iter().count();
         assert_eq!(count, 1);
+        let count = db.into_iter(Filter::<Basic>::new()).count();
+        assert_eq!(count, 1);
+        let count = db.into_iter(Filter::<Basic>::new().by_name("aaa".to_string())).count();
+        assert_eq!(count, 1);
+        let count = db.into_iter(Filter::<Basic>::new().by_name_str("aaa")).count();
+        assert_eq!(count, 1);
         Ok(())
     });
 }
