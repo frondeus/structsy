@@ -194,9 +194,20 @@ impl StructsyImpl {
         let persy = Persy::open(path, Config::new())?;
         let mut tx = persy.begin()?;
         tx.create_segment(INTERNAL_SEGMENT_NAME)?;
-        let prep = tx.prepare()?;
-        prep.commit()?;
+        tx.prepare()?.commit()?;
         Ok(())
+    }
+
+    pub fn memory() -> SRes<StructsyImpl> {
+        let persy = persy::OpenOptions::new().memory()?;
+        let mut tx = persy.begin()?;
+        tx.create_segment(INTERNAL_SEGMENT_NAME)?;
+        tx.prepare()?.commit()?;
+        let definitions = HashMap::new();
+        Ok(StructsyImpl {
+            definitions: Arc::new(Definitions::new(definitions)),
+            persy,
+        })
     }
 
     pub fn open(config: StructsyConfig) -> SRes<StructsyImpl> {

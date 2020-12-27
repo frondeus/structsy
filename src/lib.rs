@@ -219,6 +219,12 @@ impl Structsy {
         })
     }
 
+    pub fn memory() -> SRes<Structsy> {
+        Ok(Structsy {
+            structsy_impl: Arc::new(StructsyImpl::memory()?),
+        })
+    }
+
     /// Every struct before use must be 'defined' calling this method.
     ///
     /// # Example
