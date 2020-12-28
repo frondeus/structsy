@@ -3,13 +3,13 @@ use quote::quote;
 use std::borrow::Borrow;
 use syn::{
     AttributeArgs, FnArg, GenericArgument, GenericParam, Ident, Item, Meta, NestedMeta, Pat, PathArguments, ReturnType,
-    Signature, TraitItem, Type, TypeParamBound,
+    Signature, TraitItem, Type,
 };
 enum Operation {
-    Order(String, String, Option<String>),
-    Equals(String, String, Option<String>),
-    Query(String, String, Option<String>),
-    Range(String, String, Option<String>),
+    Order(String),
+    Equals(String),
+    Query(String),
+    Range(String),
 }
 
 fn extract_fields(s: &Signature) -> Vec<Operation> {
@@ -22,31 +22,7 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         .filter_map(|p| {
             if let GenericParam::Type(t) = p {
                 if !t.bounds.is_empty() {
-                    let name = t.ident.clone();
-                    if let Some(TypeParamBound::Trait(bound)) = t.bounds.first() {
-                        if let Some(seg) = bound.path.segments.last() {
-                            if let PathArguments::AngleBracketed(a) = &seg.arguments {
-                                if let Some(GenericArgument::Type(Type::Path(tp))) = a.args.first() {
-                                    if let Some(last_s) = tp.path.segments.first() {
-                                        if let PathArguments::AngleBracketed(lp) = &last_s.arguments {
-                                            if let Some(GenericArgument::Type(Type::Path(pt))) = lp.args.first() {
-                                                let last_pt = pt.path.segments.last().map(|x| x.ident.to_string());
-                                                return Some((name.to_string(), last_s.ident.to_string(), last_pt));
-                                            }
-                                        } else {
-                                            return Some((name.to_string(), last_s.ident.to_string(), None));
-                                        }
-                                    }
-                                } else if let Some(GenericArgument::Type(Type::Reference(re))) = a.args.first() {
-                                    if let Type::Path(tp) = &*re.elem {
-                                        if let Some(last_s) = tp.path.segments.first() {
-                                            return Some((name.to_string(), last_s.ident.to_string(), None));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    return Some(t.ident.clone());
                 }
             }
             None
@@ -89,10 +65,10 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
             None
         };
         let mut range = false;
-        for (n, rn, ins_type) in &mapping {
+        for n in &mapping {
             if let (Some(nam), Some(rt)) = (&name, &ty) {
                 if n == &rt.0 {
-                    res.push(Operation::Range(nam.clone(), rn.clone(), ins_type.clone()));
+                    res.push(Operation::Range(nam.clone()));
                     range = true;
                 }
             }
@@ -100,11 +76,11 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
         if !range {
             if let (Some(n), Some(t)) = (name, ty) {
                 if t.0 == "Order" {
-                    res.push(Operation::Order(n, t.0, t.1));
+                    res.push(Operation::Order(n));
                 } else if t.0 == "EmbeddedFilter" || t.0 == "StructsyQuery" || t.0 == "Filter" {
-                    res.push(Operation::Query(n, t.0, t.1));
+                    res.push(Operation::Query(n));
                 } else {
-                    res.push(Operation::Equals(n, t.0, t.1));
+                    res.push(Operation::Equals(n));
                 }
             }
         }
@@ -188,28 +164,28 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             let type_ident = Ident::new(target_type, Span::call_site());
             let fields = extract_fields(&m.sig);
             let conditions = fields.into_iter().map(|f| match f {
-                Operation::Order(f, _, _) => {
+                Operation::Order(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
                         structsy::internal::OrderAction::order((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
-                Operation::Equals(f, _, _) => {
+                Operation::Equals(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
                         structsy::internal::EqualAction::equal((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
-                Operation::Range(f, _, _) => {
+                Operation::Range(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
                         structsy::internal::RangeAction::range((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
                     }
                 }
-                Operation::Query(f, _, _) => {
+                Operation::Query(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
@@ -223,7 +199,6 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             }
             Some(quote! {
                 #sign {
-                    let mut builder = self.filter_builder();
                     #( #conditions)*
                     self
                 }
