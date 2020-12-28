@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{EmbeddedFilter, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
+use structsy::{Filter, Ref, SRes, Structsy, StructsyQuery, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
@@ -87,7 +87,7 @@ struct Emb {
 
 #[queries(Parent)]
 trait ParentQuery {
-    fn by_emb(self, emb: EmbeddedFilter<Emb>) -> Self;
+    fn by_emb(self, emb: Filter<Emb>) -> Self;
 }
 
 #[embedded_queries(Emb)]
@@ -110,7 +110,7 @@ fn test_embedded_ref() {
         tx.insert(&Parent::new(insc))?;
         tx.commit()?;
         let other_query = db.query::<Other>().by_name("aaa".to_string());
-        let emb_filter = Structsy::embedded_filter::<Emb>().by_other(other_query);
+        let emb_filter = Filter::<Emb>::new().by_other(other_query);
         let count = db.query::<Parent>().by_emb(emb_filter).into_iter().count();
         assert_eq!(count, 1);
         Ok(())

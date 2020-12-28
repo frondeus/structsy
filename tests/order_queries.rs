@@ -1,4 +1,4 @@
-use structsy::{EmbeddedFilter, Filter, Order, SRes, Structsy, StructsyTx};
+use structsy::{Filter, Order, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -63,7 +63,7 @@ impl Parent {
 
 #[queries(Parent)]
 trait ParentQuery {
-    fn filter_emb(self, emb: EmbeddedFilter<Embedded>) -> Self;
+    fn filter_emb(self, emb: Filter<Embedded>) -> Self;
 }
 
 #[embedded_queries(Embedded)]
@@ -81,13 +81,13 @@ fn nested_order() {
         tx.commit()?;
         let mut iter = db
             .query::<Parent>()
-            .filter_emb(Structsy::embedded_filter::<Embedded>().order_name(Order::Asc))
+            .filter_emb(Filter::<Embedded>::new().order_name(Order::Asc))
             .into_iter();
         assert_eq!(iter.next().unwrap().1.emb.name, "aaa");
         assert_eq!(iter.next().unwrap().1.emb.name, "bbb");
         let mut iter = db
             .query::<Parent>()
-            .filter_emb(Structsy::embedded_filter::<Embedded>().order_name(Order::Desc))
+            .filter_emb(Filter::<Embedded>::new().order_name(Order::Desc))
             .into_iter();
         assert_eq!(iter.next().unwrap().1.emb.name, "bbb");
         assert_eq!(iter.next().unwrap().1.emb.name, "aaa");

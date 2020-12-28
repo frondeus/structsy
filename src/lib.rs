@@ -46,6 +46,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
+#[allow(deprecated)]
 pub use crate::queries::{EmbeddedFilter, Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
@@ -218,6 +219,18 @@ impl Structsy {
         })
     }
 
+    /// Open a structsy instance with only in memory persistence.
+    /// This instance will delete all the data when went out of scope.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// # use structsy::SRes;
+    /// # fn main() -> SRes<()> {
+    /// let stry = Structsy::memory()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn memory() -> SRes<Structsy> {
         Ok(Structsy {
             structsy_impl: Arc::new(StructsyImpl::memory()?),
@@ -406,8 +419,55 @@ impl Structsy {
         }
     }
 
+    /// Execute a filter query and return an iterator of results
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{ Structsy, StructsyTx, StructsyError, Filter};
+    /// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
+    ///
+    /// #[derive(Persistent)]
+    /// struct WithEmbedded {
+    ///     embedded: Embedded,
+    /// }
+    ///
+    /// #[derive(PersistentEmbedded)]
+    /// struct Embedded {
+    ///     name: String,
+    /// }
+    /// impl WithEmbedded {
+    ///     fn new(name: &str) -> WithEmbedded {
+    ///         WithEmbedded {
+    ///             embedded: Embedded { name: name.to_string() },
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// #[queries(WithEmbedded)]
+    /// trait WithEmbeddedQuery {
+    ///     fn embedded(self, embedded: Filter<Embedded>) -> Self;
+    /// }
+    ///
+    /// #[embedded_queries(Embedded)]
+    /// trait EmbeddedQuery {
+    ///     fn by_name(self, name: String) -> Self;
+    /// }
+    ///
+    /// fn embedded_query() -> Result<(), StructsyError> {
+    ///     let structsy = Structsy::open("file.structsy")?;
+    ///     structsy.define::<WithEmbedded>()?;
+    ///     let mut tx = structsy.begin()?;
+    ///     tx.insert(&WithEmbedded::new("aaa"))?;
+    ///     tx.commit()?;
+    ///     let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
+    ///     let filter = Filter::<WithEmbedded>::new().embedded(embedded_filter);
+    ///     let count = structsy.into_iter(filter).count();
+    ///     assert_eq!(count, 1);
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn into_iter<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        //StructsyIter::new(filter.extract_filter().finish(&self))
         filter.into(&self)
     }
 
@@ -458,6 +518,8 @@ impl Structsy {
     ///     Ok(())
     /// }
     /// ```
+    #[deprecated(since = "0.3", note = "Please use Filter instead")]
+    #[allow(deprecated)]
     pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {
         EmbeddedFilter {
             builder: embedded_filter::EmbeddedFilterBuilder::new(),

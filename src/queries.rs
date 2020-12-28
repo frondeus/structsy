@@ -1,6 +1,6 @@
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{OrderStep, RangeCondition, Reader, SimpleCondition},
+    filter::{RangeCondition, SimpleCondition},
     internal::{EmbeddedDescription, Field, FilterDefinition, Projection},
     FilterBuilder, IntoResult, Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
@@ -76,6 +76,8 @@ impl<'a, T> Iterator for StructsyIter<'a, T> {
 ///     Ok(())
 /// }
 /// ```
+///
+#[deprecated(since = "0.3", note = "please use Filter instead")]
 pub struct EmbeddedFilter<T> {
     pub(crate) builder: EmbeddedFilterBuilder<T>,
 }
@@ -132,6 +134,8 @@ pub trait Operators<F> {
 pub trait EmbeddedQuery<T: PersistentEmbedded + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T>;
 }
+
+#[allow(deprecated)]
 impl<T: PersistentEmbedded + 'static> EmbeddedQuery<T> for EmbeddedFilter<T> {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
@@ -143,6 +147,7 @@ impl<T: EmbeddedDescription + 'static> EmbeddedQuery<T> for Filter<T> {
     }
 }
 
+#[allow(deprecated)]
 impl<T: 'static> EmbeddedFilter<T> {
     pub fn new() -> EmbeddedFilter<T> {
         EmbeddedFilter {
@@ -150,9 +155,6 @@ impl<T: 'static> EmbeddedFilter<T> {
         }
     }
 
-    pub(crate) fn components(self) -> (Box<dyn Fn(&T, &mut Reader) -> bool>, Vec<Box<dyn OrderStep<T>>>) {
-        self.builder.components()
-    }
     pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
         self.builder
     }
@@ -161,6 +163,7 @@ impl<T: 'static> EmbeddedFilter<T> {
     }
 }
 
+#[allow(deprecated)]
 impl<T: PersistentEmbedded + 'static, Q: EmbeddedQuery<T>> Operators<EmbeddedFilter<T>> for Q {
     fn or<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(EmbeddedFilter::<T>::new()).filter());
@@ -675,13 +678,24 @@ where
     }
 }
 
+#[allow(deprecated)]
 impl<T: 'static, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
     V: PersistentEmbedded + 'static,
 {
     #[inline]
     fn query(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value);
+        self.1.simple_persistent_embedded(self.0, value.filter());
+    }
+}
+
+impl<T: 'static, V> QueryAction<Filter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: EmbeddedDescription + 'static,
+{
+    #[inline]
+    fn query(self, value: Filter<V>) {
+        self.1.simple_persistent_embedded(self.0, value.extract_filter());
     }
 }
 
@@ -718,6 +732,7 @@ where
     }
 }
 
+#[allow(deprecated)]
 impl<T, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,

@@ -1,6 +1,6 @@
 use crate::filter::{EmbeddedOrder, FieldOrder, Item, OrderStep, Reader};
 use crate::internal::Field;
-use crate::{EmbeddedFilter, Order, Persistent, Ref, StructsyQuery};
+use crate::{Order, Persistent, Ref, StructsyQuery};
 use std::ops::{Bound, RangeBounds};
 
 trait EmbeddedFilterBuilderStep {
@@ -354,7 +354,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(RangeConditionFilter::new(field, (start, end)))
     }
 
-    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilter<V>)
+    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)
     where
         V: 'static,
     {
