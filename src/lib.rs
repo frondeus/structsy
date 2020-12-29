@@ -471,53 +471,6 @@ impl Structsy {
         filter.into(&self)
     }
 
-    /// Create a new filter for an embedded structure
-    ///
-    ///
-    /// # Example
-    /// ```
-    /// use structsy::{ Structsy, StructsyTx, StructsyError, EmbeddedFilter};
-    /// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
-    ///
-    /// #[derive(Persistent)]
-    /// struct WithEmbedded {
-    ///     embedded: Embedded,
-    /// }
-    ///
-    /// #[derive(PersistentEmbedded)]
-    /// struct Embedded {
-    ///     name: String,
-    /// }
-    /// impl WithEmbedded {
-    ///     fn new(name: &str) -> WithEmbedded {
-    ///         WithEmbedded {
-    ///             embedded: Embedded { name: name.to_string() },
-    ///         }
-    ///     }
-    /// }
-    ///
-    /// #[queries(WithEmbedded)]
-    /// trait WithEmbeddedQuery {
-    ///     fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> Self;
-    /// }
-    ///
-    /// #[embedded_queries(Embedded)]
-    /// trait EmbeddedQuery {
-    ///     fn by_name(self, name: String) -> Self;
-    /// }
-    ///
-    /// fn embedded_query() -> Result<(), StructsyError> {
-    ///     let structsy = Structsy::open("file.structsy")?;
-    ///     structsy.define::<WithEmbedded>()?;
-    ///     let mut tx = structsy.begin()?;
-    ///     tx.insert(&WithEmbedded::new("aaa"))?;
-    ///     tx.commit()?;
-    ///     let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string());
-    ///     let count = structsy.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
-    ///     assert_eq!(count, 1);
-    ///     Ok(())
-    /// }
-    /// ```
     #[deprecated(since = "0.3", note = "Please use Filter instead")]
     #[allow(deprecated)]
     pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {

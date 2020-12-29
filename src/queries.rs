@@ -274,6 +274,53 @@ impl<T: FilterDefinition> Filter<T> {
 }
 
 impl<T: Persistent> Filter<T> {
+    /// Make a projection from filtered structs.
+    ///
+    ///
+    /// # Example
+    /// ```rust
+    /// use structsy::{ Structsy, StructsyTx, StructsyError, Filter};
+    /// use structsy_derive::{queries, Projection, Persistent};
+    ///
+    /// #[derive(Persistent)]
+    /// struct Person {
+    ///     name:String,
+    ///     surname:String,
+    /// }
+    ///
+    /// impl Person {
+    ///     fn new(name:&str, surname:&str) -> Self {
+    ///         Person {
+    ///             name: name.to_string(),
+    ///             surname: surname.to_string(),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// #[queries(Person)]
+    /// trait PersonQuery {
+    ///     fn by_name(self, name:&str) -> Self;
+    /// }
+    ///
+    /// #[derive(Projection)]
+    /// #[projection = "Person" ]
+    /// struct NameProjection {
+    ///     name:String,
+    /// }
+    ///
+    ///
+    /// fn main() -> Result<(), StructsyError> {
+    ///     let structsy = Structsy::memory()?;
+    ///     structsy.define::<Person>()?;
+    ///     let mut tx = structsy.begin()?;
+    ///     tx.insert(&Person::new("a_name", "a_surname"))?;
+    ///     tx.commit()?;
+    ///     let query =
+    ///     Filter::<Person>::new().by_name("a_name").projection::<NameProjection>();
+    ///     assert_eq!(structsy.into_iter(query).next().unwrap().name, "a_name");
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn projection<P: Projection<T>>(self) -> ProjectionResult<P, T> {
         ProjectionResult {
             filter: self.filter_builder,
@@ -433,6 +480,52 @@ impl<'a, T: Persistent + 'static> Query<T> for StructsyQueryTx<'a, T> {
     }
 }
 impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
+    /// Make a projection from filtered structs.
+    ///
+    ///
+    /// # Example
+    /// ```rust
+    /// use structsy::{ Structsy, StructsyTx, StructsyError, Filter};
+    /// use structsy_derive::{queries, Projection, Persistent};
+    ///
+    /// #[derive(Persistent)]
+    /// struct Person {
+    ///     name:String,
+    ///     surname:String,
+    /// }
+    ///
+    /// impl Person {
+    ///     fn new(name:&str, surname:&str) -> Self {
+    ///         Person {
+    ///             name: name.to_string(),
+    ///             surname: surname.to_string(),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// #[queries(Person)]
+    /// trait PersonQuery {
+    ///     fn by_name(self, name:&str) -> Self;
+    /// }
+    ///
+    /// #[derive(Projection)]
+    /// #[projection = "Person" ]
+    /// struct NameProjection {
+    ///     name:String,
+    /// }
+    ///
+    ///
+    /// fn main() -> Result<(), StructsyError> {
+    ///     let structsy = Structsy::memory()?;
+    ///     structsy.define::<Person>()?;
+    ///     let mut tx = structsy.begin()?;
+    ///     tx.insert(&Person::new("a_name", "a_surname"))?;
+    ///     tx.commit()?;
+    ///     let query = structsy.query::<Person>().by_name("a_name").projection::<NameProjection>();
+    ///     assert_eq!(query.into_iter().next().unwrap().name, "a_name");
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn projection<P: Projection<T>>(self) -> ProjectionQueryTx<'a, P, T> {
         ProjectionQueryTx {
             tx: self.tx,
