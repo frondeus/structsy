@@ -7,12 +7,14 @@
 
 ## SCOPE
 
-This project is born with the scope to try new concepts for persist data with structs, 
-still being useful for small scale standalone applications.
+This project aim to show some innovative way to persist and query data with rust,
+providing at the same time a useful embeddable database for small rust projects.
 
-The first concept is implement the persistence behaviour with the use of derive macro, covering data persistence and indexing, taking inspiration from what serde does for serialization.
-  
-Another experimental concept is to define data access query with pure traits, of which the implementation may be automatically generated, taking inspiration from the code generation of [mockiato](https://github.com/mockiato/mockiato)
+# REACH
+
+[Mastodon](https://fosstodon.org/@structsy_rs)  
+[Matrix Chat](https://matrix.to/#/#structsy_rs:matrix.org?via=matrix.org)  
+[https://www.structsy.rs](https://www.structsy.rs)  
 
 ## COMPILING THE SOURCE 
 
@@ -36,7 +38,7 @@ Add it as dependency of your project:
 
 ```toml
 [dependencies]
-structsy="0.1"
+structsy="0.3"
 ```
 
 ## USAGE EXAMPLE 
@@ -81,7 +83,5 @@ fn main() -> Result<(), StructsyError> {
     Ok(())
 }
 ```
-
-
 
 
