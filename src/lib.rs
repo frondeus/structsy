@@ -169,7 +169,8 @@ impl PrepareOpenStructsy {
         })
     }
 }
-
+/// Execute a query on structsy or a structsy transaction
+///
 pub trait IntoResult<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
     fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, T>;
