@@ -157,11 +157,75 @@ mod second {
         Ok(())
     }
 }
+mod third {
+
+    use std::path::PathBuf;
+
+    use structsy::{Ref, SRes, Structsy};
+    use structsy_derive::Persistent;
+
+    #[derive(Persistent)]
+    struct DataV0 {
+        name: String,
+    }
+    #[derive(Persistent)]
+    struct DataV1 {
+        name: String,
+        size: u32,
+    }
+
+    impl From<DataV0> for DataV1 {
+        fn from(dt: DataV0) -> Self {
+            DataV1 { name: dt.name, size: 0 }
+        }
+    }
+
+    #[derive(Persistent)]
+    struct DataV2 {
+        name: String,
+        size: u32,
+        surname: String,
+    }
+
+    impl From<DataV1> for DataV2 {
+        fn from(dt: DataV1) -> Self {
+            DataV2 {
+                name: dt.name,
+                size: 0,
+                surname: "Doe".to_owned(),
+            }
+        }
+    }
+
+    type Data = DataV2;
+
+    #[derive(Persistent)]
+    struct DataRef {
+        data: Ref<Data>,
+    }
+
+    pub fn third_operation(file: PathBuf) -> SRes<()> {
+        let prep = Structsy::prepare_open(file)?;
+        prep.migrate::<DataV0, DataV1>()?;
+        prep.migrate::<DataV1, DataV2>()?;
+        let db = prep.open()?;
+        db.define::<Data>()?;
+        db.define::<DataRef>()?;
+        let found = db.scan::<Data>()?.next().unwrap();
+        assert_eq!(&found.1.name, "aaa");
+        assert_eq!(found.1.size, 0);
+        assert_eq!(found.1.surname, "Doe");
+        let ref_found = db.scan::<DataRef>()?.next().unwrap();
+        assert_eq!(ref_found.1.data, found.0);
+        Ok(())
+    }
+}
 
 #[test]
 fn test_ref_migration() {
     let dir = tempdir().expect("can make a tempdir");
     let file = dir.path().join("test_migration.stry");
     first::first_operation(file.clone()).unwrap();
-    second::second_operation(file).unwrap();
+    second::second_operation(file.clone()).unwrap();
+    third::third_operation(file).unwrap();
 }
