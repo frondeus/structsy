@@ -250,9 +250,9 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
                 structsy_impl: self.structsy.clone(),
                 trans: tx,
             };
-            return Some((pv, k, ref_tx));
+            Some((pv, k, ref_tx))
         } else {
-            return None;
+            None
         }
     }
 }
@@ -381,7 +381,7 @@ pub fn find_unique_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
     name: &str,
     r: R,
 ) -> SRes<UniqueRangeIterator<'a, K, P>> {
-    let p1 = db.structsy().structsy_impl.clone();
+    let p1 = db.structsy().structsy_impl;
     let iter = db.tx().trans.range::<K, PersyId, R>(&name, r)?;
     Ok(UniqueRangeIterator::new(p1, iter))
 }
@@ -391,7 +391,7 @@ pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
     name: &str,
     r: R,
 ) -> SRes<RangeIterator<'a, K, P>> {
-    let p1 = db.structsy().structsy_impl.clone();
+    let p1 = db.structsy().structsy_impl;
     let iter = db.tx().trans.range::<K, PersyId, R>(&name, r)?;
     Ok(RangeIterator::new(p1, iter))
 }

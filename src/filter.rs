@@ -184,11 +184,11 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
     ) -> ExecutionIterator<'static, T> {
         let (buffered, iter) = order.scan(structsy.clone());
         if let Some(it) = iter {
-            ExecutionIterator::new_raw(it, conditions, structsy.clone(), buffered)
+            ExecutionIterator::new_raw(it, conditions, structsy, buffered)
         } else if let Ok(found) = structsy.scan::<T>() {
-            ExecutionIterator::new(Box::new(found), conditions, structsy.clone(), buffered)
+            ExecutionIterator::new(Box::new(found), conditions, structsy, buffered)
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy.clone(), buffered)
+            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, buffered)
         }
     }
     fn start_tx(
@@ -202,14 +202,9 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         };
         if order.index_order() {
             let (buffered, iter) = order.scan_tx(tx);
-            ExecutionIterator::new_raw(iter.unwrap(), conditions, structsy.clone(), buffered)
+            ExecutionIterator::new_raw(iter.unwrap(), conditions, structsy, buffered)
         } else if let Ok(found) = tx.scan::<T>() {
-            ExecutionIterator::new_raw(
-                Iter::TxIter(Box::new(found)),
-                conditions,
-                structsy.clone(),
-                order.buffered(),
-            )
+            ExecutionIterator::new_raw(Iter::TxIter(Box::new(found)), conditions, structsy, order.buffered())
         } else {
             ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, order.buffered())
         }
@@ -231,7 +226,7 @@ impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
         order: Orders<T>,
         structsy: Structsy,
     ) -> ExecutionIterator<'static, T> {
-        ExecutionIterator::new(Box::new(self.data), conditions, structsy.clone(), order.buffered())
+        ExecutionIterator::new(Box::new(self.data), conditions, structsy, order.buffered())
     }
     fn start_tx(
         self: Box<Self>,
@@ -291,7 +286,7 @@ impl<T: 'static> ExecutionStep for DataExecution<T> {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 struct FilterExecution<T, F>
@@ -367,8 +362,8 @@ impl<'a> Reader<'a> {
         match self {
             Reader::Structsy(st) => {
                 let iter = find_range(st, name, range)?;
-                let mut no_key = iter.map(|(r, e, _)| (r, e));
-                while let Some(el) = no_key.next() {
+                let no_key = iter.map(|(r, e, _)| (r, e));
+                for el in no_key {
                     vec.push(el);
                     if vec.len() == 1000 {
                         break;
@@ -377,8 +372,8 @@ impl<'a> Reader<'a> {
             }
             Reader::Tx(tx) => {
                 let iter = find_range_tx(tx, name, range)?;
-                let mut no_key = iter.map(|(r, e, _)| (r, e));
-                while let Some(el) = no_key.next() {
+                let no_key = iter.map(|(r, e, _)| (r, e));
+                for el in no_key {
                     vec.push(el);
                     if vec.len() == 1000 {
                         break;
@@ -406,12 +401,12 @@ struct IndexFilter<V, T> {
 }
 
 impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
-    fn new(index_name: String, index_value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(IndexFilter {
+    fn new(index_name: String, index_value: V) -> Self {
+        IndexFilter {
             index_name,
             index_value,
             phantom: PhantomData,
-        })
+        }
     }
 }
 
@@ -432,8 +427,8 @@ struct ConditionSingleFilter<V, T> {
 }
 
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionSingleFilter<V, T> {
-    fn new(field: Field<T, Vec<V>>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(ConditionSingleFilter { field, value })
+    fn new(field: Field<T, Vec<V>>, value: V) -> Self {
+        ConditionSingleFilter { field, value }
     }
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionSingleFilter<V, T> {
@@ -450,8 +445,8 @@ struct ConditionFilter<V, T> {
 }
 
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> ConditionFilter<V, T> {
-    fn new(field: Field<T, V>, value: V) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(ConditionFilter { field, value })
+    fn new(field: Field<T, V>, value: V) -> Self {
+        ConditionFilter { field, value }
     }
 }
 impl<V: PartialEq + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for ConditionFilter<V, T> {
@@ -468,8 +463,8 @@ struct RangeSingleConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
-    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeSingleConditionFilter { field, values })
+    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeSingleConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleConditionFilter<V, T> {
@@ -493,8 +488,8 @@ struct RangeConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeConditionFilter<V, T> {
-    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeConditionFilter { field, values })
+    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeConditionFilter<V, T> {
@@ -512,16 +507,12 @@ struct RangeIndexFilter<V, T> {
 }
 
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
-    fn new(
-        index_name: String,
-        field: Field<T, V>,
-        values: (Bound<V>, Bound<V>),
-    ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeIndexFilter {
+    fn new(index_name: String, field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeIndexFilter {
             index_name,
             field,
             values,
-        })
+        }
     }
 }
 
@@ -544,16 +535,12 @@ struct RangeSingleIndexFilter<V, T> {
 }
 
 impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIndexFilter<V, T> {
-    fn new(
-        index_name: String,
-        field: Field<T, Vec<V>>,
-        values: (Bound<V>, Bound<V>),
-    ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeSingleIndexFilter {
+    fn new(index_name: String, field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeSingleIndexFilter {
             index_name,
             field,
             values,
-        })
+        }
     }
 }
 
@@ -583,11 +570,8 @@ struct RangeOptionConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeOptionConditionFilter<V, T> {
-    fn new(
-        field: Field<T, Option<V>>,
-        values: (Bound<Option<V>>, Bound<Option<V>>),
-    ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(RangeOptionConditionFilter { field, values })
+    fn new(field: Field<T, Option<V>>, values: (Bound<Option<V>>, Bound<Option<V>>)) -> Self {
+        RangeOptionConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for RangeOptionConditionFilter<V, T> {
@@ -626,11 +610,8 @@ pub struct EmbeddedFieldFilter<V, T> {
 }
 
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
-    fn new(
-        condition: Box<dyn Fn(&V, &mut Reader) -> bool>,
-        field: Field<T, V>,
-    ) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { condition, field })
+    fn new(condition: Box<dyn Fn(&V, &mut Reader) -> bool>, field: Field<T, V>) -> Self {
+        EmbeddedFieldFilter { condition, field }
     }
 }
 
@@ -651,8 +632,8 @@ pub struct QueryFilter<V: Persistent + 'static, T: Persistent> {
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> QueryFilter<V, T> {
-    fn new(query: FilterBuilder<V>, field: Field<T, Ref<V>>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(QueryFilter { query, field })
+    fn new(query: FilterBuilder<V>, field: Field<T, Ref<V>>) -> Self {
+        QueryFilter { query, field }
     }
 }
 
@@ -679,8 +660,8 @@ pub struct VecQueryFilter<V: Persistent + 'static, T: Persistent> {
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> VecQueryFilter<V, T> {
-    fn new(query: FilterBuilder<V>, field: Field<T, Vec<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(VecQueryFilter { query, field })
+    fn new(query: FilterBuilder<V>, field: Field<T, Vec<Ref<V>>>) -> Self {
+        VecQueryFilter { query, field }
     }
 }
 
@@ -709,8 +690,8 @@ pub struct OptionQueryFilter<V: Persistent + 'static, T: Persistent> {
 }
 
 impl<V: Persistent + 'static, T: Persistent + 'static> OptionQueryFilter<V, T> {
-    fn new(query: FilterBuilder<V>, field: Field<T, Option<Ref<V>>>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(OptionQueryFilter { query, field })
+    fn new(query: FilterBuilder<V>, field: Field<T, Option<Ref<V>>>) -> Self {
+        OptionQueryFilter { query, field }
     }
 }
 
@@ -739,8 +720,8 @@ pub struct OrFilter<T> {
 }
 
 impl<T: Persistent + 'static> OrFilter<T> {
-    fn new(filters: FilterBuilder<T>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(OrFilter { filters })
+    fn new(filters: FilterBuilder<T>) -> Self {
+        OrFilter { filters }
     }
 }
 
@@ -768,8 +749,8 @@ pub struct AndFilter<T> {
 }
 
 impl<T: Persistent + 'static> AndFilter<T> {
-    fn new(filters: FilterBuilder<T>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(AndFilter { filters })
+    fn new(filters: FilterBuilder<T>) -> Self {
+        AndFilter { filters }
     }
 }
 
@@ -789,8 +770,8 @@ pub struct NotFilter<T> {
 }
 
 impl<T: Persistent + 'static> NotFilter<T> {
-    fn new(filters: FilterBuilder<T>) -> Box<dyn FilterBuilderStep<Target = T>> {
-        Box::new(NotFilter { filters })
+    fn new(filters: FilterBuilder<T>) -> Self {
+        NotFilter { filters }
     }
 }
 
@@ -1028,7 +1009,7 @@ impl<T: 'static> Conditions<T> {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -1038,14 +1019,14 @@ pub(crate) struct FieldOrder<T, V> {
 }
 
 impl<T: 'static, V: Ord + 'static + Scan<T>> FieldOrder<T, V> {
-    pub(crate) fn new(field: Field<T, V>, order: Order) -> Box<dyn ScanOrderStep<T>> {
-        Box::new(Self { field, order })
+    pub(crate) fn new(field: Field<T, V>, order: Order) -> Self {
+        Self { field, order }
     }
 }
 
 impl<T: 'static, V: Ord + 'static> FieldOrder<T, V> {
-    pub(crate) fn new_emb(field: Field<T, V>, order: Order) -> Box<dyn OrderStep<T>> {
-        Box::new(Self { field, order })
+    pub(crate) fn new_emb(field: Field<T, V>, order: Order) -> Self {
+        Self { field, order }
     }
 }
 
@@ -1088,7 +1069,7 @@ pub trait Scan<P>: Sized {
     fn scan_tx_impl<'a>(_field: &Field<P, Self>, _tx: &'a mut OwnedSytx, _order: &Order) -> Option<Iter<'a, P>> {
         None
     }
-    fn is_indexed_impl<'a>(_field: &Field<P, Self>) -> bool {
+    fn is_indexed_impl(_field: &Field<P, Self>) -> bool {
         false
     }
 }
@@ -1099,11 +1080,11 @@ pub(crate) struct EmbeddedOrder<T, V> {
 }
 
 impl<T: 'static, V: 'static> EmbeddedOrder<T, V> {
-    pub(crate) fn new(field: Field<T, V>, orders: Vec<Box<dyn OrderStep<V>>>) -> Box<dyn ScanOrderStep<T>> {
-        Box::new(Self { field, orders })
+    pub(crate) fn new(field: Field<T, V>, orders: Vec<Box<dyn OrderStep<V>>>) -> Self {
+        Self { field, orders }
     }
-    pub(crate) fn new_emb(field: Field<T, V>, orders: Vec<Box<dyn OrderStep<V>>>) -> Box<dyn OrderStep<T>> {
-        Box::new(Self { field, orders })
+    pub(crate) fn new_emb(field: Field<T, V>, orders: Vec<Box<dyn OrderStep<V>>>) -> Self {
+        Self { field, orders }
     }
 }
 
@@ -1197,7 +1178,7 @@ impl<T: Persistent + 'static> Orders<T> {
         let first_entry = orders.remove(0);
         let scan = first_entry.scan(structsy);
         if let Some(iter) = scan {
-            if orders.len() == 0 {
+            if orders.is_empty() {
                 (None, Some(iter))
             } else {
                 (Some(BufferedOrderExecution::new(orders)), Some(iter))
@@ -1216,7 +1197,7 @@ impl<T: Persistent + 'static> Orders<T> {
         }
     }
 
-    fn scan_tx<'a>(self, tx: &'a mut OwnedSytx) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'a, T>>) {
+    fn scan_tx(self, tx: &mut OwnedSytx) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<T>>) {
         if self.order.is_empty() {
             return (None, None);
         }
@@ -1224,7 +1205,7 @@ impl<T: Persistent + 'static> Orders<T> {
         let first_entry = orders.remove(0);
         let scan = first_entry.scan_tx(tx);
         if let Some(iter) = scan {
-            if orders.len() == 0 {
+            if orders.is_empty() {
                 (None, Some(iter))
             } else {
                 (Some(BufferedOrderExecution::new(orders)), Some(iter))
@@ -1240,13 +1221,13 @@ pub struct FilterBuilder<T> {
     steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Orders<T>,
 }
-impl<T> Default for FilterBuilder<T> {
+impl<T: 'static> Default for FilterBuilder<T> {
     fn default() -> Self {
         FilterBuilder::new()
     }
 }
 
-impl<T> FilterBuilder<T> {
+impl<T: 'static> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder {
             steps: Vec::new(),
@@ -1254,12 +1235,12 @@ impl<T> FilterBuilder<T> {
         }
     }
 
-    fn add(&mut self, filter: Box<dyn FilterBuilderStep<Target = T>>) {
-        self.steps.push(filter);
+    fn add<F: FilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
+        self.steps.push(Box::new(filter));
     }
 
-    fn add_order(&mut self, order: Box<dyn ScanOrderStep<T>>) {
-        self.order.order.push(order)
+    fn add_order<O: ScanOrderStep<T> + 'static>(&mut self, order: O) {
+        self.order.order.push(Box::new(order))
     }
 }
 

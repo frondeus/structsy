@@ -77,7 +77,7 @@ impl<'a, T> Iterator for StructsyIter<'a, T> {
 /// }
 /// ```
 ///
-#[deprecated(since = "0.3", note = "please use Filter instead")]
+#[deprecated(since = "0.3.0", note = "please use Filter instead")]
 pub struct EmbeddedFilter<T> {
     pub(crate) builder: EmbeddedFilterBuilder<T>,
 }
@@ -205,7 +205,7 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResu
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
-    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, P> {
+    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
         let data = self.filter.finish_tx(tx);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
@@ -341,7 +341,7 @@ impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
         StructsyIter::new(data)
     }
 
-    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, (Ref<T>, T)> {
+    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
         let data = self.extract_filter().finish_tx(tx);
         StructsyIter::new(data)
     }

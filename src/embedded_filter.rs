@@ -14,8 +14,8 @@ struct ConditionFilter<V, T> {
 }
 
 impl<V: PartialEq + Clone + 'static, T: 'static> ConditionFilter<V, T> {
-    fn new(field: Field<T, V>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(ConditionFilter { field, value })
+    fn new(field: Field<T, V>, value: V) -> Self {
+        ConditionFilter { field, value }
     }
 }
 impl<V: PartialEq + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for ConditionFilter<V, T> {
@@ -31,8 +31,8 @@ struct ConditionSingleFilter<V, T> {
 }
 
 impl<V: PartialEq + Clone + 'static, T: 'static> ConditionSingleFilter<V, T> {
-    fn new(field: Field<T, Vec<V>>, value: V) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(ConditionSingleFilter { field, value })
+    fn new(field: Field<T, Vec<V>>, value: V) -> Self {
+        ConditionSingleFilter { field, value }
     }
 }
 
@@ -48,8 +48,8 @@ struct RangeConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeConditionFilter<V, T> {
-    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeConditionFilter { field, values })
+    fn new(field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeConditionFilter<V, T> {
@@ -66,8 +66,8 @@ struct RangeSingleConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeSingleConditionFilter<V, T> {
-    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeSingleConditionFilter { field, values })
+    fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Self {
+        RangeSingleConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeSingleConditionFilter<V, T> {
@@ -91,11 +91,8 @@ struct RangeOptionConditionFilter<V, T> {
 }
 
 impl<V: PartialOrd + Clone + 'static, T: 'static> RangeOptionConditionFilter<V, T> {
-    fn new(
-        field: Field<T, Option<V>>,
-        values: (Bound<Option<V>>, Bound<Option<V>>),
-    ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(RangeOptionConditionFilter { field, values })
+    fn new(field: Field<T, Option<V>>, values: (Bound<Option<V>>, Bound<Option<V>>)) -> Self {
+        RangeOptionConditionFilter { field, values }
     }
 }
 impl<V: PartialOrd + Clone + 'static, T: 'static> EmbeddedFilterBuilderStep for RangeOptionConditionFilter<V, T> {
@@ -133,11 +130,8 @@ pub struct EmbeddedFieldFilter<V, T> {
 }
 
 impl<V: 'static, T: 'static> EmbeddedFieldFilter<V, T> {
-    fn new(
-        condition: Box<dyn Fn(&V, &mut Reader) -> bool>,
-        field: Field<T, V>,
-    ) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(EmbeddedFieldFilter { condition, field })
+    fn new(condition: Box<dyn Fn(&V, &mut Reader) -> bool>, field: Field<T, V>) -> Self {
+        EmbeddedFieldFilter { condition, field }
     }
 }
 
@@ -156,8 +150,8 @@ pub struct QueryFilter<V: Persistent + 'static, T> {
 }
 
 impl<V: Persistent + 'static, T: 'static> QueryFilter<V, T> {
-    fn new(query: StructsyQuery<V>, field: Field<T, Ref<V>>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(QueryFilter { query, field })
+    fn new(query: StructsyQuery<V>, field: Field<T, Ref<V>>) -> Self {
+        QueryFilter { query, field }
     }
 }
 
@@ -183,8 +177,8 @@ pub struct OrFilter<T> {
 }
 
 impl<T: 'static> OrFilter<T> {
-    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(OrFilter { filters })
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Self {
+        OrFilter { filters }
     }
 }
 
@@ -211,8 +205,8 @@ pub struct AndFilter<T> {
 }
 
 impl<T: 'static> AndFilter<T> {
-    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(AndFilter { filters })
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Self {
+        AndFilter { filters }
     }
 }
 
@@ -229,8 +223,8 @@ pub struct NotFilter<T> {
 }
 
 impl<T: 'static> NotFilter<T> {
-    fn new(filters: EmbeddedFilterBuilder<T>) -> Box<dyn EmbeddedFilterBuilderStep<Target = T>> {
-        Box::new(NotFilter { filters })
+    fn new(filters: EmbeddedFilterBuilder<T>) -> Self {
+        NotFilter { filters }
     }
 }
 
@@ -327,14 +321,14 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
                         return false;
                     }
                 }
-                return true;
+                true
             }),
             self.order,
         )
     }
 
-    fn add(&mut self, filter: Box<dyn EmbeddedFilterBuilderStep<Target = T>>) {
-        self.steps.push(filter);
+    fn add<F: EmbeddedFilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
+        self.steps.push(Box::new(filter));
     }
 
     pub fn simple_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
@@ -359,7 +353,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         V: 'static,
     {
         let (conditions, orders) = filter.components();
-        self.order.push(EmbeddedOrder::new_emb(field.clone(), orders));
+        self.order.push(Box::new(EmbeddedOrder::new_emb(field.clone(), orders)));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
@@ -382,6 +376,6 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(NotFilter::new(filters))
     }
     pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
-        self.order.push(FieldOrder::new_emb(field, order))
+        self.order.push(Box::new(FieldOrder::new_emb(field, order)))
     }
 }

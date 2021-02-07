@@ -173,7 +173,7 @@ impl PrepareOpenStructsy {
 ///
 pub trait IntoResult<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
-    fn into_tx<'a>(self, tx: &'a mut OwnedSytx) -> StructsyIter<'a, T>;
+    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
 }
 
 impl Structsy {
@@ -472,7 +472,7 @@ impl Structsy {
         filter.into(&self)
     }
 
-    #[deprecated(since = "0.3", note = "Please use Filter instead")]
+    #[deprecated(since = "0.3.0", note = "Please use Filter instead")]
     #[allow(deprecated)]
     pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {
         EmbeddedFilter {

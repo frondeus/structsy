@@ -142,7 +142,7 @@ impl_field_type!(String, FieldValueType::String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> FieldValueType {
-        FieldValueType::Ref(T::get_description().get_name().to_string())
+        FieldValueType::Ref(T::get_description().get_name())
     }
 }
 
@@ -416,7 +416,7 @@ impl StructDescription {
     }
 
     pub(crate) fn get_field(&self, name: &str) -> Option<&FieldDescription> {
-        self.fields.iter().filter(|f| f.name == name).next()
+        self.fields.iter().find(|f| f.name == name)
     }
 
     pub fn get_name(&self) -> String {

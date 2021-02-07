@@ -45,7 +45,7 @@ impl OwnedSytx {
     /// }
     /// ```
     ///
-    pub fn query<'a, T: Persistent>(&'a mut self) -> StructsyQueryTx<'a, T> {
+    pub fn query<T: Persistent>(&mut self) -> StructsyQueryTx<T> {
         StructsyQueryTx {
             tx: self,
             builder: FilterBuilder::new(),
@@ -300,9 +300,9 @@ pub trait StructsyTx: Sytx + Sized {
     /// # Ok(())
     /// # }
     /// ```
-    fn scan<'a, T: Persistent>(&'a mut self) -> SRes<TxRecordIter<'a, T>> {
+    fn scan<T: Persistent>(&mut self) -> SRes<TxRecordIter<T>> {
         let def = self.structsy().structsy_impl.check_defined::<T>()?;
-        let implc = self.structsy().structsy_impl.clone();
+        let implc = self.structsy().structsy_impl;
         let iter = self.tx().trans.scan(def.segment_name())?;
         Ok(TxRecordIter::new(iter, implc))
     }

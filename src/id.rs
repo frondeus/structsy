@@ -57,7 +57,7 @@ impl<T: Persistent> std::str::FromStr for Ref<T> {
     type Err = StructsyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.split_terminator("@");
+        let mut split = s.split_terminator('@');
         let sty = split.next();
         let sid = split.next();
         if let (Some(ty), Some(id)) = (sty, sid) {
