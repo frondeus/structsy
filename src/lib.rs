@@ -472,6 +472,10 @@ impl Structsy {
         filter.into(&self)
     }
 
+    pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
+        self.structsy_impl.list_defined()
+    }
+
     #[deprecated(since = "0.3.0", note = "Please use Filter instead")]
     #[allow(deprecated)]
     pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {

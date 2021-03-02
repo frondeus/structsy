@@ -117,6 +117,16 @@ impl Definitions {
         tx.commit()?;
         Ok(())
     }
+
+    pub fn list(&self) -> SRes<impl std::iter::Iterator<Item = Description>> {
+        let values = self
+            .definitions
+            .lock()?
+            .values()
+            .map(|v| v.desc.clone())
+            .collect::<Vec<_>>();
+        Ok(values.into_iter())
+    }
 }
 
 pub(crate) struct StructsyImpl {
@@ -277,6 +287,10 @@ impl StructsyImpl {
             iter: self.persy.scan(def.segment_name())?,
             marker: PhantomData,
         })
+    }
+
+    pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = Description>> {
+        self.definitions.list()
     }
 }
 
