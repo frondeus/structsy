@@ -275,6 +275,22 @@ impl FieldDescription {
     fn remap_refer(&mut self, new: &str, old: &str) -> bool {
         self.field_type.remap_refer(new, old)
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn position(&self) -> u32 {
+        self.position
+    }
+
+    pub fn field_type(&self) -> &FieldType {
+        &self.field_type
+    }
+
+    pub fn indexed(&self) -> &Option<ValueMode> {
+        &self.indexed
+    }
 }
 
 pub struct InternalDescription {
@@ -422,6 +438,10 @@ impl StructDescription {
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
+
+    pub fn fields(&self) -> impl std::iter::Iterator<Item = &FieldDescription> {
+        self.fields.iter()
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -474,6 +494,18 @@ impl VariantDescription {
             false
         }
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn position(&self) -> u32 {
+        self.position
+    }
+
+    pub fn value_type(&self) -> &Option<FieldType> {
+        &self.ty
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -519,6 +551,10 @@ impl EnumDescription {
             }
         }
         changed
+    }
+
+    pub fn variants(&self) -> impl std::iter::Iterator<Item = &VariantDescription> {
+        self.variants.iter()
     }
 }
 
