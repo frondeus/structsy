@@ -539,7 +539,7 @@ impl EnumDescription {
         }
         Ok(Self::new(&name, &variants))
     }
-    fn get_name(&self) -> String {
+    pub fn get_name(&self) -> String {
         self.name.clone()
     }
 
@@ -555,6 +555,9 @@ impl EnumDescription {
 
     pub fn variants(&self) -> impl std::iter::Iterator<Item = &VariantDescription> {
         self.variants.iter()
+    }
+    pub fn variant(&self, pos: usize) -> &VariantDescription {
+        &self.variants[pos]
     }
 }
 

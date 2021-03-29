@@ -55,6 +55,7 @@ pub mod internal;
 pub use internal::{Persistent, PersistentEmbedded};
 mod projection;
 pub use queries::Filter;
+pub mod record;
 
 /// Main API to persist structs with structsy.
 ///
