@@ -42,10 +42,10 @@ impl StructRecord {
     pub fn type_name(&self) -> &str {
         &self.struct_name
     }
-    pub fn fileds(&self) -> impl Iterator<Item = &FieldValue> {
+    pub fn fields(&self) -> impl Iterator<Item = &FieldValue> {
         self.fields.iter()
     }
-    pub fn filed(&self, name: &str) -> Option<&FieldValue> {
+    pub fn field(&self, name: &str) -> Option<&FieldValue> {
         for field in &self.fields {
             if field.name == name {
                 return Some(&field);

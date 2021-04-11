@@ -1,6 +1,7 @@
 use crate::{
-    desc::DefinitionInfo, internal::Description, transaction::OwnedSytx, InternalDescription, Persistent,
-    PersistentEmbedded, Ref, SRes, StructsyConfig, StructsyError, StructsyTx,
+    desc::DefinitionInfo, id::raw_parse, internal::Description, record::Record, transaction::OwnedSytx,
+    InternalDescription, Persistent, PersistentEmbedded, RawAccess, Ref, SRes, Structsy, StructsyConfig, StructsyError,
+    StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -126,6 +127,15 @@ impl Definitions {
             .map(|v| v.desc.clone())
             .collect::<Vec<_>>();
         Ok(values.into_iter())
+    }
+
+    pub(crate) fn full_definition_by_name(&self, name: &str) -> SRes<InternalDescription> {
+        let lock = self.definitions.lock()?;
+        if let Some(x) = lock.get(name) {
+            Ok(x.clone())
+        } else {
+            Err(StructsyError::StructNotDefined(name.to_owned()))
+        }
     }
 }
 
@@ -294,6 +304,43 @@ impl StructsyImpl {
     }
 }
 
+impl RawAccess for Structsy {
+    fn raw_scan(&self, strct_name: &str) -> SRes<RawIter> {
+        let definition = self.structsy_impl.definitions.full_definition_by_name(strct_name)?;
+        Ok(RawIter {
+            iter: self.structsy_impl.persy.scan(&definition.info().segment_name())?,
+            description: definition,
+        })
+    }
+    fn raw_read(&self, id: &str) -> SRes<Option<Record>> {
+        let (ty, pid) = raw_parse(&id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
+        let raw = self.structsy_impl.persy.read(&definition.info().segment_name(), &rid)?;
+        if let Some(data) = raw {
+            Ok(Some(Record::read(&mut Cursor::new(data), &definition.desc)?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+pub struct RawIter {
+    iter: persy::SegmentIter,
+    description: InternalDescription,
+}
+impl Iterator for RawIter {
+    type Item = (String, Record);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, data)) = self.iter.next() {
+            let fid = format!("{}@{}", self.description.desc.get_name(), id);
+            let rec = Record::read(&mut Cursor::new(data), &self.description.desc).unwrap();
+            Some((fid, rec))
+        } else {
+            None
+        }
+    }
+}
 pub(crate) fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &PersyId) -> SRes<Option<T>> {
     if let Some(buff) = tx.read(name, id)? {
         Ok(Some(T::read(&mut Cursor::new(buff))?))

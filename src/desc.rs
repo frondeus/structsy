@@ -293,6 +293,7 @@ impl FieldDescription {
     }
 }
 
+#[derive(Clone)]
 pub struct InternalDescription {
     pub desc: Description,
     pub checked: bool,

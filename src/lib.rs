@@ -30,6 +30,7 @@
 //!
 //!
 pub use persy::ValueMode;
+use record::Record;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 mod desc;
@@ -39,7 +40,7 @@ mod index;
 pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
 mod structsy;
-use crate::structsy::{RecordIter, StructsyImpl};
+use crate::structsy::{RawIter, RecordIter, StructsyImpl};
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
@@ -491,6 +492,11 @@ impl Structsy {
 pub enum Order {
     Asc,
     Desc,
+}
+
+pub trait RawAccess {
+    fn raw_scan(&self, strct_name: &str) -> SRes<RawIter>;
+    fn raw_read(&self, id: &str) -> SRes<Option<Record>>;
 }
 
 #[cfg(test)]

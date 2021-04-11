@@ -1,4 +1,4 @@
-use crate::{Persistent, StructsyError};
+use crate::{Persistent, SRes, StructsyError};
 use persy::PersyId;
 use std::marker::PhantomData;
 /// Reference to a record, can be used to load a record or to refer a record from another one.
@@ -53,25 +53,31 @@ impl<T: Persistent> std::fmt::Display for Ref<T> {
         write!(f, "{}@{}", self.type_name, self.raw_id)
     }
 }
+
+pub(crate) fn raw_parse(s: &str) -> SRes<(&str, &str)> {
+    let mut split = s.split_terminator('@');
+    let sty = split.next();
+    let sid = split.next();
+    if let (Some(ty), Some(id)) = (sty, sid) {
+        Ok((ty, id))
+    } else {
+        Err(StructsyError::InvalidId)
+    }
+}
+
 impl<T: Persistent> std::str::FromStr for Ref<T> {
     type Err = StructsyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.split_terminator('@');
-        let sty = split.next();
-        let sid = split.next();
-        if let (Some(ty), Some(id)) = (sty, sid) {
-            if ty != T::get_name() {
-                Err(StructsyError::InvalidId)
-            } else {
-                Ok(Ref {
-                    type_name: T::get_name().to_string(),
-                    raw_id: id.parse().or(Err(StructsyError::InvalidId))?,
-                    ph: PhantomData,
-                })
-            }
-        } else {
+        let (ty, id) = raw_parse(s)?;
+        if ty != T::get_name() {
             Err(StructsyError::InvalidId)
+        } else {
+            Ok(Ref {
+                type_name: T::get_name().to_string(),
+                raw_id: id.parse().or(Err(StructsyError::InvalidId))?,
+                ph: PhantomData,
+            })
         }
     }
 }
