@@ -52,3 +52,48 @@ fn test_scan_raw() {
         Ok(())
     });
 }
+
+#[derive(Persistent)]
+enum BasicEnum {
+    Basic(String),
+    None,
+}
+
+impl BasicEnum {
+    fn new(name: &str) -> Self {
+        Self::Basic(name.to_string())
+    }
+    fn none() -> Self {
+        Self::None
+    }
+}
+
+#[test]
+fn test_scan_raw_enum() {
+    structsy_inst("scan_raw", |db| {
+        db.define::<BasicEnum>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&BasicEnum::new("aaa"))?;
+        tx.insert(&BasicEnum::new("bbb"))?;
+        tx.insert(&BasicEnum::none())?;
+        tx.commit()?;
+
+        let iter = db.raw_scan("BasicEnum")?;
+        let mut value = Vec::new();
+        for (_id, rec) in iter {
+            match rec {
+                Record::Enum(en) => {
+                    let variant = en.variant();
+                    match variant.value() {
+                        Some(Value::Value(SimpleValue::String(s))) => value.push(s.clone()),
+                        None => value.push("__none".to_owned()),
+                        _ => panic!("wrong value"),
+                    }
+                }
+                _ => panic!("wrong record"),
+            }
+        }
+        assert_eq!(value, vec!["aaa", "bbb", "__none"]);
+        Ok(())
+    });
+}

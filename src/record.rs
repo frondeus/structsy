@@ -6,7 +6,7 @@ use crate::{
     error::SRes,
     internal::PersistentEmbedded,
 };
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Record {
@@ -18,6 +18,25 @@ impl Record {
         Ok(match desc {
             Description::Struct(s) => Record::Struct(StructRecord::read(read, s)?),
             Description::Enum(e) => Record::Enum(EnumRecord::read(read, e)?),
+        })
+    }
+
+    pub fn write(&self, write: &mut dyn Write, desc: &Description) -> SRes<()> {
+        Ok(match self {
+            Record::Struct(s) => {
+                let sd = match desc {
+                    Description::Struct(ed) => ed,
+                    _ => panic!("description does not match the value"),
+                };
+                s.write(write, sd)?;
+            }
+            Record::Enum(e) => {
+                let ed = match desc {
+                    Description::Enum(ed) => ed,
+                    _ => panic!("description does not match the value"),
+                };
+                e.write(write, ed)?;
+            }
         })
     }
 }
@@ -39,6 +58,20 @@ impl StructRecord {
             fields,
         })
     }
+
+    fn write(&self, write: &mut dyn Write, desc: &StructDescription) -> SRes<()> {
+        for field in &self.fields {
+            let fd = if let Some(fd) = desc.get_field(field.name()) {
+                fd
+            } else {
+                panic!("value do not match the definition");
+            };
+
+            field.write(write, fd)?;
+        }
+        Ok(())
+    }
+
     pub fn type_name(&self) -> &str {
         &self.struct_name
     }
@@ -58,7 +91,7 @@ impl StructRecord {
 #[derive(PartialEq, Clone, Debug)]
 pub struct EnumRecord {
     pub(crate) name: String,
-    pub(crate) variants: Box<VariantValue>,
+    pub(crate) variant: Box<VariantValue>,
 }
 impl EnumRecord {
     fn read(read: &mut dyn Read, desc: &EnumDescription) -> SRes<EnumRecord> {
@@ -66,8 +99,19 @@ impl EnumRecord {
         let value = VariantValue::read(read, desc.variant(pos as usize))?;
         Ok(EnumRecord {
             name: desc.get_name().clone(),
-            variants: Box::new(value),
+            variant: Box::new(value),
         })
+    }
+
+    fn write(&self, write: &mut dyn Write, desc: &EnumDescription) -> SRes<()> {
+        u32::write(&self.variant.position, write)?;
+        self.variant
+            .write(write, desc.variant(self.variant.position as usize))?;
+        Ok(())
+    }
+
+    pub fn variant(&self) -> &VariantValue {
+        &self.variant
     }
 }
 
@@ -90,6 +134,18 @@ impl VariantValue {
             value,
         })
     }
+    fn write(&self, write: &mut dyn Write, desc: &VariantDescription) -> SRes<()> {
+        if let Some(val) = &self.value {
+            val.write(write, desc.value_type().as_ref().expect("value and desc match"))?;
+        }
+        Ok(())
+    }
+    pub fn value(&self) -> &Option<Value> {
+        &self.value
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// Field metadata for internal use
@@ -106,6 +162,9 @@ impl FieldValue {
             name: field.name().to_owned(),
             field_type: Value::read(read, field.field_type())?,
         })
+    }
+    fn write(&self, write: &mut dyn Write, field: &FieldDescription) -> SRes<()> {
+        self.field_type.write(write, &field.field_type)
     }
     pub fn position(&self) -> u32 {
         self.position
@@ -158,6 +217,55 @@ impl Value {
             }
         })
     }
+
+    fn write(&self, write: &mut dyn Write, field_type: &FieldType) -> SRes<()> {
+        Ok(match self {
+            Value::Value(v) => {
+                let vt = match field_type {
+                    FieldType::Value(vt) => vt,
+                    _ => panic!("desc do not match field type"),
+                };
+                v.write(write, vt)?;
+            }
+            Value::Option(v) => {
+                let vt = match field_type {
+                    FieldType::Option(vt) => vt,
+                    _ => panic!("desc do not match field type"),
+                };
+                if let Some(sv) = v {
+                    u8::write(&1, write)?;
+                    sv.write(write, vt)?;
+                } else {
+                    u8::write(&0, write)?;
+                }
+            }
+            Value::Array(v) => {
+                let vt = match field_type {
+                    FieldType::Array(vt) => vt,
+                    _ => panic!("desc do not match field type"),
+                };
+                u32::write(&(v.len() as u32), write)?;
+                for sv in v {
+                    sv.write(write, vt)?;
+                }
+            }
+            Value::OptionArray(v) => {
+                let vt = match field_type {
+                    FieldType::OptionArray(vt) => vt,
+                    _ => panic!("desc do not match field type"),
+                };
+                if let Some(sv) = v {
+                    u8::write(&1, write)?;
+                    u32::write(&(sv.len() as u32), write)?;
+                    for ssv in sv {
+                        ssv.write(write, vt)?;
+                    }
+                } else {
+                    u8::write(&0, write)?;
+                }
+            }
+        })
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -199,6 +307,38 @@ impl SimpleValue {
             String => SimpleValue::String(std::string::String::read(read)?),
             Ref(t) => SimpleValue::Ref(format!("{}@{}", t, std::string::String::read(read)?)),
             Embedded(desc) => SimpleValue::Embedded(Record::read(read, &desc)?),
+        })
+    }
+    fn write(&self, write: &mut dyn Write, value_type: &FieldValueType) -> SRes<()> {
+        Ok(match self {
+            SimpleValue::U8(v) => u8::write(v, write)?,
+            SimpleValue::U16(v) => u16::write(v, write)?,
+            SimpleValue::U32(v) => u32::write(v, write)?,
+            SimpleValue::U64(v) => u64::write(v, write)?,
+            SimpleValue::U128(v) => u128::write(v, write)?,
+            SimpleValue::I8(v) => i8::write(v, write)?,
+            SimpleValue::I16(v) => i16::write(v, write)?,
+            SimpleValue::I32(v) => i32::write(v, write)?,
+            SimpleValue::I64(v) => i64::write(v, write)?,
+            SimpleValue::I128(v) => i128::write(v, write)?,
+            SimpleValue::F32(v) => f32::write(v, write)?,
+            SimpleValue::F64(v) => f64::write(v, write)?,
+            SimpleValue::Bool(v) => bool::write(v, write)?,
+            SimpleValue::String(v) => std::string::String::write(v, write)?,
+            SimpleValue::Ref(v) => {
+                let values = v.split('@').collect::<Vec<_>>();
+                if values.len() < 2 {
+                    panic!("wrong value");
+                }
+                std::string::String::write(&values[1].to_owned(), write)?;
+            }
+            SimpleValue::Embedded(v) => {
+                let desc = match value_type {
+                    FieldValueType::Embedded(desc) => desc,
+                    _ => panic!("type do not mach desc"),
+                };
+                v.write(write, &desc)?;
+            }
         })
     }
 }
