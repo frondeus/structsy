@@ -1,5 +1,9 @@
 use crate::{
-    desc::DefinitionInfo, id::raw_parse, internal::Description, record::Record, transaction::OwnedSytx,
+    desc::DefinitionInfo,
+    id::{raw_format, raw_parse},
+    internal::Description,
+    record::Record,
+    transaction::OwnedSytx,
     InternalDescription, Persistent, PersistentEmbedded, RawAccess, Ref, SRes, Structsy, StructsyConfig, StructsyError,
     StructsyTx,
 };
@@ -322,6 +326,72 @@ impl RawAccess for Structsy {
         } else {
             Ok(None)
         }
+    }
+    fn raw_begin(&self) -> SRes<RawTransaction> {
+        Ok(RawTransaction {
+            tx: self.structsy_impl.persy.begin()?,
+            structsy_impl: self.structsy_impl.clone(),
+        })
+    }
+}
+
+pub struct RawTransaction {
+    tx: persy::Transaction,
+    structsy_impl: Arc<StructsyImpl>,
+}
+impl RawTransaction {
+    pub fn raw_insert(&mut self, record: &Record) -> SRes<String> {
+        let type_name = record.type_name();
+        let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
+        let mut data = Vec::new();
+        record.write(&mut data, &definition.desc)?;
+        //TODO: Handle Index
+        let id = self.tx.insert(definition.info().segment_name(), &data)?;
+        Ok(raw_format(type_name, &id))
+    }
+    pub fn raw_update(&mut self, id: &str, record: &Record) -> SRes<()> {
+        let (_, pid) = raw_parse(id)?;
+        let type_name = record.type_name();
+        let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
+        let mut data = Vec::new();
+        record.write(&mut data, &definition.desc)?;
+        //TODO: Handle Index
+        self.tx.update(definition.info().segment_name(), &pid.parse()?, &data)?;
+        Ok(())
+    }
+    pub fn raw_delete(&mut self, id: &str) -> SRes<()> {
+        let (type_name, pid) = raw_parse(id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
+        //TODO: Handle Index
+        self.tx.delete(definition.info().segment_name(), &pid.parse()?)?;
+        Ok(())
+    }
+
+    pub fn raw_read(&mut self, id: &str) -> SRes<Option<Record>> {
+        let (ty, pid) = raw_parse(&id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
+        let raw = self.tx.read(&definition.info().segment_name(), &rid)?;
+        if let Some(data) = raw {
+            Ok(Some(Record::read(&mut Cursor::new(data), &definition.desc)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn prepare(self) -> SRes<RawPrepare> {
+        Ok(RawPrepare {
+            prepared: self.tx.prepare()?,
+        })
+    }
+}
+
+pub struct RawPrepare {
+    prepared: persy::TransactionFinalize,
+}
+impl RawPrepare {
+    pub fn commit(self) -> SRes<()> {
+        Ok(self.prepared.commit()?)
     }
 }
 

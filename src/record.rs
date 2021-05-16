@@ -39,6 +39,12 @@ impl Record {
             }
         })
     }
+    pub fn type_name(&self) -> &str {
+        match self {
+            Record::Struct(s) => s.type_name(),
+            Record::Enum(e) => e.type_name(),
+        }
+    }
 }
 
 /// Struct metadata for internal use
@@ -112,6 +118,10 @@ impl EnumRecord {
 
     pub fn variant(&self) -> &VariantValue {
         &self.variant
+    }
+
+    pub fn type_name(&self) -> &str {
+        &self.name
     }
 }
 

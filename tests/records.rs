@@ -70,7 +70,7 @@ impl BasicEnum {
 
 #[test]
 fn test_scan_raw_enum() {
-    structsy_inst("scan_raw", |db| {
+    structsy_inst("scan_raw_enum", |db| {
         db.define::<BasicEnum>()?;
         let mut tx = db.begin()?;
         tx.insert(&BasicEnum::new("aaa"))?;
@@ -94,6 +94,57 @@ fn test_scan_raw_enum() {
             }
         }
         assert_eq!(value, vec!["aaa", "bbb", "__none"]);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_raw_read_insert() {
+    structsy_inst("raw_read_insert", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.commit()?;
+
+        let iter = db.raw_scan("Basic")?;
+        let mut raw_tx = db.raw_begin()?;
+        for (_id, rec) in iter {
+            raw_tx.raw_insert(&rec)?;
+        }
+        raw_tx.prepare()?.commit()?;
+        let iter = db.raw_scan("Basic")?;
+        for (_id, rec) in iter {
+            match rec {
+                Record::Struct(st) => {
+                    let field = st.field("name").unwrap();
+                    match field.value() {
+                        Value::Value(SimpleValue::String(s)) => assert_eq!("aaa", s),
+                        _ => panic!("wrong value"),
+                    }
+                }
+                _ => panic!("wrong record"),
+            }
+        }
+        assert_eq!(db.raw_scan("Basic")?.count(), 2);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_raw_read_delete() {
+    structsy_inst("raw_read_insert", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.commit()?;
+
+        let iter = db.raw_scan("Basic")?;
+        let mut raw_tx = db.raw_begin()?;
+        for (id, _rec) in iter {
+            raw_tx.raw_delete(&id)?;
+        }
+        raw_tx.prepare()?.commit()?;
+        assert_eq!(db.raw_scan("Basic")?.count(), 0);
         Ok(())
     });
 }

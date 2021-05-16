@@ -40,7 +40,8 @@ mod index;
 pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
 mod structsy;
-use crate::structsy::{RawIter, RecordIter, StructsyImpl};
+pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
+use crate::structsy::{RecordIter, StructsyImpl};
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
@@ -497,6 +498,7 @@ pub enum Order {
 pub trait RawAccess {
     fn raw_scan(&self, strct_name: &str) -> SRes<RawIter>;
     fn raw_read(&self, id: &str) -> SRes<Option<Record>>;
+    fn raw_begin(&self) -> SRes<RawTransaction>;
 }
 
 #[cfg(test)]

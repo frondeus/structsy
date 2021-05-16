@@ -54,6 +54,10 @@ impl<T: Persistent> std::fmt::Display for Ref<T> {
     }
 }
 
+pub(crate) fn raw_format(type_name: &str, id: &PersyId) -> String {
+    format!("{}@{}", type_name, id)
+}
+
 pub(crate) fn raw_parse(s: &str) -> SRes<(&str, &str)> {
     let mut split = s.split_terminator('@');
     let sty = split.next();
