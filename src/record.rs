@@ -6,6 +6,7 @@ use crate::{
     error::SRes,
     internal::PersistentEmbedded,
 };
+use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Read, Write};
 
 #[derive(PartialEq, Clone, Debug)]
@@ -39,6 +40,29 @@ impl Record {
             }
         })
     }
+
+    pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        Ok(match self {
+            Record::Struct(s) => {
+                s.put_indexes(tx, id)?;
+            }
+            Record::Enum(e) => {
+                e.put_indexes(tx, id)?;
+            }
+        })
+    }
+
+    pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        Ok(match self {
+            Record::Struct(s) => {
+                s.remove_indexes(tx, id)?;
+            }
+            Record::Enum(e) => {
+                e.remove_indexes(tx, id)?;
+            }
+        })
+    }
+
     pub fn type_name(&self) -> &str {
         match self {
             Record::Struct(s) => s.type_name(),
@@ -92,6 +116,19 @@ impl StructRecord {
         }
         None
     }
+
+    pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        for field in &self.fields {
+            field.put_indexes(tx, self.type_name(), id)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        for field in &self.fields {
+            field.remove_indexes(tx, self.type_name(), id)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -122,6 +159,12 @@ impl EnumRecord {
 
     pub fn type_name(&self) -> &str {
         &self.name
+    }
+    pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        self.variant.put_indexes(tx, id)
+    }
+    pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
+        self.variant.remove_indexes(tx, id)
     }
 }
 
@@ -156,6 +199,12 @@ impl VariantValue {
     pub fn name(&self) -> &str {
         &self.name
     }
+    pub(crate) fn put_indexes(&self, _tx: &mut persy::Transaction, _id: &PersyId) -> SRes<()> {
+        Ok(())
+    }
+    pub(crate) fn remove_indexes(&self, _tx: &mut persy::Transaction, _id: &PersyId) -> SRes<()> {
+        Ok(())
+    }
 }
 
 /// Field metadata for internal use
@@ -164,6 +213,7 @@ pub struct FieldValue {
     pub(crate) position: u32,
     pub(crate) name: String,
     pub(crate) field_type: Value,
+    pub(crate) indexed: Option<ValueMode>,
 }
 impl FieldValue {
     fn read(read: &mut dyn Read, field: &FieldDescription) -> SRes<FieldValue> {
@@ -171,6 +221,7 @@ impl FieldValue {
             position: field.position(),
             name: field.name().to_owned(),
             field_type: Value::read(read, field.field_type())?,
+            indexed: field.indexed.clone(),
         })
     }
     fn write(&self, write: &mut dyn Write, field: &FieldDescription) -> SRes<()> {
@@ -184,6 +235,18 @@ impl FieldValue {
     }
     pub fn value(&self) -> &Value {
         &self.field_type
+    }
+    pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
+        if let Some(_) = self.indexed {
+            self.field_type.put_index(tx, type_name, &self.name, id)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
+        if let Some(_) = self.indexed {
+            self.field_type.remove_index(tx, type_name, &self.name, id)?;
+        }
+        Ok(())
     }
 }
 
@@ -276,6 +339,61 @@ impl Value {
             }
         })
     }
+
+    pub(crate) fn put_index(&self, tx: &mut persy::Transaction, type_name: &str, name: &str, id: &PersyId) -> SRes<()> {
+        Ok(match self {
+            Value::Value(v) => {
+                v.put_index(tx, type_name, name, id)?;
+            }
+            Value::Option(v) => {
+                if let Some(sv) = v {
+                    sv.put_index(tx, type_name, name, id)?;
+                }
+            }
+            Value::Array(v) => {
+                for sv in v {
+                    sv.put_index(tx, type_name, name, id)?;
+                }
+            }
+            Value::OptionArray(v) => {
+                if let Some(sv) = v {
+                    for ssv in sv {
+                        ssv.put_index(tx, type_name, name, id)?;
+                    }
+                }
+            }
+        })
+    }
+    pub(crate) fn remove_index(
+        &self,
+        tx: &mut persy::Transaction,
+        type_name: &str,
+        name: &str,
+        id: &PersyId,
+    ) -> SRes<()> {
+        Ok(match self {
+            Value::Value(v) => {
+                v.remove_index(tx, type_name, name, id)?;
+            }
+            Value::Option(v) => {
+                if let Some(sv) = v {
+                    sv.remove_index(tx, type_name, name, id)?;
+                }
+            }
+            Value::Array(v) => {
+                for sv in v {
+                    sv.remove_index(tx, type_name, name, id)?;
+                }
+            }
+            Value::OptionArray(v) => {
+                if let Some(sv) = v {
+                    for ssv in sv {
+                        ssv.remove_index(tx, type_name, name, id)?;
+                    }
+                }
+            }
+        })
+    }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -351,4 +469,73 @@ impl SimpleValue {
             }
         })
     }
+    pub(crate) fn put_index(&self, tx: &mut persy::Transaction, type_name: &str, name: &str, id: &PersyId) -> SRes<()> {
+        Ok(match self {
+            SimpleValue::U8(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::U16(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::U32(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::U64(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::U128(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::I8(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::I16(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::I32(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::I64(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::I128(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::F32(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::F64(v) => put_index(tx, type_name, name, v, id)?,
+            SimpleValue::Bool(_v) => (),
+            SimpleValue::String(v) => put_index(tx, type_name, name, &v.clone(), id)?,
+            SimpleValue::Ref(v) => {
+                let values = v.split('@').collect::<Vec<_>>();
+                if values.len() < 2 {
+                    panic!("wrong value");
+                }
+                put_index(tx, type_name, name, &values[1].parse::<PersyId>()?, id)?;
+            }
+            SimpleValue::Embedded(_v) => (),
+        })
+    }
+
+    pub(crate) fn remove_index(
+        &self,
+        tx: &mut persy::Transaction,
+        type_name: &str,
+        name: &str,
+        id: &PersyId,
+    ) -> SRes<()> {
+        Ok(match self {
+            SimpleValue::U8(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::U16(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::U32(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::U64(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::U128(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::I8(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::I16(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::I32(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::I64(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::I128(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::F32(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::F64(v) => remove_index(tx, type_name, name, v, id)?,
+            SimpleValue::Bool(_v) => (),
+            SimpleValue::String(v) => remove_index(tx, type_name, name, &v.clone(), id)?,
+            SimpleValue::Ref(v) => {
+                let values = v.split('@').collect::<Vec<_>>();
+                if values.len() < 2 {
+                    panic!("wrong value");
+                }
+                remove_index(tx, type_name, name, &values[1].parse::<PersyId>()?, id)?;
+            }
+            SimpleValue::Embedded(_v) => (),
+        })
+    }
+}
+
+fn put_index<T: IndexType>(tx: &mut Transaction, type_name: &str, name: &str, k: &T, id: &PersyId) -> SRes<()> {
+    tx.put::<T, PersyId>(&format!("{}.{}", type_name, name), k.clone(), id.clone())?;
+    Ok(())
+}
+
+fn remove_index<T: IndexType>(tx: &mut Transaction, type_name: &str, name: &str, k: &T, id: &PersyId) -> SRes<()> {
+    tx.remove::<T, PersyId>(&format!("{}.{}", type_name, name), k.clone(), Some(id.clone()))?;
+    Ok(())
 }

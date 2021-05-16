@@ -345,25 +345,32 @@ impl RawTransaction {
         let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
         let mut data = Vec::new();
         record.write(&mut data, &definition.desc)?;
-        //TODO: Handle Index
         let id = self.tx.insert(definition.info().segment_name(), &data)?;
+        record.put_indexes(&mut self.tx, &id)?;
         Ok(raw_format(type_name, &id))
     }
     pub fn raw_update(&mut self, id: &str, record: &Record) -> SRes<()> {
         let (_, pid) = raw_parse(id)?;
         let type_name = record.type_name();
         let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
+        let ppid = pid.parse()?;
+        if let Some(record) = self.raw_read(id)? {
+            record.remove_indexes(&mut self.tx, &ppid)?;
+        }
         let mut data = Vec::new();
         record.write(&mut data, &definition.desc)?;
-        //TODO: Handle Index
-        self.tx.update(definition.info().segment_name(), &pid.parse()?, &data)?;
+        self.tx.update(definition.info().segment_name(), &ppid, &data)?;
+        record.put_indexes(&mut self.tx, &ppid)?;
         Ok(())
     }
     pub fn raw_delete(&mut self, id: &str) -> SRes<()> {
         let (type_name, pid) = raw_parse(id)?;
         let definition = self.structsy_impl.definitions.full_definition_by_name(type_name)?;
-        //TODO: Handle Index
-        self.tx.delete(definition.info().segment_name(), &pid.parse()?)?;
+        let ppid = pid.parse()?;
+        if let Some(record) = self.raw_read(id)? {
+            record.remove_indexes(&mut self.tx, &ppid)?;
+        }
+        self.tx.delete(definition.info().segment_name(), &ppid)?;
         Ok(())
     }
 
