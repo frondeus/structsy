@@ -131,8 +131,44 @@ fn test_raw_read_insert() {
 }
 
 #[test]
+fn test_raw_read_update() {
+    structsy_inst("scan_raw_read_update", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.insert(&Basic::new("bbb"))?;
+        tx.commit()?;
+
+        let mut iter = db.raw_scan("Basic")?;
+        let (_, record) = iter.next().unwrap();
+        let (id, _) = iter.next().unwrap();
+        // Set the value of the first record on the second record
+        let mut tx = db.raw_begin()?;
+        tx.raw_update(&id, &record)?;
+        tx.prepare()?.commit()?;
+
+        let iter = db.raw_scan("Basic")?;
+        let mut value = Vec::new();
+        for (_id, rec) in iter {
+            match rec {
+                Record::Struct(st) => {
+                    let field = st.field("name").unwrap();
+                    match field.value() {
+                        Value::Value(SimpleValue::String(s)) => value.push(s.clone()),
+                        _ => panic!("wrong value"),
+                    }
+                }
+                _ => panic!("wrong record"),
+            }
+        }
+        assert_eq!(value, vec!["aaa", "aaa"]);
+        Ok(())
+    });
+}
+
+#[test]
 fn test_raw_read_delete() {
-    structsy_inst("raw_read_insert", |db| {
+    structsy_inst("raw_read_delete", |db| {
         db.define::<Basic>()?;
         let mut tx = db.begin()?;
         tx.insert(&Basic::new("aaa"))?;
