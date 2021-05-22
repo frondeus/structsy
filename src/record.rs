@@ -1,6 +1,6 @@
 use crate::{
     desc::{
-        Description, EnumDescription, FieldDescription, FieldType, FieldValueType, StructDescription,
+        Description, EnumDescription, FieldDescription, FieldType, FieldValueType, StructDescription, SupportedType,
         VariantDescription,
     },
     error::SRes,
@@ -258,6 +258,10 @@ pub enum Value {
     OptionArray(Option<Vec<SimpleValue>>),
 }
 impl Value {
+    pub fn new<T: SupportedType>(value: T) -> SRes<Value> {
+        value.new()
+    }
+
     fn read(read: &mut dyn Read, field_type: &FieldType) -> SRes<Value> {
         Ok(match field_type {
             FieldType::Value(t) => Value::Value(SimpleValue::read(read, t)?),
@@ -415,6 +419,7 @@ pub enum SimpleValue {
     Ref(String),
     Embedded(Record),
 }
+
 impl SimpleValue {
     fn read(read: &mut dyn Read, value_type: &FieldValueType) -> SRes<SimpleValue> {
         use crate::desc::FieldValueType::*;

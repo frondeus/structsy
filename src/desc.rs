@@ -1,12 +1,13 @@
 use crate::{
     format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
+    record::{Record, SimpleValue, Value},
     structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
     Ref, SRes, StructsyTx, Sytx,
 };
 use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
-use std::io::{Read, Write};
+use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -111,38 +112,46 @@ impl FieldValueType {
 }
 pub trait SupportedType {
     fn resolve() -> FieldType;
+    fn new(self) -> SRes<Value>;
 }
 pub trait SimpleType {
     fn resolve() -> FieldValueType;
+    fn new(self) -> SRes<SimpleValue>;
 }
 macro_rules! impl_field_type {
-    ($t:ident,$v1:expr) => {
+    ($t:ident,$v1:ident) => {
         impl SimpleType for $t {
             fn resolve() -> FieldValueType {
-                $v1
+                FieldValueType::$v1
+            }
+            fn new(self) -> SRes<SimpleValue> {
+                Ok(SimpleValue::$v1(self))
             }
         }
     };
 }
 
-impl_field_type!(u8, FieldValueType::U8);
-impl_field_type!(u16, FieldValueType::U16);
-impl_field_type!(u32, FieldValueType::U32);
-impl_field_type!(u64, FieldValueType::U64);
-impl_field_type!(u128, FieldValueType::U128);
-impl_field_type!(i8, FieldValueType::I8);
-impl_field_type!(i16, FieldValueType::I16);
-impl_field_type!(i32, FieldValueType::I32);
-impl_field_type!(i64, FieldValueType::I64);
-impl_field_type!(i128, FieldValueType::I128);
-impl_field_type!(f32, FieldValueType::F32);
-impl_field_type!(f64, FieldValueType::F64);
-impl_field_type!(bool, FieldValueType::Bool);
-impl_field_type!(String, FieldValueType::String);
+impl_field_type!(u8, U8);
+impl_field_type!(u16, U16);
+impl_field_type!(u32, U32);
+impl_field_type!(u64, U64);
+impl_field_type!(u128, U128);
+impl_field_type!(i8, I8);
+impl_field_type!(i16, I16);
+impl_field_type!(i32, I32);
+impl_field_type!(i64, I64);
+impl_field_type!(i128, I128);
+impl_field_type!(f32, F32);
+impl_field_type!(f64, F64);
+impl_field_type!(bool, Bool);
+impl_field_type!(String, String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> FieldValueType {
         FieldValueType::Ref(T::get_description().get_name())
+    }
+    fn new(self) -> SRes<SimpleValue> {
+        Ok(SimpleValue::Ref(format!("{}", self.raw_id)))
     }
 }
 
@@ -150,11 +159,21 @@ impl<T: EmbeddedDescription> SimpleType for T {
     fn resolve() -> FieldValueType {
         FieldValueType::Embedded(T::get_description())
     }
+    fn new(self) -> SRes<SimpleValue> {
+        let desk = T::get_description();
+        let mut buff = Vec::new();
+        self.write(&mut buff)?;
+        let record = Record::read(&mut Cursor::new(buff), &desk)?;
+        Ok(SimpleValue::Embedded(record))
+    }
 }
 
 impl<T: SimpleType> SupportedType for T {
     fn resolve() -> FieldType {
         FieldType::Value(T::resolve())
+    }
+    fn new(self) -> SRes<Value> {
+        Ok(Value::Value(self.new()?))
     }
 }
 
@@ -162,17 +181,31 @@ impl<T: SimpleType> SupportedType for Option<T> {
     fn resolve() -> FieldType {
         FieldType::Option(T::resolve())
     }
+    fn new(self) -> SRes<Value> {
+        Ok(Value::Option(self.map(|v| v.new()).transpose()?))
+    }
 }
 
 impl<T: SimpleType> SupportedType for Option<Vec<T>> {
     fn resolve() -> FieldType {
         FieldType::OptionArray(T::resolve())
     }
+    fn new(self) -> SRes<Value> {
+        Ok(Value::OptionArray(
+            self.map(|vec| vec.into_iter().map(|v| v.new()).collect::<SRes<Vec<SimpleValue>>>())
+                .transpose()?,
+        ))
+    }
 }
 
 impl<T: SimpleType> SupportedType for Vec<T> {
     fn resolve() -> FieldType {
         FieldType::Array(T::resolve())
+    }
+    fn new(self) -> SRes<Value> {
+        Ok(Value::Array(
+            self.into_iter().map(|v| v.new()).collect::<SRes<Vec<SimpleValue>>>()?,
+        ))
     }
 }
 
