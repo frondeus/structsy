@@ -5,6 +5,7 @@ use crate::{
     },
     error::SRes,
     internal::PersistentEmbedded,
+    StructsyError,
 };
 use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Read, Write};
@@ -117,6 +118,26 @@ impl StructRecord {
         None
     }
 
+    pub fn set_field<T: SupportedType>(&mut self, name: &str, value: T) -> SRes<()> {
+        if let Some(field) = &mut self.fields.iter_mut().filter(|field| field.name == name).next() {
+            if field.value_type == T::resolve() {
+                field.value = value.new()?;
+                Ok(())
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'{:?}' do not match expected type:'{:?}'",
+                    T::resolve(),
+                    field.value_type
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "field with name '{}' not found",
+                name
+            )))
+        }
+    }
+
     pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
         for field in &self.fields {
             field.put_indexes(tx, self.type_name(), id)?;
@@ -135,6 +156,7 @@ impl StructRecord {
 pub struct EnumRecord {
     pub(crate) name: String,
     pub(crate) variant: Box<VariantValue>,
+    pub(crate) desc: EnumDescription,
 }
 impl EnumRecord {
     fn read(read: &mut dyn Read, desc: &EnumDescription) -> SRes<EnumRecord> {
@@ -143,6 +165,7 @@ impl EnumRecord {
         Ok(EnumRecord {
             name: desc.get_name().clone(),
             variant: Box::new(value),
+            desc: desc.clone(),
         })
     }
 
@@ -155,6 +178,45 @@ impl EnumRecord {
 
     pub fn variant(&self) -> &VariantValue {
         &self.variant
+    }
+
+    pub fn set_value_variant<T: SupportedType>(&mut self, name: &str, val: T) -> SRes<()> {
+        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+            if v.value_type() == &Some(T::resolve()) {
+                self.variant = Box::new(VariantValue::new(&v, Some(val.new()?)));
+                Ok(())
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'{:?}' do not match expected type:'{:?}'",
+                    T::resolve(),
+                    v.value_type()
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "variant with name '{}' not found",
+                name
+            )))
+        }
+    }
+
+    pub fn set_simple_variant(&mut self, name: &str) -> SRes<()> {
+        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+            if v.value_type() == &None {
+                self.variant = Box::new(VariantValue::new(&v, None));
+                Ok(())
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'None' do not match expected type:'{:?}'",
+                    v.value_type()
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "variant with name '{}' not found",
+                name
+            )))
+        }
     }
 
     pub fn type_name(&self) -> &str {
@@ -175,17 +237,20 @@ pub struct VariantValue {
     pub(crate) value: Option<Value>,
 }
 impl VariantValue {
+    fn new(desc: &VariantDescription, value: Option<Value>) -> VariantValue {
+        VariantValue {
+            position: desc.position(),
+            name: desc.name().to_owned(),
+            value,
+        }
+    }
     fn read(read: &mut dyn Read, desc: &VariantDescription) -> SRes<VariantValue> {
         let value = if let Some(value_type) = desc.value_type() {
             Some(Value::read(read, value_type)?)
         } else {
             None
         };
-        Ok(VariantValue {
-            position: desc.position(),
-            name: desc.name().to_owned(),
-            value,
-        })
+        Ok(Self::new(desc, value))
     }
     fn write(&self, write: &mut dyn Write, desc: &VariantDescription) -> SRes<()> {
         if let Some(val) = &self.value {
@@ -212,7 +277,8 @@ impl VariantValue {
 pub struct FieldValue {
     pub(crate) position: u32,
     pub(crate) name: String,
-    pub(crate) field_type: Value,
+    pub(crate) value: Value,
+    pub(crate) value_type: FieldType,
     pub(crate) indexed: Option<ValueMode>,
 }
 impl FieldValue {
@@ -220,12 +286,13 @@ impl FieldValue {
         Ok(FieldValue {
             position: field.position(),
             name: field.name().to_owned(),
-            field_type: Value::read(read, field.field_type())?,
+            value: Value::read(read, field.field_type())?,
+            value_type: field.field_type().clone(),
             indexed: field.indexed.clone(),
         })
     }
     fn write(&self, write: &mut dyn Write, field: &FieldDescription) -> SRes<()> {
-        self.field_type.write(write, &field.field_type)
+        self.value.write(write, &field.field_type)
     }
     pub fn position(&self) -> u32 {
         self.position
@@ -234,17 +301,17 @@ impl FieldValue {
         &self.name
     }
     pub fn value(&self) -> &Value {
-        &self.field_type
+        &self.value
     }
     pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
         if let Some(_) = self.indexed {
-            self.field_type.put_index(tx, type_name, &self.name, id)?;
+            self.value.put_index(tx, type_name, &self.name, id)?;
         }
         Ok(())
     }
     pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
         if let Some(_) = self.indexed {
-            self.field_type.remove_index(tx, type_name, &self.name, id)?;
+            self.value.remove_index(tx, type_name, &self.name, id)?;
         }
         Ok(())
     }

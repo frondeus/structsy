@@ -11,6 +11,7 @@ pub enum StructsyError {
     PoisonedLock,
     MigrationNotSupported(String),
     InvalidId,
+    ValueChangeError(String),
 }
 
 impl From<PersyError> for StructsyError {
@@ -44,6 +45,7 @@ impl Display for StructsyError {
             StructsyError::PoisonedLock => writeln!(f, "PoisonedLock"),
             StructsyError::MigrationNotSupported(name) => writeln!(f, "Migration of Struct '{}' not supported", name),
             StructsyError::InvalidId => writeln!(f, "Invalid ID"),
+            StructsyError::ValueChangeError(message) => writeln!(f, "{}", message),
         }
     }
 }
