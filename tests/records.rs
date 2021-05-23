@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use structsy::{
     record::{Record, SimpleValue, Value},
     RawAccess, SRes, Structsy, StructsyTx,
@@ -181,6 +183,44 @@ fn test_raw_read_delete() {
         }
         raw_tx.prepare()?.commit()?;
         assert_eq!(db.raw_scan("Basic")?.count(), 0);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_raw_read_update_field() {
+    structsy_inst("scan_raw_read_update", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.commit()?;
+
+        let mut iter = db.raw_scan("Basic")?;
+        let (id, mut record) = iter.next().unwrap();
+        match &mut record {
+            Record::Struct(rec) => rec.set_field("name", String::from_str("ccc").unwrap())?,
+            _ => panic!("wrong record"),
+        }
+        // Set the value of the first record on the second record
+        let mut tx = db.raw_begin()?;
+        tx.raw_update(&id, &record)?;
+        tx.prepare()?.commit()?;
+
+        let iter = db.raw_scan("Basic")?;
+        let mut value = Vec::new();
+        for (_id, rec) in iter {
+            match rec {
+                Record::Struct(st) => {
+                    let field = st.field("name").unwrap();
+                    match field.value() {
+                        Value::Value(SimpleValue::String(s)) => value.push(s.clone()),
+                        _ => panic!("wrong value"),
+                    }
+                }
+                _ => panic!("wrong record"),
+            }
+        }
+        assert_eq!(value, vec!["ccc"]);
         Ok(())
     });
 }
