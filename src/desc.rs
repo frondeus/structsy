@@ -11,7 +11,7 @@ use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum FieldValueType {
+pub enum SimpleValueType {
     U8,
     U16,
     U32,
@@ -31,63 +31,63 @@ pub enum FieldValueType {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum FieldType {
-    Value(FieldValueType),
-    Option(FieldValueType),
-    Array(FieldValueType),
-    OptionArray(FieldValueType),
+pub enum ValueType {
+    Value(SimpleValueType),
+    Option(SimpleValueType),
+    Array(SimpleValueType),
+    OptionArray(SimpleValueType),
 }
 
-impl FieldValueType {
-    fn read(read: &mut dyn Read) -> SRes<FieldValueType> {
+impl SimpleValueType {
+    fn read(read: &mut dyn Read) -> SRes<SimpleValueType> {
         let sv = u8::read(read)?;
         Ok(match sv {
-            1 => FieldValueType::U8,
-            2 => FieldValueType::U16,
-            3 => FieldValueType::U32,
-            4 => FieldValueType::U64,
-            5 => FieldValueType::U128,
-            6 => FieldValueType::I8,
-            7 => FieldValueType::I16,
-            8 => FieldValueType::I32,
-            9 => FieldValueType::I64,
-            10 => FieldValueType::I128,
-            11 => FieldValueType::F32,
-            12 => FieldValueType::F64,
-            13 => FieldValueType::Bool,
-            14 => FieldValueType::String,
+            1 => SimpleValueType::U8,
+            2 => SimpleValueType::U16,
+            3 => SimpleValueType::U32,
+            4 => SimpleValueType::U64,
+            5 => SimpleValueType::U128,
+            6 => SimpleValueType::I8,
+            7 => SimpleValueType::I16,
+            8 => SimpleValueType::I32,
+            9 => SimpleValueType::I64,
+            10 => SimpleValueType::I128,
+            11 => SimpleValueType::F32,
+            12 => SimpleValueType::F64,
+            13 => SimpleValueType::Bool,
+            14 => SimpleValueType::String,
             15 => {
                 let s = String::read(read)?;
-                FieldValueType::Ref(s)
+                SimpleValueType::Ref(s)
             }
             16 => {
                 let s = Description::read(read)?;
-                FieldValueType::Embedded(s)
+                SimpleValueType::Embedded(s)
             }
             _ => panic!("error on de-serialization"),
         })
     }
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
         match self {
-            FieldValueType::U8 => u8::write(&1, write)?,
-            FieldValueType::U16 => u8::write(&2, write)?,
-            FieldValueType::U32 => u8::write(&3, write)?,
-            FieldValueType::U64 => u8::write(&4, write)?,
-            FieldValueType::U128 => u8::write(&5, write)?,
-            FieldValueType::I8 => u8::write(&6, write)?,
-            FieldValueType::I16 => u8::write(&7, write)?,
-            FieldValueType::I32 => u8::write(&8, write)?,
-            FieldValueType::I64 => u8::write(&9, write)?,
-            FieldValueType::I128 => u8::write(&10, write)?,
-            FieldValueType::F32 => u8::write(&11, write)?,
-            FieldValueType::F64 => u8::write(&12, write)?,
-            FieldValueType::Bool => u8::write(&13, write)?,
-            FieldValueType::String => u8::write(&14, write)?,
-            FieldValueType::Ref(t) => {
+            SimpleValueType::U8 => u8::write(&1, write)?,
+            SimpleValueType::U16 => u8::write(&2, write)?,
+            SimpleValueType::U32 => u8::write(&3, write)?,
+            SimpleValueType::U64 => u8::write(&4, write)?,
+            SimpleValueType::U128 => u8::write(&5, write)?,
+            SimpleValueType::I8 => u8::write(&6, write)?,
+            SimpleValueType::I16 => u8::write(&7, write)?,
+            SimpleValueType::I32 => u8::write(&8, write)?,
+            SimpleValueType::I64 => u8::write(&9, write)?,
+            SimpleValueType::I128 => u8::write(&10, write)?,
+            SimpleValueType::F32 => u8::write(&11, write)?,
+            SimpleValueType::F64 => u8::write(&12, write)?,
+            SimpleValueType::Bool => u8::write(&13, write)?,
+            SimpleValueType::String => u8::write(&14, write)?,
+            SimpleValueType::Ref(t) => {
                 u8::write(&15, write)?;
                 String::write(&t, write)?;
             }
-            FieldValueType::Embedded(t) => {
+            SimpleValueType::Embedded(t) => {
                 u8::write(&16, write)?;
                 t.write(write)?;
             }
@@ -97,7 +97,7 @@ impl FieldValueType {
 
     fn remap_refer(&mut self, old: &str, new: &str) -> bool {
         match self {
-            FieldValueType::Ref(ref mut t) => {
+            SimpleValueType::Ref(ref mut t) => {
                 if t == old {
                     *t = new.to_string();
                     true
@@ -105,24 +105,24 @@ impl FieldValueType {
                     false
                 }
             }
-            FieldValueType::Embedded(t) => t.remap_refer(old, new),
+            SimpleValueType::Embedded(t) => t.remap_refer(old, new),
             _ => false,
         }
     }
 }
 pub trait SupportedType {
-    fn resolve() -> FieldType;
+    fn resolve() -> ValueType;
     fn new(self) -> SRes<Value>;
 }
 pub trait SimpleType {
-    fn resolve() -> FieldValueType;
+    fn resolve() -> SimpleValueType;
     fn new(self) -> SRes<SimpleValue>;
 }
 macro_rules! impl_field_type {
     ($t:ident,$v1:ident) => {
         impl SimpleType for $t {
-            fn resolve() -> FieldValueType {
-                FieldValueType::$v1
+            fn resolve() -> SimpleValueType {
+                SimpleValueType::$v1
             }
             fn new(self) -> SRes<SimpleValue> {
                 Ok(SimpleValue::$v1(self))
@@ -147,8 +147,8 @@ impl_field_type!(bool, Bool);
 impl_field_type!(String, String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
-    fn resolve() -> FieldValueType {
-        FieldValueType::Ref(T::get_description().get_name())
+    fn resolve() -> SimpleValueType {
+        SimpleValueType::Ref(T::get_description().get_name())
     }
     fn new(self) -> SRes<SimpleValue> {
         Ok(SimpleValue::Ref(format!("{}", self.raw_id)))
@@ -156,8 +156,8 @@ impl<T: Persistent> SimpleType for Ref<T> {
 }
 
 impl<T: EmbeddedDescription> SimpleType for T {
-    fn resolve() -> FieldValueType {
-        FieldValueType::Embedded(T::get_description())
+    fn resolve() -> SimpleValueType {
+        SimpleValueType::Embedded(T::get_description())
     }
     fn new(self) -> SRes<SimpleValue> {
         let desk = T::get_description();
@@ -169,8 +169,8 @@ impl<T: EmbeddedDescription> SimpleType for T {
 }
 
 impl<T: SimpleType> SupportedType for T {
-    fn resolve() -> FieldType {
-        FieldType::Value(T::resolve())
+    fn resolve() -> ValueType {
+        ValueType::Value(T::resolve())
     }
     fn new(self) -> SRes<Value> {
         Ok(Value::Value(self.new()?))
@@ -178,8 +178,8 @@ impl<T: SimpleType> SupportedType for T {
 }
 
 impl<T: SimpleType> SupportedType for Option<T> {
-    fn resolve() -> FieldType {
-        FieldType::Option(T::resolve())
+    fn resolve() -> ValueType {
+        ValueType::Option(T::resolve())
     }
     fn new(self) -> SRes<Value> {
         Ok(Value::Option(self.map(|v| v.new()).transpose()?))
@@ -187,8 +187,8 @@ impl<T: SimpleType> SupportedType for Option<T> {
 }
 
 impl<T: SimpleType> SupportedType for Option<Vec<T>> {
-    fn resolve() -> FieldType {
-        FieldType::OptionArray(T::resolve())
+    fn resolve() -> ValueType {
+        ValueType::OptionArray(T::resolve())
     }
     fn new(self) -> SRes<Value> {
         Ok(Value::OptionArray(
@@ -199,8 +199,8 @@ impl<T: SimpleType> SupportedType for Option<Vec<T>> {
 }
 
 impl<T: SimpleType> SupportedType for Vec<T> {
-    fn resolve() -> FieldType {
-        FieldType::Array(T::resolve())
+    fn resolve() -> ValueType {
+        ValueType::Array(T::resolve())
     }
     fn new(self) -> SRes<Value> {
         Ok(Value::Array(
@@ -209,36 +209,36 @@ impl<T: SimpleType> SupportedType for Vec<T> {
     }
 }
 
-impl FieldType {
-    pub fn resolve<T: SupportedType>() -> FieldType {
+impl ValueType {
+    pub fn resolve<T: SupportedType>() -> ValueType {
         T::resolve()
     }
 
-    fn read(read: &mut dyn Read) -> SRes<FieldType> {
+    fn read(read: &mut dyn Read) -> SRes<ValueType> {
         let t = u8::read(read)?;
         Ok(match t {
-            1 => FieldType::Value(FieldValueType::read(read)?),
-            2 => FieldType::Option(FieldValueType::read(read)?),
-            3 => FieldType::Array(FieldValueType::read(read)?),
-            4 => FieldType::OptionArray(FieldValueType::read(read)?),
+            1 => ValueType::Value(SimpleValueType::read(read)?),
+            2 => ValueType::Option(SimpleValueType::read(read)?),
+            3 => ValueType::Array(SimpleValueType::read(read)?),
+            4 => ValueType::OptionArray(SimpleValueType::read(read)?),
             _ => panic!("invalid value"),
         })
     }
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
         match self {
-            FieldType::Value(t) => {
+            ValueType::Value(t) => {
                 u8::write(&1, write)?;
                 t.write(write)?;
             }
-            FieldType::Option(t) => {
+            ValueType::Option(t) => {
                 u8::write(&2, write)?;
                 t.write(write)?;
             }
-            FieldType::Array(t) => {
+            ValueType::Array(t) => {
                 u8::write(&3, write)?;
                 t.write(write)?;
             }
-            FieldType::OptionArray(t) => {
+            ValueType::OptionArray(t) => {
                 u8::write(&4, write)?;
                 t.write(write)?;
             }
@@ -247,10 +247,10 @@ impl FieldType {
     }
     fn remap_refer(&mut self, new: &str, old: &str) -> bool {
         match self {
-            FieldType::Array(ref mut t) => t.remap_refer(new, old),
-            FieldType::Option(ref mut t) => t.remap_refer(new, old),
-            FieldType::OptionArray(ref mut t) => t.remap_refer(new, old),
-            FieldType::Value(ref mut t) => t.remap_refer(new, old),
+            ValueType::Array(ref mut t) => t.remap_refer(new, old),
+            ValueType::Option(ref mut t) => t.remap_refer(new, old),
+            ValueType::OptionArray(ref mut t) => t.remap_refer(new, old),
+            ValueType::Value(ref mut t) => t.remap_refer(new, old),
         }
     }
 }
@@ -260,7 +260,7 @@ impl FieldType {
 pub struct FieldDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
-    pub(crate) field_type: FieldType,
+    pub(crate) field_type: ValueType,
     pub(crate) indexed: Option<ValueMode>,
 }
 
@@ -269,14 +269,14 @@ impl FieldDescription {
         FieldDescription {
             position,
             name: name.to_string(),
-            field_type: FieldType::resolve::<T>(),
+            field_type: ValueType::resolve::<T>(),
             indexed,
         }
     }
     fn read(read: &mut dyn Read) -> SRes<FieldDescription> {
         let position = u32::read(read)?;
         let name = String::read(read)?;
-        let field_type = FieldType::read(read)?;
+        let field_type = ValueType::read(read)?;
         let indexed_value = u8::read(read)?;
         let indexed = match indexed_value {
             0 => None,
@@ -317,7 +317,7 @@ impl FieldDescription {
         self.position
     }
 
-    pub fn field_type(&self) -> &FieldType {
+    pub fn field_type(&self) -> &ValueType {
         &self.field_type
     }
 
@@ -482,7 +482,7 @@ impl StructDescription {
 pub struct VariantDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
-    pub(crate) ty: Option<FieldType>,
+    pub(crate) ty: Option<ValueType>,
 }
 
 impl VariantDescription {
@@ -497,7 +497,7 @@ impl VariantDescription {
         Self {
             name: name.to_string(),
             position,
-            ty: Some(FieldType::resolve::<T>()),
+            ty: Some(ValueType::resolve::<T>()),
         }
     }
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
@@ -515,7 +515,7 @@ impl VariantDescription {
         let name = String::read(read)?;
         let position = u32::read(read)?;
         let ty = if bool::read(read)? {
-            Some(FieldType::read(read)?)
+            Some(ValueType::read(read)?)
         } else {
             None
         };
@@ -537,7 +537,7 @@ impl VariantDescription {
         self.position
     }
 
-    pub fn value_type(&self) -> &Option<FieldType> {
+    pub fn value_type(&self) -> &Option<ValueType> {
         &self.ty
     }
 }

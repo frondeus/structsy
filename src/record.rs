@@ -1,6 +1,6 @@
 use crate::{
     desc::{
-        Description, EnumDescription, FieldDescription, FieldType, FieldValueType, StructDescription, SupportedType,
+        Description, EnumDescription, FieldDescription, SimpleValueType, StructDescription, SupportedType, ValueType,
         VariantDescription,
     },
     error::SRes,
@@ -278,7 +278,7 @@ pub struct FieldValue {
     pub(crate) position: u32,
     pub(crate) name: String,
     pub(crate) value: Value,
-    pub(crate) value_type: FieldType,
+    pub(crate) value_type: ValueType,
     pub(crate) indexed: Option<ValueMode>,
 }
 impl FieldValue {
@@ -329,17 +329,17 @@ impl Value {
         value.new()
     }
 
-    fn read(read: &mut dyn Read, field_type: &FieldType) -> SRes<Value> {
+    fn read(read: &mut dyn Read, field_type: &ValueType) -> SRes<Value> {
         Ok(match field_type {
-            FieldType::Value(t) => Value::Value(SimpleValue::read(read, t)?),
-            FieldType::Option(t) => {
+            ValueType::Value(t) => Value::Value(SimpleValue::read(read, t)?),
+            ValueType::Option(t) => {
                 if u8::read(read)? == 1 {
                     Value::Option(Some(SimpleValue::read(read, t)?))
                 } else {
                     Value::Option(None)
                 }
             }
-            FieldType::Array(t) => {
+            ValueType::Array(t) => {
                 let len = u32::read(read)?;
                 let mut v = Vec::new();
                 for _ in 0..len {
@@ -347,7 +347,7 @@ impl Value {
                 }
                 Value::Array(v)
             }
-            FieldType::OptionArray(t) => {
+            ValueType::OptionArray(t) => {
                 if u8::read(read)? == 1 {
                     let len = u32::read(read)?;
                     let mut v = Vec::new();
@@ -362,18 +362,18 @@ impl Value {
         })
     }
 
-    fn write(&self, write: &mut dyn Write, field_type: &FieldType) -> SRes<()> {
+    fn write(&self, write: &mut dyn Write, field_type: &ValueType) -> SRes<()> {
         Ok(match self {
             Value::Value(v) => {
                 let vt = match field_type {
-                    FieldType::Value(vt) => vt,
+                    ValueType::Value(vt) => vt,
                     _ => panic!("desc do not match field type"),
                 };
                 v.write(write, vt)?;
             }
             Value::Option(v) => {
                 let vt = match field_type {
-                    FieldType::Option(vt) => vt,
+                    ValueType::Option(vt) => vt,
                     _ => panic!("desc do not match field type"),
                 };
                 if let Some(sv) = v {
@@ -385,7 +385,7 @@ impl Value {
             }
             Value::Array(v) => {
                 let vt = match field_type {
-                    FieldType::Array(vt) => vt,
+                    ValueType::Array(vt) => vt,
                     _ => panic!("desc do not match field type"),
                 };
                 u32::write(&(v.len() as u32), write)?;
@@ -395,7 +395,7 @@ impl Value {
             }
             Value::OptionArray(v) => {
                 let vt = match field_type {
-                    FieldType::OptionArray(vt) => vt,
+                    ValueType::OptionArray(vt) => vt,
                     _ => panic!("desc do not match field type"),
                 };
                 if let Some(sv) = v {
@@ -488,8 +488,8 @@ pub enum SimpleValue {
 }
 
 impl SimpleValue {
-    fn read(read: &mut dyn Read, value_type: &FieldValueType) -> SRes<SimpleValue> {
-        use crate::desc::FieldValueType::*;
+    fn read(read: &mut dyn Read, value_type: &SimpleValueType) -> SRes<SimpleValue> {
+        use crate::desc::SimpleValueType::*;
         Ok(match value_type {
             U8 => SimpleValue::U8(u8::read(read)?),
             U16 => SimpleValue::U16(u16::read(read)?),
@@ -509,7 +509,7 @@ impl SimpleValue {
             Embedded(desc) => SimpleValue::Embedded(Record::read(read, &desc)?),
         })
     }
-    fn write(&self, write: &mut dyn Write, value_type: &FieldValueType) -> SRes<()> {
+    fn write(&self, write: &mut dyn Write, value_type: &SimpleValueType) -> SRes<()> {
         Ok(match self {
             SimpleValue::U8(v) => u8::write(v, write)?,
             SimpleValue::U16(v) => u16::write(v, write)?,
@@ -534,7 +534,7 @@ impl SimpleValue {
             }
             SimpleValue::Embedded(v) => {
                 let desc = match value_type {
-                    FieldValueType::Embedded(desc) => desc,
+                    SimpleValueType::Embedded(desc) => desc,
                     _ => panic!("type do not mach desc"),
                 };
                 v.write(write, &desc)?;
