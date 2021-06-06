@@ -10,6 +10,53 @@ use persy::{PersyId, ValueMode};
 use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 
+pub struct StructDescriptionBuilder {
+    desc: StructDescription,
+}
+impl StructDescriptionBuilder {
+    pub fn new(name: &str) -> Self {
+        Self {
+            desc: StructDescription {
+                name: name.to_string(),
+                fields: Vec::new(),
+            },
+        }
+    }
+    pub fn add_field(mut self, position: u32, name: String, field_type: ValueType, indexed: Option<ValueMode>) -> Self {
+        let field = FieldDescription {
+            position,
+            name: name.to_owned(),
+            field_type,
+            indexed,
+        };
+        self.desc.fields.push(field);
+        self
+    }
+}
+
+pub struct EnumDescriptionBuilder {
+    en: EnumDescription,
+}
+impl EnumDescriptionBuilder {
+    pub fn new(name: &str) -> Self {
+        EnumDescriptionBuilder {
+            en: EnumDescription {
+                name: name.to_owned(),
+                variants: Vec::new(),
+            },
+        }
+    }
+    pub fn add_variant(mut self, position: u32, name: &str, value_type: Option<ValueType>) -> Self {
+        let var = VariantDescription {
+            position,
+            name: name.to_owned(),
+            ty: value_type,
+        };
+        self.en.variants.push(var);
+        self
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum SimpleValueType {
     U8,

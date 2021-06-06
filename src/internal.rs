@@ -2,7 +2,10 @@
 //!
 //!
 //!
-pub use crate::desc::{Description, EnumDescription, FieldDescription, StructDescription, VariantDescription};
+pub use crate::desc::{
+    Description, EnumDescription, EnumDescriptionBuilder, FieldDescription, StructDescription,
+    StructDescriptionBuilder, VariantDescription,
+};
 pub use crate::embedded_filter::EmbeddedFilterBuilder;
 pub use crate::filter::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
