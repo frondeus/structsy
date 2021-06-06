@@ -10,6 +10,126 @@ use crate::{
 use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Read, Write};
 
+pub struct StructBuilder {
+    desc: StructDescription,
+    fields: Vec<FieldValue>,
+}
+
+impl StructBuilder {
+    pub fn new(desc: Description) -> SRes<Self> {
+        let desc = match desc {
+            Description::Struct(desc) => desc,
+            _ => return Err(StructsyError::TypeError("Expected a struct definition".to_owned())),
+        };
+        Ok(Self {
+            desc,
+            fields: Vec::new(),
+        })
+    }
+    pub fn add_field<T: SupportedType>(mut self, name: &str, value: T) -> SRes<Self> {
+        let found = self.desc.fields().filter(|field| field.name == name).next().clone();
+        if let Some(field) = found {
+            if field.field_type == T::resolve() {
+                let fv = FieldValue {
+                    position: field.position(),
+                    name: field.name().to_owned(),
+                    value_type: field.field_type().clone(),
+                    value: value.new()?,
+                    indexed: field.indexed().clone(),
+                };
+                self.fields.push(fv);
+                Ok(self)
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'{:?}' do not match expected type:'{:?}'",
+                    T::resolve(),
+                    field.field_type
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "field with name '{}' not found",
+                name
+            )))
+        }
+    }
+
+    pub fn finish(self) -> SRes<Record> {
+        if self.desc.fields().count() != self.fields.len() {
+            return Err(StructsyError::ValueChangeError("Missing fields".to_owned()));
+        }
+        Ok(Record::Struct(StructRecord {
+            struct_name: self.desc.get_name(),
+            fields: self.fields,
+        }))
+    }
+}
+pub struct EnumBuilder {
+    desc: EnumDescription,
+    variant: Option<Box<VariantValue>>,
+}
+impl EnumBuilder {
+    pub fn new(desc: Description) -> SRes<Self> {
+        let desc = match desc {
+            Description::Enum(desc) => desc,
+            _ => return Err(StructsyError::TypeError("Expected a enum definition".to_owned())),
+        };
+        Ok(Self { desc, variant: None })
+    }
+
+    pub fn set_value_variant<T: SupportedType>(&mut self, name: &str, val: T) -> SRes<()> {
+        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+            if v.value_type() == &Some(T::resolve()) {
+                self.variant = Some(Box::new(VariantValue::new(&v, Some(val.new()?))));
+                Ok(())
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'{:?}' do not match expected type:'{:?}'",
+                    T::resolve(),
+                    v.value_type()
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "variant with name '{}' not found",
+                name
+            )))
+        }
+    }
+
+    pub fn set_simple_variant(&mut self, name: &str) -> SRes<()> {
+        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+            if v.value_type() == &None {
+                self.variant = Some(Box::new(VariantValue::new(&v, None)));
+                Ok(())
+            } else {
+                Err(StructsyError::ValueChangeError(format!(
+                    "value type:'None' do not match expected type:'{:?}'",
+                    v.value_type()
+                )))
+            }
+        } else {
+            Err(StructsyError::ValueChangeError(format!(
+                "variant with name '{}' not found",
+                name
+            )))
+        }
+    }
+
+    pub fn finish(self) -> SRes<Record> {
+        if self.variant.is_none() {
+            return Err(StructsyError::ValueChangeError(
+                "Requited to set the variant".to_owned(),
+            ));
+        }
+        Ok(Record::Enum(EnumRecord {
+            name: self.desc.get_name(),
+            variant: self.variant.unwrap(),
+            desc: self.desc,
+        }))
+    }
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum Record {
     Struct(StructRecord),
