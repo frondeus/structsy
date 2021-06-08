@@ -3,12 +3,15 @@ use crate::{
     internal::{EmbeddedDescription, Persistent},
     record::{Record, SimpleValue, Value},
     structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
-    Ref, SRes, StructsyTx, Sytx,
+    Ref, SRes, StructsyError, StructsyTx, Sytx,
 };
 use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
-use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
+use std::{
+    io::{Cursor, Read, Write},
+    str::FromStr,
+};
 
 pub struct StructDescriptionBuilder {
     desc: StructDescription,
@@ -157,6 +160,87 @@ impl SimpleValueType {
         }
     }
 }
+impl std::fmt::Display for ValueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueType::Value(s) => write!(f, "Value<{}>", s),
+            ValueType::Option(v) => write!(f, "Option<{}>", v),
+            ValueType::Array(v) => write!(f, "Array<{}>", v),
+            ValueType::OptionArray(v) => write!(f, "OptionArray<{}>", v),
+        }
+    }
+}
+impl std::fmt::Display for SimpleValueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimpleValueType::U8 => write!(f, "U8"),
+            SimpleValueType::U16 => write!(f, "U16"),
+            SimpleValueType::U32 => write!(f, "U32"),
+            SimpleValueType::U64 => write!(f, "U64"),
+            SimpleValueType::U128 => write!(f, "U128"),
+            SimpleValueType::I8 => write!(f, "I8"),
+            SimpleValueType::I16 => write!(f, "I16"),
+            SimpleValueType::I32 => write!(f, "I32"),
+            SimpleValueType::I64 => write!(f, "I63"),
+            SimpleValueType::I128 => write!(f, "I128"),
+            SimpleValueType::F32 => write!(f, "F32"),
+            SimpleValueType::F64 => write!(f, "F64"),
+            SimpleValueType::Bool => write!(f, "Bool"),
+            SimpleValueType::String => write!(f, "String"),
+            SimpleValueType::Ref(t) => write!(f, "Ref#{}", t),
+            SimpleValueType::Embedded(t) => write!(f, "Embedded#{}", t.get_name()),
+        }
+    }
+}
+
+impl FromStr for SimpleValueType {
+    type Err = StructsyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "U8" => SimpleValueType::U8,
+            "U16" => SimpleValueType::U16,
+            "U32" => SimpleValueType::U32,
+            "U64" => SimpleValueType::U64,
+            "U128" => SimpleValueType::U128,
+            "I8" => SimpleValueType::I8,
+            "I16" => SimpleValueType::I16,
+            "I32" => SimpleValueType::I32,
+            "I63" => SimpleValueType::I64,
+            "I128" => SimpleValueType::I128,
+            "F32" => SimpleValueType::F32,
+            "F64" => SimpleValueType::F64,
+            "Bool" => SimpleValueType::Bool,
+            "String" => SimpleValueType::String,
+            _ => {
+                let mut sp = s.split('#');
+                let b = sp.next();
+                let v = sp.next();
+                match (b, v) {
+                    (Some("Ref"), Some(val)) => SimpleValueType::Ref(val.to_owned()),
+                    (Some("Embedded"), Some(val)) => todo!("need refactor"),
+                    _ => return Err(StructsyError::TypeError(format!("error parsing : {}", s))),
+                }
+            }
+        })
+    }
+}
+
+impl FromStr for ValueType {
+    type Err = StructsyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.split("<>");
+        let base = split.next();
+        let ty = split.next();
+        Ok(match (base, ty) {
+            (Some("Value"), Some(t)) => ValueType::Value(t.parse()?),
+            (Some("Option"), Some(t)) => ValueType::Option(t.parse()?),
+            (Some("Array"), Some(t)) => ValueType::Array(t.parse()?),
+            (Some("OptionArray"), Some(t)) => ValueType::OptionArray(t.parse()?),
+            _ => return Err(StructsyError::TypeError(format!("error parsing : {}", s))),
+        })
+    }
+}
+
 pub trait SupportedType {
     fn resolve() -> ValueType;
     fn new(self) -> SRes<Value>;
@@ -165,6 +249,7 @@ pub trait SimpleType {
     fn resolve() -> SimpleValueType;
     fn new(self) -> SRes<SimpleValue>;
 }
+
 macro_rules! impl_field_type {
     ($t:ident,$v1:ident) => {
         impl SimpleType for $t {
