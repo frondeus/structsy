@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use structsy::{
+    internal::{SimpleValueTypeBuilder, StructDescriptionBuilder, ValueTypeBuilder},
     record::{Record, SimpleValue, Value},
     RawAccess, SRes, Structsy, StructsyTx,
 };
@@ -221,6 +222,27 @@ fn test_raw_read_update_field() {
             }
         }
         assert_eq!(value, vec!["ccc"]);
+        Ok(())
+    });
+}
+
+#[test]
+fn test_description_mapping() {
+    structsy_inst("scan_raw_read_update", |db| {
+        db.define::<Basic>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&Basic::new("aaa"))?;
+        tx.commit()?;
+
+        let od = db.list_defined()?.filter(|d| d.get_name() == "Basic").next().unwrap();
+
+        let mut desc_builder = StructDescriptionBuilder::new(&od.get_name());
+        let field_type = ValueTypeBuilder::simple(SimpleValueTypeBuilder::from_name("String").build()).build();
+        let indexed = None;
+        desc_builder = desc_builder.add_field(0, "name".to_owned(), field_type, indexed);
+
+        assert_eq!(od, desc_builder.build());
+
         Ok(())
     });
 }

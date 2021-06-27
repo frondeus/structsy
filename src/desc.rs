@@ -3,15 +3,12 @@ use crate::{
     internal::{EmbeddedDescription, Persistent},
     record::{Record, SimpleValue, Value},
     structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
-    Ref, SRes, StructsyError, StructsyTx, Sytx,
+    Ref, SRes, StructsyTx, Sytx,
 };
 use data_encoding::BASE32_DNSSEC;
 use persy::{PersyId, ValueMode};
+use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
-use std::{
-    io::{Cursor, Read, Write},
-    str::FromStr,
-};
 
 pub struct StructDescriptionBuilder {
     desc: StructDescription,
@@ -35,6 +32,10 @@ impl StructDescriptionBuilder {
         self.desc.fields.push(field);
         self
     }
+
+    pub fn build(self) -> Description {
+        Description::Struct(self.desc)
+    }
 }
 
 pub struct EnumDescriptionBuilder {
@@ -57,6 +58,85 @@ impl EnumDescriptionBuilder {
         };
         self.en.variants.push(var);
         self
+    }
+}
+
+pub struct ValueTypeBuilder {
+    t: Option<ValueType>,
+}
+
+impl ValueTypeBuilder {
+    pub fn simple(st: SimpleValueType) -> Self {
+        Self {
+            t: Some(ValueType::Value(st)),
+        }
+    }
+    pub fn option(st: SimpleValueType) -> Self {
+        Self {
+            t: Some(ValueType::Option(st)),
+        }
+    }
+    pub fn array(st: SimpleValueType) -> Self {
+        Self {
+            t: Some(ValueType::Array(st)),
+        }
+    }
+    pub fn option_array(st: SimpleValueType) -> Self {
+        Self {
+            t: Some(ValueType::OptionArray(st)),
+        }
+    }
+    pub fn build(self) -> ValueType {
+        self.t.expect("expect a type")
+    }
+}
+
+pub struct SimpleValueTypeBuilder {
+    t: Option<SimpleValueType>,
+}
+
+impl SimpleValueTypeBuilder {
+    pub fn from_name(name: &str) -> Self {
+        Self {
+            t: Some(match name {
+                "U8" => SimpleValueType::U8,
+                "U16" => SimpleValueType::U16,
+                "U32" => SimpleValueType::U32,
+                "U64" => SimpleValueType::U64,
+                "U128" => SimpleValueType::U128,
+                "I8" => SimpleValueType::I8,
+                "I16" => SimpleValueType::I16,
+                "I32" => SimpleValueType::I32,
+                "I63" => SimpleValueType::I64,
+                "I128" => SimpleValueType::I128,
+                "F32" => SimpleValueType::F32,
+                "F64" => SimpleValueType::F64,
+                "Bool" => SimpleValueType::Bool,
+                "String" => SimpleValueType::String,
+                _ => {
+                    if name.starts_with("Ref") {
+                        panic!("use ref method for reference case");
+                    }
+                    if name.starts_with("Embedded") {
+                        panic!("use ref method for ref case");
+                    }
+                    panic!("no type found with name {}", name);
+                }
+            }),
+        }
+    }
+    pub fn embedded(desc: Description) -> Self {
+        Self {
+            t: Some(SimpleValueType::Embedded(desc)),
+        }
+    }
+    pub fn reference(name: String) -> Self {
+        Self {
+            t: Some(SimpleValueType::Ref(name)),
+        }
+    }
+    pub fn build(self) -> SimpleValueType {
+        self.t.expect("there is a type")
     }
 }
 
@@ -193,58 +273,11 @@ impl std::fmt::Display for SimpleValueType {
     }
 }
 
-impl FromStr for SimpleValueType {
-    type Err = StructsyError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "U8" => SimpleValueType::U8,
-            "U16" => SimpleValueType::U16,
-            "U32" => SimpleValueType::U32,
-            "U64" => SimpleValueType::U64,
-            "U128" => SimpleValueType::U128,
-            "I8" => SimpleValueType::I8,
-            "I16" => SimpleValueType::I16,
-            "I32" => SimpleValueType::I32,
-            "I63" => SimpleValueType::I64,
-            "I128" => SimpleValueType::I128,
-            "F32" => SimpleValueType::F32,
-            "F64" => SimpleValueType::F64,
-            "Bool" => SimpleValueType::Bool,
-            "String" => SimpleValueType::String,
-            _ => {
-                let mut sp = s.split('#');
-                let b = sp.next();
-                let v = sp.next();
-                match (b, v) {
-                    (Some("Ref"), Some(val)) => SimpleValueType::Ref(val.to_owned()),
-                    (Some("Embedded"), Some(val)) => todo!("need refactor"),
-                    _ => return Err(StructsyError::TypeError(format!("error parsing : {}", s))),
-                }
-            }
-        })
-    }
-}
-
-impl FromStr for ValueType {
-    type Err = StructsyError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.split("<>");
-        let base = split.next();
-        let ty = split.next();
-        Ok(match (base, ty) {
-            (Some("Value"), Some(t)) => ValueType::Value(t.parse()?),
-            (Some("Option"), Some(t)) => ValueType::Option(t.parse()?),
-            (Some("Array"), Some(t)) => ValueType::Array(t.parse()?),
-            (Some("OptionArray"), Some(t)) => ValueType::OptionArray(t.parse()?),
-            _ => return Err(StructsyError::TypeError(format!("error parsing : {}", s))),
-        })
-    }
-}
-
 pub trait SupportedType {
     fn resolve() -> ValueType;
     fn new(self) -> SRes<Value>;
 }
+
 pub trait SimpleType {
     fn resolve() -> SimpleValueType;
     fn new(self) -> SRes<SimpleValue>;
