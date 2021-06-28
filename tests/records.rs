@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
 use structsy::{
-    internal::{SimpleValueTypeBuilder, StructDescriptionBuilder, ValueTypeBuilder},
+    internal::{EnumDescriptionBuilder, SimpleValueTypeBuilder, StructDescriptionBuilder, ValueTypeBuilder},
     record::{Record, SimpleValue, Value},
     RawAccess, SRes, Structsy, StructsyTx,
 };
-use structsy_derive::Persistent;
+use structsy_derive::{Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
@@ -228,18 +228,55 @@ fn test_raw_read_update_field() {
 
 #[test]
 fn test_description_mapping() {
-    structsy_inst("scan_raw_read_update", |db| {
+    structsy_inst("description_mapping", |db| {
         db.define::<Basic>()?;
-        let mut tx = db.begin()?;
-        tx.insert(&Basic::new("aaa"))?;
-        tx.commit()?;
 
         let od = db.list_defined()?.filter(|d| d.get_name() == "Basic").next().unwrap();
 
-        let mut desc_builder = StructDescriptionBuilder::new(&od.get_name());
+        let mut desc_builder = StructDescriptionBuilder::new("Basic");
         let field_type = ValueTypeBuilder::simple(SimpleValueTypeBuilder::from_name("String").build()).build();
         let indexed = None;
         desc_builder = desc_builder.add_field(0, "name".to_owned(), field_type, indexed);
+
+        assert_eq!(od, desc_builder.build());
+
+        Ok(())
+    });
+}
+
+#[derive(Persistent)]
+enum ToMap {
+    Variant,
+    SecondVariant(String),
+    ThirdVariant(Emb),
+}
+
+#[derive(PersistentEmbedded)]
+struct Emb {
+    name: String,
+}
+
+#[test]
+fn test_description_mapping_enum() {
+    structsy_inst("enum_description", |db| {
+        db.define::<ToMap>()?;
+
+        let od = db.list_defined()?.filter(|d| d.get_name() == "ToMap").next().unwrap();
+
+        let mut desc_builder = EnumDescriptionBuilder::new("ToMap");
+        let field_type = ValueTypeBuilder::simple(SimpleValueTypeBuilder::from_name("String").build()).build();
+        desc_builder = desc_builder.add_variant(0, "Variant", None);
+        desc_builder = desc_builder.add_variant(1, "SecondVariant", Some(field_type));
+        let emb = StructDescriptionBuilder::new("Emb")
+            .add_field(
+                0,
+                "name".to_owned(),
+                ValueTypeBuilder::simple(SimpleValueTypeBuilder::from_name("String").build()).build(),
+                None,
+            )
+            .build();
+        let field_type = ValueTypeBuilder::simple(SimpleValueTypeBuilder::embedded(emb).build()).build();
+        desc_builder = desc_builder.add_variant(2, "ThirdVariant", Some(field_type));
 
         assert_eq!(od, desc_builder.build());
 

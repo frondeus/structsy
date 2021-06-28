@@ -59,6 +59,10 @@ impl EnumDescriptionBuilder {
         self.en.variants.push(var);
         self
     }
+
+    pub fn build(self) -> Description {
+        Description::Enum(self.en)
+    }
 }
 
 pub struct ValueTypeBuilder {
