@@ -267,6 +267,13 @@ impl StructsyImpl {
     pub fn undefine<T: Persistent>(&self) -> SRes<()> {
         let int_def = self.definitions.drop_defined::<T>()?;
         let mut tx = self.persy.begin()?;
+        if let Description::Struct(s) = &int_def.desc {
+            for field in &s.fields {
+                if field.indexed.is_some() {
+                    tx.drop_index(&format!("{}.{}", s.get_name(), field.name))?;
+                }
+            }
+        }
         tx.delete(INTERNAL_SEGMENT_NAME, &int_def.id)?;
         tx.drop_segment(&int_def.info().segment_name())?;
         tx.prepare()?.commit()?;
