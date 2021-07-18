@@ -17,8 +17,8 @@ generate_test_data:
   only:
     changes:
       - Cargo.toml
-      - src/**/*
-      - tests/**/*
+      - */Cargo.toml
+      - structsy/**/*
       - structsy-derive/**/*
       - benches/**/*
       - examples/**/*
@@ -32,7 +32,7 @@ coverage_report:
   stage: "coverage_report"
   script:
     - ls target/debug/deps/ || echo "notfound"
-    - for file in $(ls -1 target/debug/deps/ | grep "-" | grep -v "\.");
+    - for file in $(ls -1 target/debug/deps/ | grep "-" | grep -v "\." | grep -v "derive");
         do
           mkdir -p "target/cov/$(basename $file)";
           kcov --exclude-pattern=/.cargo,/usr/lib
@@ -46,8 +46,8 @@ coverage_report:
   only:
     changes:
       - Cargo.toml
-      - src/**/*
-      - tests/**/*
+      - */Cargo.toml
+      - structsy/**/*
       - structsy-derive/**/*
 
 upload_report:
@@ -59,6 +59,6 @@ upload_report:
   only:
     changes:
       - Cargo.toml
-      - src/**/*
-      - tests/**/*
+      - */Cargo.toml
+      - structsy/**/*
       - structsy-derive/**/*
