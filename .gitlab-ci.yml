@@ -17,7 +17,7 @@ generate_test_data:
   only:
     changes:
       - Cargo.toml
-      - */Cargo.toml
+      - ./*/Cargo.toml
       - structsy/**/*
       - structsy-derive/**/*
       - benches/**/*
@@ -46,7 +46,7 @@ coverage_report:
   only:
     changes:
       - Cargo.toml
-      - */Cargo.toml
+      - ./*/Cargo.toml
       - structsy/**/*
       - structsy-derive/**/*
 
@@ -59,6 +59,6 @@ upload_report:
   only:
     changes:
       - Cargo.toml
-      - */Cargo.toml
+      - ./*/Cargo.toml
       - structsy/**/*
       - structsy-derive/**/*
