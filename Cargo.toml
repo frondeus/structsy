@@ -1,2 +1,2 @@
 [workspace]
-members=["structsy", "structsy-derive"]
+members=["structsy", "structsy-derive", "structsy_tools"]
