@@ -449,9 +449,9 @@ impl FieldDescription {
         let indexed_value = u8::read(read)?;
         let indexed = match indexed_value {
             0 => None,
-            1 => Some(ValueMode::CLUSTER),
-            2 => Some(ValueMode::EXCLUSIVE),
-            3 => Some(ValueMode::REPLACE),
+            1 => Some(ValueMode::Cluster),
+            2 => Some(ValueMode::Exclusive),
+            3 => Some(ValueMode::Replace),
             _ => panic!("index type reading failure"),
         };
         Ok(FieldDescription {
@@ -467,9 +467,9 @@ impl FieldDescription {
         self.field_type.write(write)?;
         match self.indexed {
             None => u8::write(&0, write)?,
-            Some(ValueMode::CLUSTER) => u8::write(&1, write)?,
-            Some(ValueMode::EXCLUSIVE) => u8::write(&2, write)?,
-            Some(ValueMode::REPLACE) => u8::write(&3, write)?,
+            Some(ValueMode::Cluster) => u8::write(&1, write)?,
+            Some(ValueMode::Exclusive) => u8::write(&2, write)?,
+            Some(ValueMode::Replace) => u8::write(&3, write)?,
         }
         Ok(())
     }

@@ -1,4 +1,4 @@
-use persy::PersyError;
+use persy::{PersyError,PE};
 use std::fmt::{Display, Formatter};
 use std::{error::Error, io::Error as IOError, sync::PoisonError};
 
@@ -15,9 +15,9 @@ pub enum StructsyError {
     TypeError(String),
 }
 
-impl From<PersyError> for StructsyError {
-    fn from(err: PersyError) -> StructsyError {
-        StructsyError::PersyError(err)
+impl<T:Into<PersyError>> From<PE<T>> for StructsyError {
+    fn from(err: PE<T>) -> StructsyError {
+        StructsyError::PersyError(err.error().into())
     }
 }
 impl<T> From<PoisonError<T>> for StructsyError {

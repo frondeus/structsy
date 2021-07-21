@@ -540,13 +540,13 @@ fn translate_option_mode(mode: &Option<IndexMode>) -> TokenStream {
 fn translate_mode(mode: &IndexMode) -> TokenStream {
     match mode {
         IndexMode::Cluster => quote! {
-            structsy::ValueMode::CLUSTER
+            structsy::ValueMode::Cluster
         },
         IndexMode::Exclusive => quote! {
-            structsy::ValueMode::EXCLUSIVE
+            structsy::ValueMode::Exclusive
         },
         IndexMode::Replace => quote! {
-            structsy::ValueMode::REPLACE
+            structsy::ValueMode::Replace
         },
     }
 }

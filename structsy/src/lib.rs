@@ -524,7 +524,7 @@ mod test {
         }
         fn get_description() -> Description {
             let fields: [FieldDescription; 2] = [
-                FieldDescription::new::<String>(0, "name", Some(ValueMode::CLUSTER)),
+                FieldDescription::new::<String>(0, "name", Some(ValueMode::Cluster)),
                 FieldDescription::new::<u32>(1, "length", None),
             ];
             Description::Struct(StructDescription::new("ToTest", &fields))
@@ -548,7 +548,7 @@ mod test {
 
         fn declare(tx: &mut dyn Sytx) -> SRes<()> {
             use super::internal::declare_index;
-            declare_index::<String>(tx, "ToTest.name", ValueMode::EXCLUSIVE)?;
+            declare_index::<String>(tx, "ToTest.name", ValueMode::Exclusive)?;
             Ok(())
         }
         fn put_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()> {

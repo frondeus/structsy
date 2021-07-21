@@ -1,6 +1,6 @@
 use crate::transaction::TxIterator;
 use crate::{structsy::tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
-use persy::{IndexType, PersyId, Transaction, Value, ValueMode};
+use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -79,7 +79,7 @@ fn remove_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &
     Ok(())
 }
 
-fn map_unique_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Option<(Ref<P>, P)> {
+fn map_unique_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Option<(Ref<P>, P)> {
     if let Some(id) = entry.into_iter().next() {
         let r = Ref::new(id);
         if let Ok(val) = db.read(&r) {
@@ -92,7 +92,7 @@ fn map_unique_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Opti
     }
 }
 
-fn map_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
+fn map_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
     entry
         .into_iter()
         .filter_map(|id| {
@@ -109,7 +109,7 @@ fn map_entry<P: Persistent>(db: &Structsy, entry: Value<PersyId>) -> Vec<(Ref<P>
 fn map_unique_entry_tx<P: Persistent>(
     tx: &mut Transaction,
     st: &StructsyImpl,
-    entry: Value<PersyId>,
+    entry: ValueIter<PersyId>,
 ) -> Option<(Ref<P>, P)> {
     let info = st.check_defined::<P>().expect("already checked here");
     if let Some(id) = entry.into_iter().next() {
@@ -124,7 +124,7 @@ fn map_unique_entry_tx<P: Persistent>(
     }
 }
 
-fn map_entry_tx<P: Persistent>(tx: &mut Transaction, st: &StructsyImpl, entry: Value<PersyId>) -> Vec<(Ref<P>, P)> {
+fn map_entry_tx<P: Persistent>(tx: &mut Transaction, st: &StructsyImpl, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
     let info = st.check_defined::<P>().expect("already checked here");
     entry
         .into_iter()
@@ -140,11 +140,8 @@ fn map_entry_tx<P: Persistent>(tx: &mut Transaction, st: &StructsyImpl, entry: V
 }
 
 pub fn find_unique<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    if let Some(id_container) = db.structsy_impl.persy.get::<K, PersyId>(name, k)? {
-        Ok(map_unique_entry(db, id_container))
-    } else {
-        Ok(None)
-    }
+    let id_container = db.structsy_impl.persy.get::<K, PersyId>(name, k)?;
+    Ok(map_unique_entry(db, id_container))
 }
 
 pub fn find_unique_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
@@ -164,11 +161,8 @@ pub fn find_unique_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 }
 
 pub fn find<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    if let Some(e) = db.structsy_impl.persy.get::<K, PersyId>(name, k)? {
-        Ok(map_entry(db, e))
-    } else {
-        Ok(Vec::new())
-    }
+    let e = db.structsy_impl.persy.get::<K, PersyId>(name, k)?;
+    Ok(map_entry(db, e))
 }
 
 pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
@@ -181,30 +175,24 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
         .structsy_impl
         .persy
         .range::<K, PersyId, R>(name, range)?
-        .map(move |e| {
-            map_entry(&db1, e.1.clone())
+        .map(move |(key, value)| {
+            map_entry(&db1, value)
                 .into_iter()
-                .map(move |(id, val)| (id, val, e.0.clone()))
+                .map(move |(id, val)| (id, val, key.clone()))
         })
         .flatten())
 }
 
 pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    if let Some(id_container) = db.tx().trans.get::<K, PersyId>(name, k)? {
-        let st = db.structsy().structsy_impl;
-        Ok(map_unique_entry_tx(&mut db.tx().trans, &st, id_container))
-    } else {
-        Ok(None)
-    }
+    let id_container = db.tx().trans.get::<K, PersyId>(name, k)? ;
+    let st = db.structsy().structsy_impl;
+    Ok(map_unique_entry_tx(&mut db.tx().trans, &st, id_container))
 }
 
 pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    if let Some(e) = db.tx().trans.get::<K, PersyId>(name, k)? {
-        let st = db.structsy().structsy_impl;
-        Ok(map_entry_tx(&mut db.tx().trans, &st, e))
-    } else {
-        Ok(Vec::new())
-    }
+    let e = db.tx().trans.get::<K, PersyId>(name, k)?;
+    let st = db.structsy().structsy_impl;
+    Ok(map_entry_tx(&mut db.tx().trans, &st, e))
 }
 
 /// Iterator implementation for Range of indexed persistent types

@@ -13,7 +13,7 @@ maintenance = { status = "actively-developed" }
 gitlab = { repository = "tglman/structsy", branch = "master" }
 
 [dependencies]
-persy = "0.11"
+persy = {git="https://gitlab.com/tglman/persy.git", branch="master"}
 byteorder ="1.3"
 rand= "0.8"
 data-encoding = "2.1"
