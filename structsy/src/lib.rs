@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 mod desc;
 mod format;
-use desc::InternalDescription;
+use desc::{Description, InternalDescription};
 mod index;
 pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
@@ -496,6 +496,7 @@ pub enum Order {
 }
 
 pub trait RawAccess {
+    fn raw_define(&self, desc: Description) -> SRes<bool>;
     fn raw_scan(&self, ty_name: &str) -> SRes<RawIter>;
     fn raw_read(&self, id: &str) -> SRes<Option<Record>>;
     fn raw_begin(&self) -> SRes<RawTransaction>;

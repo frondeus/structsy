@@ -53,11 +53,10 @@ impl Definitions {
         Ok(lock.contains_key(T::get_name()))
     }
 
-    pub fn define<T: Persistent, F>(&self, create: F) -> SRes<bool>
+    pub fn define_raw<F>(&self, desc: Description, create: F) -> SRes<bool>
     where
         F: Fn(Description) -> SRes<InternalDescription>,
     {
-        let desc = T::get_description();
         let mut lock = self.definitions.lock()?;
         match lock.entry(desc.get_name()) {
             Entry::Occupied(x) => {
@@ -72,6 +71,13 @@ impl Definitions {
                 Ok(true)
             }
         }
+    }
+
+    pub fn define<T: Persistent, F>(&self, create: F) -> SRes<bool>
+    where
+        F: Fn(Description) -> SRes<InternalDescription>,
+    {
+        self.define_raw(T::get_description(), create)
     }
 
     pub fn drop_defined<T: Persistent>(&self) -> SRes<InternalDescription> {
@@ -339,6 +345,12 @@ impl RawAccess for Structsy {
             tx: self.structsy_impl.persy.begin()?,
             structsy_impl: self.structsy_impl.clone(),
         })
+    }
+
+    fn raw_define(&self, desc: Description) -> SRes<bool> {
+        self.structsy_impl
+            .definitions
+            .define_raw::<_>(desc, |desc| InternalDescription::create_raw(desc, &self.structsy_impl))
     }
 }
 

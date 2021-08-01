@@ -3,10 +3,10 @@ use crate::{
     internal::{EmbeddedDescription, Persistent},
     record::{Record, SimpleValue, Value},
     structsy::{StructsyImpl, INTERNAL_SEGMENT_NAME},
-    Ref, SRes, StructsyTx, Sytx,
+    OwnedSytx, Ref, SRes, StructsyTx, Sytx,
 };
 use data_encoding::BASE32_DNSSEC;
-use persy::{PersyId, ValueMode};
+use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 
@@ -229,6 +229,35 @@ impl SimpleValueType {
         Ok(())
     }
 
+    pub(crate) fn create_index(
+        &self,
+        tx: &mut persy::Transaction,
+        type_name: &str,
+        name: &str,
+        value_mode: ValueMode,
+    ) -> SRes<()> {
+        Ok(match self {
+            SimpleValueType::U8 => create_index::<u8>(tx, type_name, name, value_mode)?,
+            SimpleValueType::U16 => create_index::<u16>(tx, type_name, name, value_mode)?,
+            SimpleValueType::U32 => create_index::<u32>(tx, type_name, name, value_mode)?,
+            SimpleValueType::U64 => create_index::<u64>(tx, type_name, name, value_mode)?,
+            SimpleValueType::U128 => create_index::<u128>(tx, type_name, name, value_mode)?,
+            SimpleValueType::I8 => create_index::<i8>(tx, type_name, name, value_mode)?,
+            SimpleValueType::I16 => create_index::<i16>(tx, type_name, name, value_mode)?,
+            SimpleValueType::I32 => create_index::<i32>(tx, type_name, name, value_mode)?,
+            SimpleValueType::I64 => create_index::<i64>(tx, type_name, name, value_mode)?,
+            SimpleValueType::I128 => create_index::<i128>(tx, type_name, name, value_mode)?,
+            SimpleValueType::F32 => create_index::<f32>(tx, type_name, name, value_mode)?,
+            SimpleValueType::F64 => create_index::<f64>(tx, type_name, name, value_mode)?,
+            SimpleValueType::Bool => (),
+            SimpleValueType::String => create_index::<String>(tx, type_name, name, value_mode)?,
+            SimpleValueType::Ref(_) => {
+                create_index::<PersyId>(tx, type_name, name, value_mode)?;
+            }
+            SimpleValueType::Embedded(_v) => (),
+        })
+    }
+
     fn remap_refer(&mut self, old: &str, new: &str) -> bool {
         match self {
             SimpleValueType::Ref(ref mut t) => {
@@ -243,6 +272,11 @@ impl SimpleValueType {
             _ => false,
         }
     }
+}
+
+fn create_index<T: IndexType>(tx: &mut Transaction, type_name: &str, name: &str, value_mode: ValueMode) -> SRes<()> {
+    tx.create_index::<T, PersyId>(&format!("{}.{}", type_name, name), value_mode)?;
+    Ok(())
 }
 impl std::fmt::Display for ValueType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -422,6 +456,21 @@ impl ValueType {
             ValueType::Value(ref mut t) => t.remap_refer(new, old),
         }
     }
+
+    pub(crate) fn create_index(
+        &self,
+        tx: &mut persy::Transaction,
+        type_name: &str,
+        name: &str,
+        value_mode: ValueMode,
+    ) -> SRes<()> {
+        match self {
+            ValueType::Value(t) => t.create_index(tx, type_name, name, value_mode),
+            ValueType::Option(t) => t.create_index(tx, type_name, name, value_mode),
+            ValueType::Array(t) => t.create_index(tx, type_name, name, value_mode),
+            ValueType::OptionArray(t) => t.create_index(tx, type_name, name, value_mode),
+        }
+    }
 }
 
 /// Field metadata for internal use
@@ -493,6 +542,13 @@ impl FieldDescription {
     pub fn indexed(&self) -> &Option<ValueMode> {
         &self.indexed
     }
+
+    pub(crate) fn create_index(&self, tx: &mut Transaction, type_name: &str) -> SRes<()> {
+        if let Some(t) = &self.indexed {
+            self.field_type.create_index(tx, type_name, &self.name, t.clone())?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -535,7 +591,11 @@ impl InternalDescription {
         })
     }
 
-    pub(crate) fn create<T: Persistent>(desc: Description, structsy: &Arc<StructsyImpl>) -> SRes<InternalDescription> {
+    pub(crate) fn int_create(
+        desc: Description,
+        structsy: &Arc<StructsyImpl>,
+        define: impl Fn(&mut OwnedSytx) -> SRes<()>,
+    ) -> SRes<InternalDescription> {
         let rnd = rand::random::<u32>();
         let segment_name = format!("{}_{}", BASE32_DNSSEC.encode(&rnd.to_be_bytes()), desc.get_name());
         let mut buff = Vec::new();
@@ -545,7 +605,7 @@ impl InternalDescription {
         let mut tx = structsy.begin()?;
         let id = tx.trans.insert(INTERNAL_SEGMENT_NAME, &buff)?;
         tx.trans.create_segment(&segment_name)?;
-        T::declare(&mut tx)?;
+        define(&mut tx)?;
         tx.commit()?;
         Ok(InternalDescription {
             desc,
@@ -554,6 +614,15 @@ impl InternalDescription {
             segment_name,
             migration_started: false,
         })
+    }
+
+    pub(crate) fn create_raw(desc: Description, structsy: &Arc<StructsyImpl>) -> SRes<InternalDescription> {
+        let dc = desc.clone();
+        Self::int_create(desc, structsy, move |tx| dc.raw_define(&mut tx.trans))
+    }
+
+    pub(crate) fn create<T: Persistent>(desc: Description, structsy: &Arc<StructsyImpl>) -> SRes<InternalDescription> {
+        Self::int_create(desc, structsy, move |tx| T::declare(tx))
     }
 
     pub(crate) fn start_migration(&mut self) {
@@ -644,6 +713,13 @@ impl StructDescription {
 
     pub fn fields(&self) -> impl std::iter::Iterator<Item = &FieldDescription> {
         self.fields.iter()
+    }
+
+    pub(crate) fn raw_define(&self, tx: &mut Transaction) -> SRes<()> {
+        for field in &self.fields {
+            field.create_index(tx, &self.name)?;
+        }
+        Ok(())
     }
 }
 
@@ -762,6 +838,10 @@ impl EnumDescription {
     pub fn variant(&self, pos: usize) -> &VariantDescription {
         &self.variants[pos]
     }
+
+    pub(crate) fn raw_define(&self, _tx: &mut Transaction) -> SRes<()> {
+        Ok(())
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -805,5 +885,12 @@ impl Description {
             2u8 => Description::Enum(EnumDescription::read(read)?),
             _ => panic!("wrong description serialization"),
         })
+    }
+
+    pub(crate) fn raw_define(&self, tx: &mut Transaction) -> SRes<()> {
+        match self {
+            Description::Struct(s) => s.raw_define(tx),
+            Description::Enum(e) => e.raw_define(tx),
+        }
     }
 }

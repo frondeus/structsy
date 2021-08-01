@@ -184,7 +184,7 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 }
 
 pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    let id_container = db.tx().trans.get::<K, PersyId>(name, k)? ;
+    let id_container = db.tx().trans.get::<K, PersyId>(name, k)?;
     let st = db.structsy().structsy_impl;
     Ok(map_unique_entry_tx(&mut db.tx().trans, &st, id_container))
 }

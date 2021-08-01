@@ -661,6 +661,7 @@ impl SimpleValue {
             }
         })
     }
+
     pub(crate) fn put_index(&self, tx: &mut persy::Transaction, type_name: &str, name: &str, id: &PersyId) -> SRes<()> {
         Ok(match self {
             SimpleValue::U8(v) => put_index(tx, type_name, name, v, id)?,
