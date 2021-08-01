@@ -37,3 +37,41 @@ pub fn import(structsy: &Structsy, iter: impl Iterator<Item = Data>) -> Result<(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use structsy_derive::{queries, Persistent};
+
+    use super::{export, import};
+    use structsy::{Structsy, StructsyTx};
+    #[derive(Persistent)]
+    struct Simple {
+        #[index(mode = "cluster")]
+        name: String,
+        size: u32,
+    }
+
+    #[queries(Simple)]
+    trait SimpleQueries {
+        fn by_name(self, name: &str) -> Self;
+    }
+
+    #[test]
+    fn simple_export_import() {
+        let db = Structsy::memory().unwrap();
+        db.define::<Simple>().unwrap();
+        let mut tx = db.begin().unwrap();
+        tx.insert(&Simple {
+            name: "first".to_owned(),
+            size: 10,
+        })
+        .unwrap();
+        tx.commit().unwrap();
+
+        let loaded = Structsy::memory().unwrap();
+        let data = export(&db).unwrap();
+        import(&loaded, data).unwrap();
+
+        assert_eq!(loaded.query::<Simple>().by_name("first").into_iter().count(), 1);
+    }
+}

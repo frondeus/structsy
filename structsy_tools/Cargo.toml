@@ -5,3 +5,6 @@ edition = "2018"
 
 [dependencies]
 structsy = { path="../structsy/" }
+
+[dev-dependencies]
+structsy-derive = {path="../structsy-derive"}
