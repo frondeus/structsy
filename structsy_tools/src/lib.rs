@@ -2,6 +2,7 @@ use structsy::internal::Description;
 use structsy::record::Record;
 use structsy::{RawAccess, Structsy, StructsyError};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Data {
     Definition(Description),
     Record(Record),

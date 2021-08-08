@@ -131,6 +131,7 @@ impl EnumBuilder {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Record {
     Struct(StructRecord),
     Enum(EnumRecord),
@@ -194,6 +195,7 @@ impl Record {
 
 /// Struct metadata for internal use
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StructRecord {
     pub(crate) struct_name: String,
     pub(crate) fields: Vec<FieldValue>,
@@ -273,6 +275,7 @@ impl StructRecord {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EnumRecord {
     pub(crate) name: String,
     pub(crate) variant: Box<VariantValue>,
@@ -351,6 +354,7 @@ impl EnumRecord {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VariantValue {
     pub(crate) position: u32,
     pub(crate) name: String,
@@ -394,11 +398,19 @@ impl VariantValue {
 
 /// Field metadata for internal use
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FieldValue {
     pub(crate) position: u32,
     pub(crate) name: String,
     pub(crate) value: Value,
     pub(crate) value_type: ValueType,
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "crate::desc::value_mode_serialize",
+            deserialize_with = "crate::desc::value_mode_deserialize"
+        )
+    )]
     pub(crate) indexed: Option<ValueMode>,
 }
 impl FieldValue {
@@ -438,6 +450,7 @@ impl FieldValue {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Value {
     Value(SimpleValue),
     Option(Option<SimpleValue>),
@@ -588,6 +601,7 @@ impl Value {
 }
 
 #[derive(PartialEq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SimpleValue {
     U8(u8),
     U16(u16),

@@ -145,6 +145,7 @@ impl SimpleValueTypeBuilder {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SimpleValueType {
     U8,
     U16,
@@ -165,6 +166,7 @@ pub enum SimpleValueType {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ValueType {
     Value(SimpleValueType),
     Option(SimpleValueType),
@@ -472,13 +474,53 @@ impl ValueType {
         }
     }
 }
+#[cfg(feature = "serde")]
+pub(crate) fn value_mode_serialize<S: serde::Serializer>(
+    value: &Option<ValueMode>,
+    serilizer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(val) = value {
+        let mode = match val {
+            ValueMode::Replace => "replace",
+            ValueMode::Cluster => "cluster",
+            ValueMode::Exclusive => "exclusive",
+        };
+        serilizer.serialize_some(mode)
+    } else {
+        serilizer.serialize_none()
+    }
+}
+
+#[cfg(feature = "serde")]
+pub(crate) fn value_mode_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ValueMode>, D::Error> {
+    use serde::Deserialize;
+    let value = Option::<String>::deserialize(deserializer)?;
+    if let Some(v) = value {
+        let mode = match v.as_str() {
+            "replace" => ValueMode::Replace,
+            "cluster" => ValueMode::Cluster,
+            "exclusive" => ValueMode::Exclusive,
+            _ => return Err(format!("Value Mode '{}' does not exists", v)).map_err(serde::de::Error::custom),
+        };
+        Ok(Some(mode))
+    } else {
+        Ok(None)
+    }
+}
 
 /// Field metadata for internal use
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FieldDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
     pub(crate) field_type: ValueType,
+    #[cfg_attr(
+        feature = "serde",
+        serde(serialize_with = "value_mode_serialize", deserialize_with = "value_mode_deserialize")
+    )]
     pub(crate) indexed: Option<ValueMode>,
 }
 
@@ -663,6 +705,7 @@ impl InternalDescription {
 
 /// Struct metadata for internal use
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StructDescription {
     pub(crate) name: String,
     pub(crate) fields: Vec<FieldDescription>,
@@ -724,6 +767,7 @@ impl StructDescription {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VariantDescription {
     pub(crate) position: u32,
     pub(crate) name: String,
@@ -788,6 +832,7 @@ impl VariantDescription {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EnumDescription {
     pub(crate) name: String,
     pub(crate) variants: Vec<VariantDescription>,
@@ -845,6 +890,7 @@ impl EnumDescription {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Description {
     Struct(StructDescription),
     Enum(EnumDescription),
