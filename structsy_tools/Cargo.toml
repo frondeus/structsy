@@ -3,6 +3,9 @@ name = "structsy_tools"
 version = "0.1.0"
 edition = "2018"
 
+[badges]
+gitlab = { repository = "tglman/structsy", branch = "master" }
+
 [dependencies]
 structsy = { path="../structsy/" }
 serde = {version = "1.0", features=["derive"], optional=true}
