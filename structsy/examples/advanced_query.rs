@@ -41,15 +41,17 @@ fn main() -> Result<(), StructsyError> {
         .into_iter();
     let (_id, data) = iter.next().unwrap();
     assert_eq!(data.address, to_find);
-    let to_find_moved = to_find.clone();
     let mut iter = db
         .query::<MyData>()
         .or(move |or| {
-            or.search_name_and_address("Structsy", &to_find_moved)
-                .search_name_and_address("Persy", "https:://gitlab.com/tglman/persy")
+            // This as today is adding all the conditions in OR, it may change in future
+            or.search_name_and_address("Structsy", "https://gitlab.com/tglman/structsy")
+                .search_name_and_address("Persy", "https://gitlab.com/tglman/persy")
         })
         .into_iter();
     let (_id, data) = iter.next().unwrap();
     assert_eq!(data.address, to_find);
+    let (_id, data) = iter.next().unwrap();
+    assert_eq!(data.address, "https://gitlab.com/tglman/persy");
     Ok(())
 }
