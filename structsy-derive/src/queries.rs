@@ -155,7 +155,7 @@ fn check_method(s: &Signature, target_type: &str) {
     }
 }
 
-fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2::TokenStream> {
+fn impl_trait_methods(item: TraitItem, target_type: &str, embedded: bool) -> Option<proc_macro2::TokenStream> {
     if let TraitItem::Method(m) = item {
         if m.default.is_some() {
             None
@@ -163,6 +163,13 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             check_method(&m.sig, target_type);
             let type_ident = Ident::new(target_type, Span::call_site());
             let fields = extract_fields(&m.sig);
+            let conditions_count = fields
+                .iter()
+                .filter(|f| match f {
+                    Operation::Order(_) => false,
+                    _ => true,
+                })
+                .count();
             let conditions = fields.into_iter().map(|f| match f {
                 Operation::Order(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
@@ -175,21 +182,21 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
-                        structsy::internal::EqualAction::equal((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
+                        structsy::internal::EqualAction::equal((#type_ident::#field_access_ident(), filter.filter_builder()), #par_ident);
                     }
                 }
                 Operation::Range(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
-                        structsy::internal::RangeAction::range((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
+                        structsy::internal::RangeAction::range((#type_ident::#field_access_ident(), filter.filter_builder()), #par_ident);
                     }
                 }
                 Operation::Query(f) => {
                     let par_ident = Ident::new(&f, Span::call_site());
                     let field_access_ident = Ident::new(&format!("field_{}",f), Span::call_site());
                     quote! {
-                        structsy::internal::QueryAction::query((#type_ident::#field_access_ident(), self.filter_builder()), #par_ident);
+                        structsy::internal::QueryAction::query((#type_ident::#field_access_ident(), filter.filter_builder()), #par_ident);
                     }
                 }
             });
@@ -197,12 +204,37 @@ fn impl_trait_methods(item: TraitItem, target_type: &str) -> Option<proc_macro2:
             if let Some(f) = sign.inputs.first_mut() {
                 *f = syn::parse_str::<FnArg>("mut self").expect("mut self parse correctly");
             }
-            Some(quote! {
-                #sign {
-                    #( #conditions)*
-                    self
+            if conditions_count > 1 {
+                if embedded {
+                    Some(quote! {
+                        #sign {
+                            use structsy::internal::EmbeddedQuery;
+                            let mut filter = structsy::Filter::<#type_ident>::new();
+                            #( #conditions)*
+                            self.add_group(filter);
+                            self
+                        }
+                    })
+                } else {
+                    Some(quote! {
+                        #sign {
+                            use structsy::internal::Query;
+                            let mut filter = structsy::Filter::<#type_ident>::new();
+                            #( #conditions)*
+                            self.add_group(filter);
+                            self
+                        }
+                    })
                 }
-            })
+            } else {
+                Some(quote! {
+                    #sign {
+                        let filter = &mut self;
+                        #( #conditions)*
+                        self
+                    }
+                })
+            }
         }
     } else {
         panic!("support only methods in a trait");
@@ -225,7 +257,7 @@ pub fn persistent_queries(parsed: Item, args: AttributeArgs, embedded: bool) -> 
         Item::Trait(tr) => {
             name = tr.ident.clone();
             for iten in tr.items {
-                if let Some(meth_impl) = impl_trait_methods(iten, &expeted_type) {
+                if let Some(meth_impl) = impl_trait_methods(iten, &expeted_type, embedded) {
                     methods.push(meth_impl);
                 }
             }

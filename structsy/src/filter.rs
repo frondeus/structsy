@@ -1362,6 +1362,13 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(AndFilter::new(filters.filter()))
     }
 
+    pub fn and_filter(&mut self, mut filters: FilterBuilder<T>) {
+        for order in filters.order.order.drain(..) {
+            self.order.order.push(order);
+        }
+        self.add(AndFilter::new(filters));
+    }
+
     pub fn not(&mut self, filters: StructsyFilter<T>) {
         self.add(NotFilter::new(filters.filter()))
     }

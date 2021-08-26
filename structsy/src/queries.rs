@@ -131,19 +131,28 @@ pub trait Operators<F> {
     fn not<FN: Fn(F) -> F>(self, builder: FN) -> Self;
 }
 
-pub trait EmbeddedQuery<T: PersistentEmbedded + 'static>: Sized {
+pub trait EmbeddedQuery<T: PersistentEmbedded + FilterDefinition + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T>;
+    fn add_group(&mut self, filter: Filter<T>);
 }
 
 #[allow(deprecated)]
-impl<T: PersistentEmbedded + 'static> EmbeddedQuery<T> for EmbeddedFilter<T> {
+impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for EmbeddedFilter<T> {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.builder
     }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and(filter.extract_filter());
+    }
 }
-impl<T: EmbeddedDescription + 'static> EmbeddedQuery<T> for Filter<T> {
+impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.filter_builder
+    }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and(filter.extract_filter());
     }
 }
 
@@ -164,7 +173,7 @@ impl<T: 'static> EmbeddedFilter<T> {
 }
 
 #[allow(deprecated)]
-impl<T: PersistentEmbedded + 'static, Q: EmbeddedQuery<T>> Operators<EmbeddedFilter<T>> for Q {
+impl<T: PersistentEmbedded + FilterDefinition + 'static, Q: EmbeddedQuery<T>> Operators<EmbeddedFilter<T>> for Q {
     fn or<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(EmbeddedFilter::<T>::new()).filter());
         self
@@ -350,11 +359,16 @@ impl<T: Persistent + 'static> Query<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.filter_builder
     }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and_filter(filter.extract_filter());
+    }
 }
 
 /// Base trait for all the query types
 pub trait Query<T: Persistent + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
+    fn add_group(&mut self, filter: Filter<T>);
 }
 /// Query for a persistent struct
 ///
@@ -397,6 +411,10 @@ pub struct StructsyQuery<T: Persistent + 'static> {
 impl<T: Persistent + 'static> Query<T> for StructsyQuery<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
+    }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and_filter(filter.extract_filter());
     }
 }
 impl<T: Persistent + 'static> StructsyQuery<T> {
@@ -477,6 +495,10 @@ pub struct StructsyQueryTx<'a, T: Persistent + 'static> {
 impl<'a, T: Persistent + 'static> Query<T> for StructsyQueryTx<'a, T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
+    }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and_filter(filter.extract_filter());
     }
 }
 impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
@@ -574,6 +596,10 @@ impl<T: Persistent + 'static> StructsyFilter<T> {
 impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
+    }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and_filter(filter.extract_filter());
     }
 }
 
