@@ -30,58 +30,6 @@ impl<'a, T> Iterator for StructsyIter<'a, T> {
     }
 }
 
-/// Filter for an embedded structure
-///
-/// # Example
-/// ```
-/// use structsy::{ Structsy, StructsyTx, StructsyError, EmbeddedFilter};
-/// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
-///
-/// #[derive(Persistent)]
-/// struct WithEmbedded {
-///     embedded: Embedded,
-/// }
-///
-/// #[derive(PersistentEmbedded)]
-/// struct Embedded {
-///     name: String,
-/// }
-/// impl WithEmbedded {
-///     fn new(name: &str) -> WithEmbedded {
-///         WithEmbedded {
-///             embedded: Embedded { name: name.to_string() },
-///         }
-///     }
-/// }
-///
-/// #[queries(WithEmbedded)]
-/// trait WithEmbeddedQuery {
-///     fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> Self;
-/// }
-///
-/// #[embedded_queries(Embedded)]
-/// trait EmbeddedQuery {
-///     fn by_name(self, name: String) -> Self;
-/// }
-///
-/// fn embedded_query() -> Result<(), StructsyError> {
-///     let structsy = Structsy::open("file.structsy")?;
-///     structsy.define::<WithEmbedded>()?;
-///     let mut tx = structsy.begin()?;
-///     tx.insert(&WithEmbedded::new("aaa"))?;
-///     tx.commit()?;
-///     let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string());
-///     let count = structsy.query::<WithEmbedded>().embedded(embedded_filter).into_iter().count();
-///     assert_eq!(count, 1);
-///     Ok(())
-/// }
-/// ```
-///
-#[deprecated(since = "0.3.0", note = "please use Filter instead")]
-pub struct EmbeddedFilter<T> {
-    pub(crate) builder: EmbeddedFilterBuilder<T>,
-}
-
 /// And/Or/Not Operators
 /// # Example
 /// ```
@@ -136,16 +84,6 @@ pub trait EmbeddedQuery<T: PersistentEmbedded + FilterDefinition + 'static>: Siz
     fn add_group(&mut self, filter: Filter<T>);
 }
 
-#[allow(deprecated)]
-impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for EmbeddedFilter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
-        &mut self.builder
-    }
-    fn add_group(&mut self, filter: Filter<T>) {
-        let base = self.filter_builder();
-        base.and(filter.extract_filter());
-    }
-}
 impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
         &mut self.filter_builder
@@ -153,38 +91,6 @@ impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for F
     fn add_group(&mut self, filter: Filter<T>) {
         let base = self.filter_builder();
         base.and(filter.extract_filter());
-    }
-}
-
-#[allow(deprecated)]
-impl<T: 'static> EmbeddedFilter<T> {
-    pub fn new() -> EmbeddedFilter<T> {
-        EmbeddedFilter {
-            builder: EmbeddedFilterBuilder::new(),
-        }
-    }
-
-    pub(crate) fn filter(self) -> EmbeddedFilterBuilder<T> {
-        self.builder
-    }
-    pub fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
-        &mut self.builder
-    }
-}
-
-#[allow(deprecated)]
-impl<T: PersistentEmbedded + FilterDefinition + 'static, Q: EmbeddedQuery<T>> Operators<EmbeddedFilter<T>> for Q {
-    fn or<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().or(builder(EmbeddedFilter::<T>::new()).filter());
-        self
-    }
-    fn and<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().and(builder(EmbeddedFilter::<T>::new()).filter());
-        self
-    }
-    fn not<FN: Fn(EmbeddedFilter<T>) -> EmbeddedFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().not(builder(EmbeddedFilter::<T>::new()).filter());
-        self
     }
 }
 
@@ -199,6 +105,21 @@ impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
     }
     fn not<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().not(builder(StructsyFilter::<T>::new()));
+        self
+    }
+}
+
+impl<T: EmbeddedDescription + FilterDefinition + 'static, Q: EmbeddedQuery<T>> Operators<Filter<T>> for Q {
+    fn or<FN: Fn(Filter<T>) -> Filter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder().or(builder(Filter::<T>::new()).extract_filter());
+        self
+    }
+    fn and<FN: Fn(Filter<T>) -> Filter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder().and(builder(Filter::<T>::new()).extract_filter());
+        self
+    }
+    fn not<FN: Fn(Filter<T>) -> Filter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder().not(builder(Filter::<T>::new()).extract_filter());
         self
     }
 }
@@ -797,17 +718,6 @@ where
     }
 }
 
-#[allow(deprecated)]
-impl<T: 'static, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: PersistentEmbedded + 'static,
-{
-    #[inline]
-    fn query(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value.filter());
-    }
-}
-
 impl<T: 'static, V> QueryAction<Filter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
     V: EmbeddedDescription + 'static,
@@ -851,17 +761,6 @@ where
     }
 }
 
-#[allow(deprecated)]
-impl<T, V> QueryAction<EmbeddedFilter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
-where
-    T: Persistent + 'static,
-    V: PersistentEmbedded + 'static,
-{
-    #[inline]
-    fn query(self, value: EmbeddedFilter<V>) {
-        self.1.simple_persistent_embedded(self.0, value.filter());
-    }
-}
 impl<T, V> QueryAction<Filter<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,

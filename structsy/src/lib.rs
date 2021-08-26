@@ -48,8 +48,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
-#[allow(deprecated)]
-pub use crate::queries::{EmbeddedFilter, Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
+pub use crate::queries::{Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
@@ -477,14 +476,6 @@ impl Structsy {
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
         self.structsy_impl.list_defined()
-    }
-
-    #[deprecated(since = "0.3.0", note = "Please use Filter instead")]
-    #[allow(deprecated)]
-    pub fn embedded_filter<T: PersistentEmbedded + 'static>() -> EmbeddedFilter<T> {
-        EmbeddedFilter {
-            builder: embedded_filter::EmbeddedFilterBuilder::new(),
-        }
     }
 }
 

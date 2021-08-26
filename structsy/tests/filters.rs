@@ -1,7 +1,7 @@
 #[allow(deprecated)]
 use structsy::{
     internal::{EmbeddedFilterBuilder, EqualAction, FilterBuilder, QueryAction, RangeAction},
-    EmbeddedFilter, Filter, Ref,
+    Filter, Ref,
 };
 use structsy_derive::{Persistent, PersistentEmbedded};
 
@@ -99,11 +99,6 @@ fn test_condition_filter_builder() {
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     RangeAction::range((PersistentData::field_test_ref(), &mut builder), first..second);
 
-    #[allow(deprecated)]
-    QueryAction::query(
-        (PersistentData::field_test_embedded(), &mut builder),
-        EmbeddedFilter::<EmbeddedData>::new(),
-    );
     QueryAction::query(
         (PersistentData::field_test_embedded(), &mut builder),
         Filter::<EmbeddedData>::new(),
@@ -205,11 +200,6 @@ fn test_embeddd_condition_filter_builder() {
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     RangeAction::range((EmbeddedData::field_test_ref(), &mut builder), first..second);
 
-    #[allow(deprecated)]
-    QueryAction::query(
-        (EmbeddedData::field_test_other_embedded(), &mut builder),
-        EmbeddedFilter::<OtherEmbedded>::new(),
-    );
     QueryAction::query(
         (EmbeddedData::field_test_other_embedded(), &mut builder),
         Filter::<OtherEmbedded>::new(),

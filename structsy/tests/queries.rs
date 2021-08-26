@@ -1,6 +1,5 @@
 use std::ops::RangeBounds;
-#[allow(deprecated)]
-use structsy::{EmbeddedFilter, Filter, Operators, SRes, Structsy, StructsyTx};
+use structsy::{Filter, Operators, SRes, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 
@@ -644,15 +643,11 @@ impl RootEmbedded {
 
 #[embedded_queries(NestedEmbedded)]
 trait NestedEmbeddedQuery {
-    #[allow(deprecated)]
-    fn embedded(self, embedded: EmbeddedFilter<Embedded>) -> Self;
     fn filter_embedded(self, embedded: Filter<Embedded>) -> Self;
 }
 
 #[queries(RootEmbedded)]
 trait RootEmbeddedQuery {
-    #[allow(deprecated)]
-    fn embedded(self, nested: EmbeddedFilter<NestedEmbedded>) -> Self;
     fn filter_embedded(self, nested: Filter<NestedEmbedded>) -> Self;
 }
 
@@ -665,16 +660,6 @@ pub fn test_nested_embeeded_query() {
         tx.insert(&RootEmbedded::new("anto"))?;
         tx.insert(&RootEmbedded::new("zzz"))?;
         tx.commit()?;
-        #[allow(deprecated)]
-        let embedded_filter = Structsy::embedded_filter::<Embedded>().by_name("aaa".to_string());
-        #[allow(deprecated)]
-        let nested_embedded_filter = Structsy::embedded_filter::<NestedEmbedded>().embedded(embedded_filter);
-        let count = db
-            .query::<RootEmbedded>()
-            .embedded(nested_embedded_filter)
-            .into_iter()
-            .count();
-        assert_eq!(count, 1);
         let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
         let nested_embedded_filter = Filter::<NestedEmbedded>::new().filter_embedded(embedded_filter);
         let count = db
