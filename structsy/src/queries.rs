@@ -131,11 +131,19 @@ pub struct ProjectionResult<P: Projection<T>, T: FilterDefinition> {
 
 impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResult<P, T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<P> {
+        self.get_results(structsy)
+    }
+
+    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
+        self.get_results_tx(tx)
+    }
+
+    fn get_results(self, structsy: &Structsy) -> StructsyIter<P> {
         let data = self.filter.finish(&structsy);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
-    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
+    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
         let data = self.filter.finish_tx(tx);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
@@ -267,15 +275,24 @@ impl<T: FilterDefinition> Default for Filter<T> {
 
 impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
+        self.get_results(structsy)
+    }
+
+    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
+        self.get_results_tx(tx)
+    }
+
+    fn get_results(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
         let data = self.extract_filter().finish(&structsy);
         StructsyIter::new(data)
     }
 
-    fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
+    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
         let data = self.extract_filter().finish_tx(tx);
         StructsyIter::new(data)
     }
 }
+
 impl<T: Persistent + 'static> Query<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.filter_builder

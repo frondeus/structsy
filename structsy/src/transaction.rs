@@ -53,7 +53,7 @@ impl OwnedSytx {
     }
 
     pub fn into_iter<R: IntoResult<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
-        filter.into_tx(self)
+        filter.get_results_tx(self)
     }
     pub(crate) fn reference(&mut self) -> RefSytx {
         RefSytx {

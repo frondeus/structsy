@@ -174,8 +174,12 @@ impl PrepareOpenStructsy {
 /// Execute a query on structsy or a structsy transaction
 ///
 pub trait IntoResult<T> {
+    #[deprecated]
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
+    fn get_results(self, structsy: &Structsy) -> StructsyIter<T>;
+    #[deprecated]
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
+    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
 }
 
 impl Structsy {
@@ -471,7 +475,7 @@ impl Structsy {
     /// }
     /// ```
     pub fn into_iter<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        filter.into(&self)
+        filter.get_results(&self)
     }
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
