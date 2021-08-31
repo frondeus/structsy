@@ -32,7 +32,7 @@ fn main() -> Result<(), StructsyError> {
     tx.commit()?;
 
     let to_find = "https://gitlab.com/tglman/structsy".to_string();
-    let mut iter = Filter::<MyData>::new().search(to_find.clone()).get_results(&db);
+    let mut iter = Filter::<MyData>::new().search(to_find.clone()).fetch(&db);
     let (_id, data) = iter.next().unwrap();
     assert_eq!(data.address, to_find);
     let mut iter = db

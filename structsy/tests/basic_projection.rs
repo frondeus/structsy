@@ -100,7 +100,7 @@ fn filter_projection() {
         let mut tx = db.begin()?;
         tx.insert(&Laptop::new(10, 10, "Own"))?;
         tx.commit()?;
-        let mut res = db.into_iter(Filter::<Laptop>::new().projection::<WidthProjection>());
+        let mut res = db.fetch(Filter::<Laptop>::new().projection::<WidthProjection>());
         assert_eq!(10, res.next().unwrap().width);
         Ok(())
     });

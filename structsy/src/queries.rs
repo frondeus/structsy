@@ -60,15 +60,15 @@ impl<'a, T> Iterator for StructsyIter<'a, T> {
 ///     tx.commit()?;
 ///     let count = structsy.query::<Basic>().or(|or| {
 ///             or.by_name("aaa".to_string()).by_name("bbb".to_string())
-///         }).into_iter().count();
+///         }).fetch().count();
 ///     assert_eq!(count, 2);
 ///     let count = structsy.query::<Basic>().not(|not| {
 ///             not.by_name("aaa".to_string())
-///         }).into_iter().count();
+///         }).fetch().count();
 ///     assert_eq!(count, 1);
 ///     let count = structsy.query::<Basic>().and(|and| {
 ///             and.by_name("aaa".to_string()).by_name("bbb".to_string())
-///         }).into_iter().count();
+///         }).fetch().count();
 ///     assert_eq!(count, 0);
 ///     Ok(())
 /// }
@@ -131,19 +131,19 @@ pub struct ProjectionResult<P: Projection<T>, T: FilterDefinition> {
 
 impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResult<P, T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<P> {
-        self.get_results(structsy)
+        self.fetch(structsy)
     }
 
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
-        self.get_results_tx(tx)
+        self.fetch_tx(tx)
     }
 
-    fn get_results(self, structsy: &Structsy) -> StructsyIter<P> {
+    fn fetch(self, structsy: &Structsy) -> StructsyIter<P> {
         let data = self.filter.finish(&structsy);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
-    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
+    fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
         let data = self.filter.finish_tx(tx);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
@@ -192,7 +192,7 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResu
 ///     tx.commit()?;
 ///     let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
 ///     let query = Filter::<WithEmbedded>::new().embedded(embedded_filter);
-///     assert_eq!(structsy.into_iter(query).count(), 1);
+///     assert_eq!(structsy.fetch(query).count(), 1);
 ///     Ok(())
 /// }
 /// ```
@@ -255,7 +255,7 @@ impl<T: Persistent> Filter<T> {
     ///     tx.commit()?;
     ///     let query =
     ///     Filter::<Person>::new().by_name("a_name").projection::<NameProjection>();
-    ///     assert_eq!(structsy.into_iter(query).next().unwrap().name, "a_name");
+    ///     assert_eq!(structsy.fetch(query).next().unwrap().name, "a_name");
     ///     Ok(())
     /// }
     /// ```
@@ -275,19 +275,19 @@ impl<T: FilterDefinition> Default for Filter<T> {
 
 impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
-        self.get_results(structsy)
+        self.fetch(structsy)
     }
 
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
-        self.get_results_tx(tx)
+        self.fetch_tx(tx)
     }
 
-    fn get_results(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
+    fn fetch(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
         let data = self.extract_filter().finish(&structsy);
         StructsyIter::new(data)
     }
 
-    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
+    fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
         let data = self.extract_filter().finish_tx(tx);
         StructsyIter::new(data)
     }
@@ -336,7 +336,7 @@ pub trait Query<T: Persistent + 'static>: Sized {
 ///     let mut tx = structsy.begin()?;
 ///     tx.insert(&Basic::new("aaa"))?;
 ///     tx.commit()?;
-///     let count = structsy.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+///     let count = structsy.query::<Basic>().by_name("aaa".to_string()).fetch().count();
 ///     assert_eq!(count, 1);
 ///     Ok(())
 /// }
@@ -366,6 +366,10 @@ impl<T: Persistent + 'static> StructsyQuery<T> {
             phantom: std::marker::PhantomData,
         }
     }
+
+    pub fn fetch(self) -> StructsyIter<'static, (Ref<T>, T)> {
+        StructsyIter::new(self.builder.finish(&self.structsy))
+    }
 }
 
 impl<T: Persistent> IntoIterator for StructsyQuery<T> {
@@ -380,6 +384,13 @@ pub struct ProjectionQuery<P: Projection<T>, T: FilterDefinition> {
     builder: FilterBuilder<T>,
     structsy: Structsy,
     phantom: std::marker::PhantomData<P>,
+}
+
+impl<P: Projection<T>, T: Persistent + 'static> ProjectionQuery<P, T> {
+    pub fn fetch(self) -> StructsyIter<'static, P> {
+        let data = self.builder.finish(&self.structsy);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
 }
 
 impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQuery<P, T> {
@@ -418,7 +429,7 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQuery
 ///     structsy.define::<Basic>()?;
 ///     let mut tx = structsy.begin()?;
 ///     tx.insert(&Basic::new("aaa"))?;
-///     let count = tx.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+///     let count = tx.query::<Basic>().by_name("aaa".to_string()).fetch().count();
 ///     assert_eq!(count, 1);
 ///     tx.commit()?;
 ///     Ok(())
@@ -482,7 +493,7 @@ impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
     ///     tx.insert(&Person::new("a_name", "a_surname"))?;
     ///     tx.commit()?;
     ///     let query = structsy.query::<Person>().by_name("a_name").projection::<NameProjection>();
-    ///     assert_eq!(query.into_iter().next().unwrap().name, "a_name");
+    ///     assert_eq!(query.fetch().next().unwrap().name, "a_name");
     ///     Ok(())
     /// }
     /// ```
@@ -493,11 +504,22 @@ impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
             phantom: std::marker::PhantomData,
         }
     }
+
+    pub fn fetch(self) -> StructsyIter<'a, (Ref<T>, T)> {
+        StructsyIter::new(self.builder.finish_tx(self.tx))
+    }
 }
 pub struct ProjectionQueryTx<'a, P, T> {
     tx: &'a mut OwnedSytx,
     builder: FilterBuilder<T>,
     phantom: std::marker::PhantomData<P>,
+}
+
+impl<'a, P: Projection<T>, T: Persistent + 'static> ProjectionQueryTx<'a, P, T> {
+    pub fn fetch(self) -> StructsyIter<'a, P> {
+        let data = self.builder.finish_tx(self.tx);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
 }
 
 impl<'a, P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQueryTx<'a, P, T> {

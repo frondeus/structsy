@@ -33,10 +33,10 @@ fn basic_order() {
         tx.insert(&Basic::new("bbb"))?;
         tx.insert(&Basic::new("aaa"))?;
         tx.commit()?;
-        let mut iter = db.into_iter(Filter::<Basic>::new().order(Order::Asc));
+        let mut iter = db.fetch(Filter::<Basic>::new().order(Order::Asc));
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         assert_eq!(iter.next().unwrap().1.name, "bbb");
-        let mut iter = db.into_iter(Filter::<Basic>::new().order(Order::Desc));
+        let mut iter = db.fetch(Filter::<Basic>::new().order(Order::Desc));
         assert_eq!(iter.next().unwrap().1.name, "bbb");
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         Ok(())
@@ -82,13 +82,13 @@ fn nested_order() {
         let mut iter = db
             .query::<Parent>()
             .filter_emb(Filter::<Embedded>::new().order_name(Order::Asc))
-            .into_iter();
+            .fetch();
         assert_eq!(iter.next().unwrap().1.emb.name, "aaa");
         assert_eq!(iter.next().unwrap().1.emb.name, "bbb");
         let mut iter = db
             .query::<Parent>()
             .filter_emb(Filter::<Embedded>::new().order_name(Order::Desc))
-            .into_iter();
+            .fetch();
         assert_eq!(iter.next().unwrap().1.emb.name, "bbb");
         assert_eq!(iter.next().unwrap().1.emb.name, "aaa");
         Ok(())
@@ -120,10 +120,10 @@ fn basic_indexed_order() {
         tx.insert(&BasicIndexed::new("bbb"))?;
         tx.insert(&BasicIndexed::new("aaa"))?;
         tx.commit()?;
-        let mut iter = db.into_iter(Filter::<BasicIndexed>::new().order(Order::Asc));
+        let mut iter = db.fetch(Filter::<BasicIndexed>::new().order(Order::Asc));
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         assert_eq!(iter.next().unwrap().1.name, "bbb");
-        let mut iter = db.into_iter(Filter::<BasicIndexed>::new().order(Order::Desc));
+        let mut iter = db.fetch(Filter::<BasicIndexed>::new().order(Order::Desc));
         assert_eq!(iter.next().unwrap().1.name, "bbb");
         assert_eq!(iter.next().unwrap().1.name, "aaa");
         Ok(())

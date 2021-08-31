@@ -36,17 +36,17 @@ pub fn basic_query() {
         let mut tx = db.begin()?;
         tx.insert(&Basic::new("aaa"))?;
         tx.commit()?;
-        let count = db.query::<Basic>().into_iter().count();
+        let count = db.query::<Basic>().fetch().count();
         assert_eq!(count, 1);
-        let count = db.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+        let count = db.query::<Basic>().by_name("aaa".to_string()).fetch().count();
         assert_eq!(count, 1);
-        let count = db.query::<Basic>().by_name_str("aaa").into_iter().count();
+        let count = db.query::<Basic>().by_name_str("aaa").fetch().count();
         assert_eq!(count, 1);
-        let count = db.into_iter(Filter::<Basic>::new()).count();
+        let count = db.fetch(Filter::<Basic>::new()).count();
         assert_eq!(count, 1);
-        let count = db.into_iter(Filter::<Basic>::new().by_name("aaa".to_string())).count();
+        let count = db.fetch(Filter::<Basic>::new().by_name("aaa".to_string())).count();
         assert_eq!(count, 1);
-        let count = db.into_iter(Filter::<Basic>::new().by_name_str("aaa")).count();
+        let count = db.fetch(Filter::<Basic>::new().by_name_str("aaa")).count();
         assert_eq!(count, 1);
         Ok(())
     });
@@ -64,13 +64,13 @@ pub fn basic_range_query() {
         let count = db
             .query::<Basic>()
             .by_range("aaa".to_string().."bbb".to_string())
-            .into_iter()
+            .fetch()
             .count();
         assert_eq!(count, 1);
         let result = db
             .query::<Basic>()
             .by_range("aaa".to_string().."ccc".to_string())
-            .into_iter()
+            .fetch()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].1.name, "aaa".to_string());
@@ -78,7 +78,7 @@ pub fn basic_range_query() {
         let result = db
             .query::<Basic>()
             .by_range("aaa".to_string()..="ccc".to_string())
-            .into_iter()
+            .fetch()
             .collect::<Vec<_>>();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].1.name, "aaa".to_string());

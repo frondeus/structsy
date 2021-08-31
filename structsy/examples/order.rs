@@ -36,14 +36,14 @@ fn main() -> Result<(), StructsyError> {
     let mut iter = Filter::<MyData>::new()
         .search(to_find.clone())
         .order_by_name(Order::Asc)
-        .get_results(&db);
+        .fetch(&db);
     assert_eq!("Persy", iter.next().unwrap().1.name);
     assert_eq!("Structsy", iter.next().unwrap().1.name);
 
     let mut iter = Filter::<MyData>::new()
         .search(to_find.clone())
         .order_by_name(Order::Desc)
-        .get_results(&db);
+        .fetch(&db);
     assert_eq!("Structsy", iter.next().unwrap().1.name);
     assert_eq!("Persy", iter.next().unwrap().1.name);
     Ok(())

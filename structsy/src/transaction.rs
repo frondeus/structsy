@@ -38,7 +38,7 @@ impl OwnedSytx {
     ///     structsy.define::<Basic>()?;
     ///     let mut tx = structsy.begin()?;
     ///     tx.insert(&Basic::new("aaa"))?;
-    ///     let count = tx.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+    ///     let count = tx.query::<Basic>().by_name("aaa".to_string()).fetch().count();
     ///     assert_eq!(count, 1);
     ///     tx.commit()?;
     ///     Ok(())
@@ -53,7 +53,7 @@ impl OwnedSytx {
     }
 
     pub fn into_iter<R: IntoResult<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
-        filter.get_results_tx(self)
+        filter.fetch_tx(self)
     }
     pub(crate) fn reference(&mut self) -> RefSytx {
         RefSytx {

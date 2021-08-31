@@ -100,10 +100,10 @@ impl<T: AsRef<Path>> From<T> for StructsyConfig {
     }
 }
 /// Prepare open of a structsy file, with migrations possibilities
-pub struct PrepareOpenStructsy {
+pub struct PrepareOpen {
     structsy_impl: Arc<StructsyImpl>,
 }
-impl PrepareOpenStructsy {
+impl PrepareOpen {
     /// Migrate an existing persistent struct to a new struct.
     ///
     /// In structsy the name and order of the fields matter for the persistence, so each change
@@ -176,10 +176,10 @@ impl PrepareOpenStructsy {
 pub trait IntoResult<T> {
     #[deprecated]
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
-    fn get_results(self, structsy: &Structsy) -> StructsyIter<T>;
+    fn fetch(self, structsy: &Structsy) -> StructsyIter<T>;
     #[deprecated]
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
-    fn get_results_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
+    fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
 }
 
 impl Structsy {
@@ -202,8 +202,8 @@ impl Structsy {
         c
     }
 
-    pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PrepareOpenStructsy> {
-        Ok(PrepareOpenStructsy {
+    pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PrepareOpen> {
+        Ok(PrepareOpen {
             structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
         })
     }
@@ -414,7 +414,7 @@ impl Structsy {
     ///     let mut tx = structsy.begin()?;
     ///     tx.insert(&Basic::new("aaa"))?;
     ///     tx.commit()?;
-    ///     let count = structsy.query::<Basic>().by_name("aaa".to_string()).into_iter().count();
+    ///     let count = structsy.query::<Basic>().by_name("aaa".to_string()).fetch().count();
     ///     assert_eq!(count, 1);
     ///     Ok(())
     /// }
@@ -469,13 +469,18 @@ impl Structsy {
     ///     tx.commit()?;
     ///     let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
     ///     let filter = Filter::<WithEmbedded>::new().embedded(embedded_filter);
-    ///     let count = structsy.into_iter(filter).count();
+    ///     let count = structsy.fetch(filter).count();
     ///     assert_eq!(count, 1);
     ///     Ok(())
     /// }
     /// ```
+    pub fn fetch<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
+        filter.fetch(&self)
+    }
+
+    #[deprecated]
     pub fn into_iter<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        filter.get_results(&self)
+        filter.fetch(&self)
     }
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
