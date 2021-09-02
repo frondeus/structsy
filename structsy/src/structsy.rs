@@ -354,6 +354,8 @@ impl RawAccess for Structsy {
     }
 }
 
+/// Transaction for save data in a structsy database without the original source
+/// code
 pub struct RawTransaction {
     tx: persy::Transaction,
     structsy_impl: Arc<StructsyImpl>,
@@ -411,7 +413,7 @@ impl RawTransaction {
         })
     }
 }
-
+/// Prepared state of RawTransaction
 pub struct RawPrepare {
     prepared: persy::TransactionFinalize,
 }
@@ -421,6 +423,7 @@ impl RawPrepare {
     }
 }
 
+/// Iterator of raw Records
 pub struct RawIter {
     iter: persy::SegmentIter,
     description: InternalDescription,

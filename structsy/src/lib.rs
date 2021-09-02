@@ -50,7 +50,7 @@ pub use crate::error::{SRes, StructsyError};
 mod queries;
 pub use crate::queries::{Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
-pub use crate::transaction::{OwnedSytx, RefSytx, StructsyTx, Sytx};
+pub use crate::transaction::{OwnedSytx, Prepared, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
 pub mod internal;
 pub use internal::{Persistent, PersistentEmbedded};
@@ -173,7 +173,7 @@ impl PrepareOpen {
 }
 /// Execute a query on structsy or a structsy transaction
 ///
-pub trait IntoResult<T> {
+pub trait Fetch<T> {
     #[deprecated]
     fn into(self, structsy: &Structsy) -> StructsyIter<T>;
     fn fetch(self, structsy: &Structsy) -> StructsyIter<T>;
@@ -182,6 +182,8 @@ pub trait IntoResult<T> {
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
 }
 
+#[deprecated]
+pub trait IntoResult<T>: Fetch<T> {}
 impl Structsy {
     /// Config builder for open and/or create a structsy file.
     ///
@@ -201,7 +203,9 @@ impl Structsy {
         c.create = false;
         c
     }
-
+    /// Prepare the open of a stuctsy file with the possibility to do migrations
+    /// of data of previous structs.
+    ///
     pub fn prepare_open<C: Into<StructsyConfig>>(config: C) -> SRes<PrepareOpen> {
         Ok(PrepareOpen {
             structsy_impl: Arc::new(StructsyImpl::open(config.into())?),
@@ -474,12 +478,12 @@ impl Structsy {
     ///     Ok(())
     /// }
     /// ```
-    pub fn fetch<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
+    pub fn fetch<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
         filter.fetch(&self)
     }
 
     #[deprecated]
-    pub fn into_iter<R: IntoResult<T>, T>(&self, filter: R) -> StructsyIter<T> {
+    pub fn into_iter<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
         filter.fetch(&self)
     }
 
@@ -495,10 +499,15 @@ pub enum Order {
     Desc,
 }
 
+/// Trait for data operations that do not require original structs and enums source code.
 pub trait RawAccess {
+    /// Declare a new struct or enum from the generic description
     fn raw_define(&self, desc: Description) -> SRes<bool>;
+    /// Scan the records of a struct or enum in a raw format
     fn raw_scan(&self, ty_name: &str) -> SRes<RawIter>;
+    /// read a single record in a raw formant from a string id
     fn raw_read(&self, id: &str) -> SRes<Option<Record>>;
+    /// Begin a new raw transaction
     fn raw_begin(&self) -> SRes<RawTransaction>;
 }
 

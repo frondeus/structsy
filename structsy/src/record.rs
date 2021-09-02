@@ -9,7 +9,7 @@ use crate::{
 };
 use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Read, Write};
-
+/// Builder to generate a struct record that then can be persisted
 pub struct StructBuilder {
     desc: StructDescription,
     fields: Vec<FieldValue>,
@@ -64,6 +64,7 @@ impl StructBuilder {
         }))
     }
 }
+/// Builder to generate an enum record that then can be persisted
 pub struct EnumBuilder {
     desc: EnumDescription,
     variant: Option<Box<VariantValue>>,
@@ -130,6 +131,9 @@ impl EnumBuilder {
     }
 }
 
+/// Type Generic structsy record, that can be used to extract data
+/// from a structsy database without the original source code, helpful
+/// also for debug purposes.
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Record {
@@ -193,7 +197,7 @@ impl Record {
     }
 }
 
-/// Struct metadata for internal use
+/// Struct data used for extraction and debug
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StructRecord {
@@ -274,6 +278,7 @@ impl StructRecord {
     }
 }
 
+/// Enum data used for extraction and debug
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EnumRecord {
@@ -396,7 +401,7 @@ impl VariantValue {
     }
 }
 
-/// Field metadata for internal use
+/// Field data used for extraction and debug
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FieldValue {

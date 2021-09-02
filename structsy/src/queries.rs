@@ -1,8 +1,9 @@
+#[allow(deprecated)]
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::{RangeCondition, SimpleCondition},
     internal::{EmbeddedDescription, Field, FilterDefinition, Projection},
-    FilterBuilder, IntoResult, Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
+    Fetch, FilterBuilder, IntoResult, Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
 use std::ops::RangeBounds;
 /// Iterator for query results
@@ -129,7 +130,7 @@ pub struct ProjectionResult<P: Projection<T>, T: FilterDefinition> {
     phantom: std::marker::PhantomData<P>,
 }
 
-impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResult<P, T> {
+impl<P: Projection<T>, T: Persistent + 'static> Fetch<P> for ProjectionResult<P, T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<P> {
         self.fetch(structsy)
     }
@@ -148,6 +149,9 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResu
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
+
+#[allow(deprecated)]
+impl<P: Projection<T>, T: Persistent + 'static> IntoResult<P> for ProjectionResult<P, T> {}
 
 /// Generic filter for any Persistent structures
 ///
@@ -273,7 +277,7 @@ impl<T: FilterDefinition> Default for Filter<T> {
     }
 }
 
-impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
+impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
     fn into(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
         self.fetch(structsy)
     }
@@ -292,6 +296,9 @@ impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {
         StructsyIter::new(data)
     }
 }
+
+#[allow(deprecated)]
+impl<T: Persistent + 'static> IntoResult<(Ref<T>, T)> for Filter<T> {}
 
 impl<T: Persistent + 'static> Query<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {

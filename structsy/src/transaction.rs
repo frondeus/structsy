@@ -1,4 +1,4 @@
-use crate::{FilterBuilder, IntoResult, Persistent, Ref, SRes, StructsyImpl, StructsyIter, StructsyQueryTx};
+use crate::{Fetch, FilterBuilder, Persistent, Ref, SRes, StructsyImpl, StructsyIter, StructsyQueryTx};
 use persy::Transaction;
 use std::{io::Cursor, marker::PhantomData, sync::Arc};
 
@@ -52,7 +52,7 @@ impl OwnedSytx {
         }
     }
 
-    pub fn into_iter<R: IntoResult<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
+    pub fn into_iter<R: Fetch<T>, T>(&mut self, filter: R) -> StructsyIter<T> {
         filter.fetch_tx(self)
     }
     pub(crate) fn reference(&mut self) -> RefSytx {

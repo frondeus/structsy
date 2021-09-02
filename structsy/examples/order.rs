@@ -1,4 +1,4 @@
-use structsy::{Filter, IntoResult, Order, Structsy, StructsyError, StructsyTx};
+use structsy::{Fetch, Filter, Order, Structsy, StructsyError, StructsyTx};
 use structsy_derive::{queries, Persistent};
 
 #[derive(Persistent, Debug, PartialEq)]
