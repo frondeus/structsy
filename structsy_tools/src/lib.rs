@@ -2,12 +2,17 @@ use structsy::internal::Description;
 use structsy::record::Record;
 use structsy::{RawAccess, Structsy, StructsyError};
 
+/// Enum of all possible data types in structsy, use 'serde_integration' to allow
+/// to serialize them with serde
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Data {
     Definition(Description),
     Record(Record),
 }
 
+/// Produce and iterator that allow to iterate all the data in a structsy database
+/// for then write some data on an external target.
+///
 pub fn export(structsy: &Structsy) -> Result<impl Iterator<Item = Data>, StructsyError> {
     let definitions = structsy.list_defined()?.map(|def| Data::Definition(def));
     let st = structsy.clone();
@@ -22,7 +27,8 @@ pub fn export(structsy: &Structsy) -> Result<impl Iterator<Item = Data>, Structs
         .flatten();
     Ok(definitions.chain(data_iter))
 }
-
+///Import all the data provided by the iterator to a structsy database.
+///
 pub fn import(structsy: &Structsy, iter: impl Iterator<Item = Data>) -> Result<(), StructsyError> {
     for values in iter {
         match values {

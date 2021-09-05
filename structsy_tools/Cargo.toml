@@ -11,7 +11,7 @@ structsy = { path="../structsy/" }
 serde = {version = "1.0", features=["derive"], optional=true}
 
 [features]
-serde_info=["structsy/serde_info", "serde"]
+serde_integration=["structsy/serde_info", "serde"]
 
 [dev-dependencies]
 structsy-derive = {path="../structsy-derive"}
