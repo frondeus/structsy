@@ -4,8 +4,8 @@ use crate::{
     internal::Description,
     record::Record,
     transaction::OwnedSytx,
-    InternalDescription, Persistent, PersistentEmbedded, RawAccess, Ref, SRes, Structsy, StructsyConfig, StructsyError,
-    StructsyTx,
+    InternalDescription, Persistent, PersistentEmbedded, RawAccess, Ref, SRes, Snapshot, Structsy, StructsyConfig,
+    StructsyError, StructsyTx,
 };
 use persy::{Config, Persy, PersyId, Transaction};
 use std::collections::hash_map::Entry;
@@ -316,6 +316,24 @@ impl StructsyImpl {
         })
     }
 
+    pub fn read_snapshot<T: Persistent>(&self, snap: &Snapshot, sref: &Ref<T>) -> SRes<Option<T>> {
+        let def = self.check_defined::<T>()?;
+        if let Some(buff) = snap.ps.read(def.segment_name(), &sref.raw_id)? {
+            Ok(Some(T::read(&mut Cursor::new(buff))?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn scan_snapshot<T: Persistent>(&self, snap: &Snapshot) -> SRes<SnapshotRecordIter<T>> {
+        let def = self.check_defined::<T>()?;
+        Ok(SnapshotRecordIter {
+            iter: snap.ps.scan(def.segment_name())?,
+            snapshot: snap.clone(),
+            marker: PhantomData,
+        })
+    }
+
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = Description>> {
         self.definitions.list()
     }
@@ -466,5 +484,36 @@ impl<T: Persistent> Iterator for RecordIter<T> {
         } else {
             None
         }
+    }
+}
+
+pub trait SnapshotIterator: Iterator {
+    fn snapshot(&self) -> &Snapshot;
+}
+
+/// Iterator for record instances
+pub struct SnapshotRecordIter<T: Persistent> {
+    iter: persy::SnapshotSegmentIter,
+    snapshot: Snapshot,
+    marker: PhantomData<T>,
+}
+
+impl<T: Persistent> Iterator for SnapshotRecordIter<T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, buff)) = self.iter.next() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+impl<T: Persistent> SnapshotIterator for SnapshotRecordIter<T> {
+    fn snapshot(&self) -> &Snapshot {
+        &self.snapshot
     }
 }

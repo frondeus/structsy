@@ -1,10 +1,11 @@
 use crate::{
     embedded_filter::EmbeddedFilterBuilder,
-    index::{find, find_range, find_range_tx, find_tx},
+    index::{find, find_range, find_range_snap, find_range_tx, find_snap, find_tx},
     internal::{Description, EmbeddedDescription, Field},
     queries::StructsyFilter,
+    structsy::SnapshotIterator,
     transaction::{RefSytx, TxIterator},
-    Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Structsy, StructsyTx,
+    Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Snapshot, Structsy, StructsyTx,
 };
 use persy::IndexType;
 use std::marker::PhantomData;
@@ -72,6 +73,7 @@ impl<'a, P, K> TxIterator<'a> for MapTx<'a, P, K> {
 
 pub enum Iter<'a, P> {
     TxIter(Box<dyn TxIterator<'a, Item = (Ref<P>, P)> + 'a>),
+    SnapshotIter(Box<dyn SnapshotIterator<Item = (Ref<P>, P)>>),
     Iter(Box<dyn Iterator<Item = (Ref<P>, P)>>),
 }
 
@@ -114,10 +116,12 @@ impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
     fn filtered_next(base: &mut Iter<P>, conditions: &mut Conditions<P>, structsy: &Structsy) -> Option<Item<P>> {
         while let Some(read) = match base {
             Iter::Iter(ref mut it) => it.next(),
+            Iter::SnapshotIter(ref mut it) => it.next(),
             Iter::TxIter(ref mut it) => it.next(),
         } {
             let mut reader = match base {
                 Iter::Iter(_) => Reader::Structsy(structsy.clone()),
+                Iter::SnapshotIter(it) => Reader::Snapshot(it.snapshot().clone()),
                 Iter::TxIter(ref mut it) => Reader::Tx(it.tx()),
             };
             let item = Item::new(read);
@@ -167,6 +171,12 @@ trait StartStep<'a, T> {
         order: Orders<T>,
         tx: &'a mut OwnedSytx,
     ) -> ExecutionIterator<T>;
+    fn start_snapshot(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        order: Orders<T>,
+        snapshot: &Snapshot,
+    ) -> ExecutionIterator<'static, T>;
 }
 
 struct ScanStartStep {}
@@ -209,6 +219,26 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
             ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, order.buffered())
         }
     }
+    fn start_snapshot(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        order: Orders<T>,
+        snapshot: &Snapshot,
+    ) -> ExecutionIterator<'static, T> {
+        let (buffered, iter) = order.scan_snapshot(&snapshot);
+        if let Some(it) = iter {
+            ExecutionIterator::new_raw(it, conditions, snapshot.structsy(), buffered)
+        } else if let Ok(found) = snapshot.scan::<T>() {
+            ExecutionIterator::new(Box::new(found), conditions, snapshot.structsy(), buffered)
+        } else {
+            ExecutionIterator::new(
+                Box::new(Vec::new().into_iter()),
+                conditions,
+                snapshot.structsy(),
+                buffered,
+            )
+        }
+    }
 }
 
 struct DataStartStep<T> {
@@ -238,6 +268,14 @@ impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
             structsy_impl: tx.structsy_impl.clone(),
         };
         ExecutionIterator::new(Box::new(self.data), conditions, structsy, order.buffered())
+    }
+    fn start_snapshot(
+        self: Box<Self>,
+        conditions: Conditions<T>,
+        order: Orders<T>,
+        snapshot: &Snapshot,
+    ) -> ExecutionIterator<'static, T> {
+        ExecutionIterator::new(Box::new(self.data), conditions, snapshot.structsy(), order.buffered())
     }
 }
 
@@ -335,18 +373,21 @@ where
 
 pub enum Reader<'a> {
     Structsy(Structsy),
+    Snapshot(Snapshot),
     Tx(RefSytx<'a>),
 }
 impl<'a> Reader<'a> {
     pub(crate) fn read<T: Persistent>(&mut self, id: &Ref<T>) -> SRes<Option<T>> {
         Ok(match self {
             Reader::Structsy(st) => st.read(id),
+            Reader::Snapshot(snap) => snap.read(id),
             Reader::Tx(tx) => tx.read(id),
         }?)
     }
     pub(crate) fn find<K: IndexType, P: Persistent>(&mut self, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
         Ok(match self {
             Reader::Structsy(st) => find(&st, name, k),
+            Reader::Snapshot(st) => find_snap(&st, name, k),
             Reader::Tx(tx) => find_tx(tx, name, k),
         }?
         .into_iter()
@@ -362,6 +403,16 @@ impl<'a> Reader<'a> {
         match self {
             Reader::Structsy(st) => {
                 let iter = find_range(st, name, range)?;
+                let no_key = iter.map(|(r, e, _)| (r, e));
+                for el in no_key {
+                    vec.push(el);
+                    if vec.len() == 1000 {
+                        break;
+                    }
+                }
+            }
+            Reader::Snapshot(snap) => {
+                let iter = find_range_snap(snap, name, range)?;
                 let no_key = iter.map(|(r, e, _)| (r, e));
                 for el in no_key {
                     vec.push(el);
@@ -963,6 +1014,23 @@ macro_rules! index_conditions {
                 }
             }
 
+            fn scan_snapshot_impl<'a>( field:&Field<P,Self>, snapshot:&Snapshot, order:&Order) -> Option<Iter<'a,P>> {
+                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
+                    if let Ok(iter) = find_range_snap::<Self,P,_>(snapshot, &index_name, ..) {
+                        let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
+                            Box::new(iter.rev().map(|(r, e, _)| (r, e)))
+                        } else {
+                            Box::new(iter.map(|(r, e, _)| (r, e)))
+                        };
+                        Some(Iter::Iter(it))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+
             fn is_indexed_impl(field:&Field<P,Self>) -> bool {
                 if let Some(_) = FilterBuilder::<P>::is_indexed(field.name) {
                     true
@@ -1037,6 +1105,7 @@ pub(crate) trait OrderStep<P> {
 pub(crate) trait ScanOrderStep<P>: OrderStep<P> {
     fn scan(&self, structsy: Structsy) -> Option<Iter<'static, P>>;
     fn scan_tx<'a>(&self, tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>>;
+    fn scan_snapshot(&self, snapshot: &Snapshot) -> Option<Iter<'static, P>>;
     fn is_indexed(&self) -> bool;
 }
 
@@ -1058,6 +1127,9 @@ impl<P, V: Ord + Scan<P>> ScanOrderStep<P> for FieldOrder<P, V> {
     fn scan_tx<'a>(&self, tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>> {
         Scan::scan_tx_impl(&self.field, tx, &self.order)
     }
+    fn scan_snapshot(&self, snapshot: &Snapshot) -> Option<Iter<'static, P>> {
+        Scan::scan_snapshot_impl(&self.field, snapshot, &self.order)
+    }
     fn is_indexed(&self) -> bool {
         Scan::is_indexed_impl(&self.field)
     }
@@ -1067,6 +1139,9 @@ pub trait Scan<P>: Sized {
         None
     }
     fn scan_tx_impl<'a>(_field: &Field<P, Self>, _tx: &'a mut OwnedSytx, _order: &Order) -> Option<Iter<'a, P>> {
+        None
+    }
+    fn scan_snapshot_impl<'a>(_field: &Field<P, Self>, _snapshot: &Snapshot, _order: &Order) -> Option<Iter<'a, P>> {
         None
     }
     fn is_indexed_impl(_field: &Field<P, Self>) -> bool {
@@ -1106,6 +1181,9 @@ impl<P, V> ScanOrderStep<P> for EmbeddedOrder<P, V> {
         None
     }
     fn scan_tx<'a>(&self, _tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>> {
+        None
+    }
+    fn scan_snapshot(&self, _snapshot: &Snapshot) -> Option<Iter<'static, P>> {
         None
     }
     fn is_indexed(&self) -> bool {
@@ -1215,6 +1293,24 @@ impl<T: Persistent + 'static> Orders<T> {
             (Some(BufferedOrderExecution::new(orders)), None)
         }
     }
+    fn scan_snapshot(self, snapshot: &Snapshot) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'static, T>>) {
+        if self.order.is_empty() {
+            return (None, None);
+        }
+        let mut orders = self.order;
+        let first_entry = orders.remove(0);
+        let scan = first_entry.scan_snapshot(snapshot);
+        if let Some(iter) = scan {
+            if orders.is_empty() {
+                (None, Some(iter))
+            } else {
+                (Some(BufferedOrderExecution::new(orders)), Some(iter))
+            }
+        } else {
+            orders.insert(0, first_entry);
+            (Some(BufferedOrderExecution::new(orders)), None)
+        }
+    }
 }
 
 pub struct FilterBuilder<T> {
@@ -1304,6 +1400,23 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             }
             let cond = Self::fill_conditions(executions);
             Box::new(start.start_tx(cond, self.order, tx))
+        }
+    }
+
+    pub fn finish_snap(self, tx: &Snapshot) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
+        if self.steps.is_empty() {
+            let start = Box::new(ScanStartStep::new());
+            let cond = Self::fill_conditions(Vec::new());
+            Box::new(start.start_snapshot(cond, self.order, tx))
+        } else {
+            let reader = &mut Reader::Snapshot(tx.clone());
+            let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
+            let (step, start) = executions.pop().unwrap().as_start();
+            if let Some(es) = step {
+                executions.insert(0, es);
+            }
+            let cond = Self::fill_conditions(executions);
+            Box::new(start.start_snapshot(cond, self.order, tx))
         }
     }
 

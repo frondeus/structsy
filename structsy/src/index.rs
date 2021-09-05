@@ -1,5 +1,8 @@
 use crate::transaction::TxIterator;
-use crate::{structsy::tx_read, Persistent, Ref, RefSytx, SRes, Structsy, StructsyImpl, Sytx};
+use crate::{
+    structsy::tx_read, structsy::SnapshotIterator, Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl,
+    Sytx,
+};
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
@@ -106,6 +109,20 @@ fn map_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Vec<(Re
         .collect()
 }
 
+fn map_entry_snapshot<P: Persistent>(snap: &Snapshot, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
+    entry
+        .into_iter()
+        .filter_map(|id| {
+            let r = Ref::new(id);
+            if let Ok(x) = snap.read(&r) {
+                x.map(|c| (r, c))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn map_unique_entry_tx<P: Persistent>(
     tx: &mut Transaction,
     st: &StructsyImpl,
@@ -193,6 +210,11 @@ pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K
     let e = db.tx().trans.get::<K, PersyId>(name, k)?;
     let st = db.structsy().structsy_impl;
     Ok(map_entry_tx(&mut db.tx().trans, &st, e))
+}
+
+pub fn find_snap<K: IndexType, P: Persistent>(snapshot: &Snapshot, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
+    let e = snapshot.ps.get::<K, PersyId>(name, k)?;
+    Ok(map_entry_snapshot(&snapshot, e))
 }
 
 /// Iterator implementation for Range of indexed persistent types
@@ -382,6 +404,45 @@ pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
     let p1 = db.structsy().structsy_impl;
     let iter = db.tx().trans.range::<K, PersyId, R>(&name, r)?;
     Ok(RangeIterator::new(p1, iter))
+}
+
+struct SnapshotRangeIterator<K, P> {
+    snap: Snapshot,
+    iter: Box<dyn DoubleEndedIterator<Item = (Ref<P>, P, K)>>,
+}
+
+impl<K: IndexType, P: Persistent> Iterator for SnapshotRangeIterator<K, P> {
+    type Item = (Ref<P>, P, K);
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+}
+impl<K: IndexType, P: Persistent> DoubleEndedIterator for SnapshotRangeIterator<K, P> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back()
+    }
+}
+impl<K: IndexType, P: Persistent> SnapshotIterator for SnapshotRangeIterator<K, P> {
+    fn snapshot(&self) -> &Snapshot {
+        &self.snap
+    }
+}
+
+pub fn find_range_snap<K: IndexType, P: Persistent, R: RangeBounds<K>>(
+    snap: &Snapshot,
+    name: &str,
+    r: R,
+) -> SRes<impl DoubleEndedIterator<Item = (Ref<P>, P, K)>> {
+    let ms = snap.clone();
+    Ok(snap
+        .ps
+        .range::<K, PersyId, R>(&name, r)?
+        .map(move |(key, value)| {
+            map_entry_snapshot(&ms, value)
+                .into_iter()
+                .map(move |(id, val)| (id, val, key.clone()))
+        })
+        .flatten())
 }
 
 pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {

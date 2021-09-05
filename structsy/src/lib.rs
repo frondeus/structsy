@@ -41,7 +41,7 @@ pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
 mod structsy;
 pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
-use crate::structsy::{RecordIter, StructsyImpl};
+use crate::structsy::{RecordIter, SnapshotRecordIter, StructsyImpl};
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
@@ -180,6 +180,70 @@ pub trait Fetch<T> {
     #[deprecated]
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
+}
+
+#[derive(Clone)]
+pub struct Snapshot {
+    structsy_impl: Arc<StructsyImpl>,
+    ps: persy::Snapshot,
+}
+
+impl Snapshot {
+    /// Read a persistent instance.
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::{Structsy,StructsyTx};
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Example {
+    ///     value:u8,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// # let structsy = Structsy::open("path/to/file.stry")?;
+    /// //.. open structsy etc.
+    /// let mut tx = structsy.begin()?;
+    /// let id = tx.insert(&Example{value:10})?;
+    /// tx.commit()?;
+    /// let read = structsy.read(&id)?;
+    /// assert_eq!(10,read.unwrap().value);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
+        self.structsy_impl.read_snapshot(&self, sref)
+    }
+
+    /// Scan records of a specific struct.
+    ///
+    ///
+    /// # Example
+    /// ```
+    /// use structsy::Structsy;
+    /// use structsy_derive::Persistent;
+    /// #[derive(Persistent)]
+    /// struct Simple {
+    ///     name:String,
+    /// }
+    /// # use structsy::SRes;
+    /// # fn example() -> SRes<()> {
+    /// let stry = Structsy::open("path/to/file.stry")?;
+    /// stry.define::<Simple>()?;
+    /// for (id, inst) in stry.scan::<Simple>()? {
+    ///     // logic here
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn scan<T: Persistent>(&self) -> SRes<SnapshotRecordIter<T>> {
+        self.structsy_impl.scan_snapshot::<T>(&self)
+    }
+    pub(crate) fn structsy(&self) -> Structsy {
+        Structsy {
+            structsy_impl: self.structsy_impl.clone(),
+        }
+    }
 }
 
 #[deprecated]
