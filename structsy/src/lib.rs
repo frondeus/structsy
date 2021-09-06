@@ -48,7 +48,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
-pub use crate::queries::{Operators, StructsyIter, StructsyQuery, StructsyQueryTx};
+pub use crate::queries::{Operators, StructsyIter, StructsyQuery, StructsyQueryTx, StructsySnapshotQuery};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, Prepared, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
@@ -180,6 +180,7 @@ pub trait Fetch<T> {
     #[deprecated]
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
+    fn fetch_snapshot(self, structsy: &Snapshot) -> StructsyIter<T>;
 }
 
 #[derive(Clone)]
@@ -242,6 +243,17 @@ impl Snapshot {
     pub(crate) fn structsy(&self) -> Structsy {
         Structsy {
             structsy_impl: self.structsy_impl.clone(),
+        }
+    }
+
+    pub fn fetch<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
+        filter.fetch_snapshot(self)
+    }
+
+    pub fn query<T: Persistent>(&self) -> StructsySnapshotQuery<T> {
+        StructsySnapshotQuery {
+            snapshot: self.clone(),
+            builder: FilterBuilder::new(),
         }
     }
 }
@@ -553,6 +565,12 @@ impl Structsy {
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
         self.structsy_impl.list_defined()
+    }
+    pub fn snapshot(&self) -> SRes<Snapshot> {
+        Ok(Snapshot {
+            structsy_impl: self.structsy_impl.clone(),
+            ps: self.structsy_impl.persy.snapshot()?,
+        })
     }
 }
 

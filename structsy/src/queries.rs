@@ -1,3 +1,4 @@
+use crate::Snapshot;
 #[allow(deprecated)]
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
@@ -148,6 +149,11 @@ impl<P: Projection<T>, T: Persistent + 'static> Fetch<P> for ProjectionResult<P,
         let data = self.filter.finish_tx(tx);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
+
+    fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<P> {
+        let data = self.filter.finish_snap(&snapshot);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
 }
 
 #[allow(deprecated)]
@@ -295,6 +301,11 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
         let data = self.extract_filter().finish_tx(tx);
         StructsyIter::new(data)
     }
+
+    fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<(Ref<T>, T)> {
+        let data = self.extract_filter().finish_snap(&snapshot);
+        StructsyIter::new(data)
+    }
 }
 
 #[allow(deprecated)]
@@ -315,6 +326,68 @@ pub trait Query<T: Persistent + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
     fn add_group(&mut self, filter: Filter<T>);
 }
+
+pub struct StructsySnapshotQuery<T: Persistent + 'static> {
+    pub(crate) snapshot: Snapshot,
+    pub(crate) builder: FilterBuilder<T>,
+}
+
+impl<T: Persistent> IntoIterator for StructsySnapshotQuery<T> {
+    type Item = (Ref<T>, T);
+    type IntoIter = StructsyIter<'static, (Ref<T>, T)>;
+    fn into_iter(self) -> Self::IntoIter {
+        StructsyIter::new(self.builder.finish_snap(&self.snapshot))
+    }
+}
+
+impl<T: Persistent + 'static> Query<T> for StructsySnapshotQuery<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
+        &mut self.builder
+    }
+    fn add_group(&mut self, filter: Filter<T>) {
+        let base = self.filter_builder();
+        base.and_filter(filter.extract_filter());
+    }
+}
+impl<T: Persistent + 'static> StructsySnapshotQuery<T> {
+    pub(crate) fn builder(self) -> FilterBuilder<T> {
+        self.builder
+    }
+    pub fn projection<P: Projection<T>>(self) -> ProjectionSnapshotQuery<P, T> {
+        ProjectionSnapshotQuery {
+            builder: self.builder,
+            snapshot: self.snapshot,
+            phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn fetch(self) -> StructsyIter<'static, (Ref<T>, T)> {
+        StructsyIter::new(self.builder.finish_snap(&self.snapshot))
+    }
+}
+
+pub struct ProjectionSnapshotQuery<P: Projection<T>, T: FilterDefinition> {
+    builder: FilterBuilder<T>,
+    snapshot: Snapshot,
+    phantom: std::marker::PhantomData<P>,
+}
+
+impl<P: Projection<T>, T: Persistent + 'static> ProjectionSnapshotQuery<P, T> {
+    pub fn fetch(self) -> StructsyIter<'static, P> {
+        let data = self.builder.finish_snap(&self.snapshot);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
+}
+
+impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionSnapshotQuery<P, T> {
+    type Item = P;
+    type IntoIter = StructsyIter<'static, P>;
+    fn into_iter(self) -> Self::IntoIter {
+        let data = self.builder.finish_snap(&self.snapshot);
+        StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
+    }
+}
+
 /// Query for a persistent struct
 ///
 /// # Example
