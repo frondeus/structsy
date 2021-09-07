@@ -833,7 +833,7 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
-        self.1.ref_query(self.0, value);
+        self.1.ref_query(self.0, value.builder());
     }
 }
 
@@ -847,6 +847,16 @@ where
     }
 }
 
+impl<T: 'static, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
+where
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsySnapshotQuery<V>) {
+        self.1.ref_query(self.0, value.builder());
+    }
+}
+
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
@@ -854,6 +864,17 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_option_query(self.0, value.builder());
+    }
+}
+
+impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsySnapshotQuery<V>) {
         self.1.ref_option_query(self.0, value.builder());
     }
 }
@@ -902,6 +923,17 @@ where
     }
 }
 
+impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsySnapshotQuery<V>) {
+        self.1.ref_query(self.0, value.builder());
+    }
+}
+
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
@@ -909,6 +941,17 @@ where
 {
     #[inline]
     fn query(self, value: StructsyQuery<V>) {
+        self.1.ref_vec_query(self.0, value.builder());
+    }
+}
+
+impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
+where
+    T: Persistent + 'static,
+    V: Persistent + 'static,
+{
+    #[inline]
+    fn query(self, value: StructsySnapshotQuery<V>) {
         self.1.ref_vec_query(self.0, value.builder());
     }
 }

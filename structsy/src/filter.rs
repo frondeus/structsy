@@ -1,5 +1,5 @@
 use crate::{
-    embedded_filter::EmbeddedFilterBuilder,
+    embedded_filter::{build_condition, EmbeddedFilterBuilder, EmbeddedFilterBuilderStep},
     index::{find, find_range, find_range_snap, find_range_tx, find_snap, find_tx},
     internal::{Description, EmbeddedDescription, Field},
     queries::StructsyFilter,
@@ -656,21 +656,21 @@ impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> FilterBuilderStep
 }
 
 pub struct EmbeddedFieldFilter<V, T> {
-    condition: Box<dyn Fn(&V, &mut Reader) -> bool>,
+    steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = V>>>,
     field: Field<T, V>,
 }
 
 impl<V: 'static, T: Persistent + 'static> EmbeddedFieldFilter<V, T> {
-    fn new(condition: Box<dyn Fn(&V, &mut Reader) -> bool>, field: Field<T, V>) -> Self {
-        EmbeddedFieldFilter { condition, field }
+    fn new(steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = V>>>, field: Field<T, V>) -> Self {
+        EmbeddedFieldFilter { steps, field }
     }
 }
 
 impl<V: 'static, T: Persistent + 'static> FilterBuilderStep for EmbeddedFieldFilter<V, T> {
     type Target = T;
 
-    fn prepare(self: Box<Self>, _reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
-        let condition = self.condition;
+    fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
+        let condition = build_condition(self.steps, reader);
         let access = self.field.access;
         let cond = move |it: &Item<T>, reader: &mut Reader| condition((access)(&it.record), reader);
         Box::new(FilterExecution::new(cond, u32::MAX))

@@ -77,7 +77,11 @@ fn extract_fields(s: &Signature) -> Vec<Operation> {
             if let (Some(n), Some(t)) = (name, ty) {
                 if t.0 == "Order" {
                     res.push(Operation::Order(n));
-                } else if t.0 == "EmbeddedFilter" || t.0 == "StructsyQuery" || t.0 == "Filter" {
+                } else if t.0 == "EmbeddedFilter"
+                    || t.0 == "StructsyQuery"
+                    || t.0 == "StructsySnapshotQuery"
+                    || t.0 == "Filter"
+                {
                     res.push(Operation::Query(n));
                 } else {
                     res.push(Operation::Equals(n));
