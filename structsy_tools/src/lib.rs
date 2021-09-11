@@ -1,6 +1,6 @@
 use structsy::internal::Description;
 use structsy::record::Record;
-use structsy::{RawAccess, Structsy, StructsyError};
+use structsy::{RawAccess, Snapshot, Structsy, StructsyError};
 
 /// Enum of all possible data types in structsy, use 'serde_integration' to allow
 /// to serialize them with serde
@@ -17,6 +17,24 @@ pub fn export(structsy: &Structsy) -> Result<impl Iterator<Item = Data>, Structs
     let definitions = structsy.list_defined()?.map(|def| Data::Definition(def));
     let st = structsy.clone();
     let data_iter = structsy
+        .list_defined()?
+        .map(move |def| {
+            st.raw_scan(&def.get_name())
+                .ok()
+                .map(|it| it.map(|(_, record)| Data::Record(record)))
+        })
+        .flatten()
+        .flatten();
+    Ok(definitions.chain(data_iter))
+}
+
+/// Produce and iterator that allow to iterate all the data in a structsy database
+/// for then write some data on an external target.
+///
+pub fn export_from_snapshot(snapshot: Snapshot) -> Result<impl Iterator<Item = Data>, StructsyError> {
+    let definitions = snapshot.list_defined()?.map(|def| Data::Definition(def));
+    let st = snapshot.clone();
+    let data_iter = snapshot
         .list_defined()?
         .map(move |def| {
             st.raw_scan(&def.get_name())

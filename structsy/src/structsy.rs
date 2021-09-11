@@ -372,6 +372,39 @@ impl RawAccess for Structsy {
     }
 }
 
+impl RawAccess for Snapshot {
+    fn raw_scan(&self, strct_name: &str) -> SRes<RawIter> {
+        let definition = self.structsy_impl.definitions.full_definition_by_name(strct_name)?;
+        Ok(RawIter {
+            iter: self.structsy_impl.persy.scan(&definition.info().segment_name())?,
+            description: definition,
+        })
+    }
+    fn raw_read(&self, id: &str) -> SRes<Option<Record>> {
+        let (ty, pid) = raw_parse(&id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
+        let raw = self.structsy_impl.persy.read(&definition.info().segment_name(), &rid)?;
+        if let Some(data) = raw {
+            Ok(Some(Record::read(&mut Cursor::new(data), &definition.desc)?))
+        } else {
+            Ok(None)
+        }
+    }
+    fn raw_begin(&self) -> SRes<RawTransaction> {
+        Ok(RawTransaction {
+            tx: self.structsy_impl.persy.begin()?,
+            structsy_impl: self.structsy_impl.clone(),
+        })
+    }
+
+    fn raw_define(&self, desc: Description) -> SRes<bool> {
+        self.structsy_impl
+            .definitions
+            .define_raw::<_>(desc, |desc| InternalDescription::create_raw(desc, &self.structsy_impl))
+    }
+}
+
 /// Transaction for save data in a structsy database without the original source
 /// code
 pub struct RawTransaction {

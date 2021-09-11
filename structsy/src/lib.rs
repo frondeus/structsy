@@ -344,6 +344,10 @@ impl Snapshot {
             builder: FilterBuilder::new(),
         }
     }
+
+    pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
+        self.structsy_impl.list_defined()
+    }
 }
 
 #[deprecated]
