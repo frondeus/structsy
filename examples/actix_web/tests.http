@@ -1,0 +1,46 @@
+POST http://localhost:8080/coffee/create
+Content-Type: text/json
+
+{"brand": "great coffee", "size": 100,"time": "Sat 25 Jul 14:00:00 BST 2020"}
+
+###
+
+GET http://localhost:8080/coffee/list
+Content-Type: text/json
+
+ > {%
+client.global.set('coffee_id', response.body.coffees[0].id);
+%}
+
+###
+POST http://localhost:8080/coffee/update/{{coffee_id}}
+Content-Type: text/json
+
+{"brand": "great coffee", "size": 300,"time": "Sat 25 Jul 14:00:00 BST 2020"}
+
+###
+DELETE http://localhost:8080/coffee/delete/{{coffee_id}}
+
+###
+POST http://localhost:8080/beer/create
+Content-Type: text/json
+
+{"brand": "great beer", "size": 1,"time": "Sat 25 Jul 14:00:00 BST 2020"}
+
+###
+
+GET http://localhost:8080/beer/list
+Content-Type: text/json
+
+ > {%
+client.global.set('beer_id', response.body.beers[0].id);
+%}
+
+###
+POST http://localhost:8080/beer/update/{{beer_id}}
+Content-Type: text/json
+
+{"brand": "great beer", "size": 2,"time": "Sat 25 Jul 14:00:00 BST 2020"}
+
+###
+DELETE http://localhost:8080/beer/delete/{{beer_id}}
