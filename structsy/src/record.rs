@@ -1,3 +1,5 @@
+//! Raw access structures
+//!
 use crate::{
     desc::{
         Description, EnumDescription, FieldDescription, SimpleValueType, StructDescription, SupportedType, ValueType,
@@ -358,6 +360,7 @@ impl EnumRecord {
     }
 }
 
+/// Enum value for extraction and debug
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VariantValue {
@@ -454,6 +457,7 @@ impl FieldValue {
     }
 }
 
+/// A possible value of enum variant or struct field, debug and extraction structure
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Value {
@@ -605,6 +609,7 @@ impl Value {
     }
 }
 
+/// A possible simple value supported by structsy, debug and extraction structure
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SimpleValue {

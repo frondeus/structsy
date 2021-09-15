@@ -48,7 +48,7 @@ mod embedded_filter;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;
-pub use crate::queries::{Operators, StructsyIter, StructsyQuery, StructsyQueryTx, StructsySnapshotQuery};
+pub use crate::queries::{Operators, SnapshotQuery, StructsyIter, StructsyQuery, StructsyQueryTx};
 mod transaction;
 pub use crate::transaction::{OwnedSytx, Prepared, RefSytx, StructsyTx, Sytx};
 use filter::FilterBuilder;
@@ -338,8 +338,8 @@ impl Snapshot {
     ///     Ok(())
     /// }
     /// ```
-    pub fn query<T: Persistent>(&self) -> StructsySnapshotQuery<T> {
-        StructsySnapshotQuery {
+    pub fn query<T: Persistent>(&self) -> SnapshotQuery<T> {
+        SnapshotQuery {
             snapshot: self.clone(),
             builder: FilterBuilder::new(),
         }

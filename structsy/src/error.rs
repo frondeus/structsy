@@ -1,7 +1,7 @@
 use persy::{PersyError, PE};
 use std::fmt::{Display, Formatter};
 use std::{error::Error, io::Error as IOError, sync::PoisonError};
-
+/// All the possible Structsy errors
 #[derive(Debug)]
 pub enum StructsyError {
     PersyError(PersyError),
