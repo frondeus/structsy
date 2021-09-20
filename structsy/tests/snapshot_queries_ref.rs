@@ -1,5 +1,5 @@
 use std::ops::RangeBounds;
-use structsy::{Filter, Ref, SRes, Structsy, StructsySnapshotQuery, StructsyTx};
+use structsy::{Filter, Ref, SRes, SnapshotQuery, Structsy, StructsyTx};
 use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded};
 use tempfile::tempdir;
 fn structsy_inst(name: &str, test: fn(db: &Structsy) -> SRes<()>) {
@@ -35,7 +35,7 @@ impl Other {
 trait BasicQuery {
     fn by_other(self, to_other: Ref<Other>) -> Self;
     fn by_other_range<R: RangeBounds<Ref<Other>>>(self, to_other: R) -> Self;
-    fn by_other_query(self, to_other: StructsySnapshotQuery<Other>) -> Self;
+    fn by_other_query(self, to_other: SnapshotQuery<Other>) -> Self;
 }
 
 #[queries(Other)]
@@ -101,7 +101,7 @@ trait ParentQuery {
 
 #[embedded_queries(Emb)]
 trait EmbQuery {
-    fn by_other(self, other: StructsySnapshotQuery<Other>) -> Self;
+    fn by_other(self, other: SnapshotQuery<Other>) -> Self;
 }
 
 #[test]
@@ -143,7 +143,7 @@ impl BasicVec {
 trait BasicVecQuery {
     fn by_other(self, to_other: Vec<Ref<Other>>) -> Self;
     fn by_other_range<R: RangeBounds<Vec<Ref<Other>>>>(self, to_other: R) -> Self;
-    fn by_other_query(self, to_other: StructsySnapshotQuery<Other>) -> Self;
+    fn by_other_query(self, to_other: SnapshotQuery<Other>) -> Self;
 }
 
 #[test]
@@ -202,7 +202,7 @@ impl BasicOption {
 trait BasicOptionQuery {
     fn by_other(self, to_other: Option<Ref<Other>>) -> Self;
     fn by_other_range<R: RangeBounds<Option<Ref<Other>>>>(self, to_other: R) -> Self;
-    fn by_other_query(self, to_other: StructsySnapshotQuery<Other>) -> Self;
+    fn by_other_query(self, to_other: SnapshotQuery<Other>) -> Self;
 }
 
 #[test]

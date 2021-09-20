@@ -327,12 +327,13 @@ pub trait Query<T: Persistent + 'static>: Sized {
     fn add_group(&mut self, filter: Filter<T>);
 }
 
-pub struct StructsySnapshotQuery<T: Persistent + 'static> {
+/// A query to be executed on a specific snapshot
+pub struct SnapshotQuery<T: Persistent + 'static> {
     pub(crate) snapshot: Snapshot,
     pub(crate) builder: FilterBuilder<T>,
 }
 
-impl<T: Persistent> IntoIterator for StructsySnapshotQuery<T> {
+impl<T: Persistent> IntoIterator for SnapshotQuery<T> {
     type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<'static, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
@@ -340,7 +341,7 @@ impl<T: Persistent> IntoIterator for StructsySnapshotQuery<T> {
     }
 }
 
-impl<T: Persistent + 'static> Query<T> for StructsySnapshotQuery<T> {
+impl<T: Persistent + 'static> Query<T> for SnapshotQuery<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.builder
     }
@@ -349,7 +350,7 @@ impl<T: Persistent + 'static> Query<T> for StructsySnapshotQuery<T> {
         base.and_filter(filter.extract_filter());
     }
 }
-impl<T: Persistent + 'static> StructsySnapshotQuery<T> {
+impl<T: Persistent + 'static> SnapshotQuery<T> {
     pub(crate) fn builder(self) -> FilterBuilder<T> {
         self.builder
     }
@@ -847,12 +848,12 @@ where
     }
 }
 
-impl<T: 'static, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
+impl<T: 'static, V> QueryAction<SnapshotQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
 where
     V: Persistent + 'static,
 {
     #[inline]
-    fn query(self, value: StructsySnapshotQuery<V>) {
+    fn query(self, value: SnapshotQuery<V>) {
         self.1.ref_query(self.0, value.builder());
     }
 }
@@ -868,13 +869,13 @@ where
     }
 }
 
-impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
+impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: Persistent + 'static,
 {
     #[inline]
-    fn query(self, value: StructsySnapshotQuery<V>) {
+    fn query(self, value: SnapshotQuery<V>) {
         self.1.ref_option_query(self.0, value.builder());
     }
 }
@@ -923,13 +924,13 @@ where
     }
 }
 
-impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
+impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: Persistent + 'static,
 {
     #[inline]
-    fn query(self, value: StructsySnapshotQuery<V>) {
+    fn query(self, value: SnapshotQuery<V>) {
         self.1.ref_query(self.0, value.builder());
     }
 }
@@ -945,13 +946,13 @@ where
     }
 }
 
-impl<T, V> QueryAction<StructsySnapshotQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
+impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: Persistent + 'static,
 {
     #[inline]
-    fn query(self, value: StructsySnapshotQuery<V>) {
+    fn query(self, value: SnapshotQuery<V>) {
         self.1.ref_vec_query(self.0, value.builder());
     }
 }
