@@ -73,9 +73,7 @@ struct BeerList {
     beers: Vec<BeerItem>,
 }
 
-async fn drink_coffee(
-    (coffee, db): (web::Json<Coffee>, web::Data<Structsy>),
-) -> Result<HttpResponse, Error> {
+async fn drink_coffee((coffee, db): (web::Json<Coffee>, web::Data<Structsy>)) -> Result<HttpResponse, Error> {
     let mut tx = db.begin()?;
     tx.insert(&coffee.0)?;
     tx.commit()?;
@@ -100,9 +98,7 @@ async fn update_coffee(
     tx.commit()?;
     Ok(HttpResponse::from("OK"))
 }
-async fn delete_coffee(
-    (db, request): (web::Data<Structsy>, HttpRequest),
-) -> Result<HttpResponse, Error> {
+async fn delete_coffee((db, request): (web::Data<Structsy>, HttpRequest)) -> Result<HttpResponse, Error> {
     let p_id: structsy::Ref<Coffee> = request.match_info()["id"].parse()?;
     let mut tx = db.begin()?;
     tx.delete(&p_id)?;
@@ -110,9 +106,7 @@ async fn delete_coffee(
     Ok(HttpResponse::from("OK"))
 }
 
-async fn drink_beer(
-    (beer, db): (web::Json<Beer>, web::Data<Structsy>),
-) -> Result<HttpResponse, Error> {
+async fn drink_beer((beer, db): (web::Json<Beer>, web::Data<Structsy>)) -> Result<HttpResponse, Error> {
     let mut tx = db.begin()?;
     tx.insert(&beer.0)?;
     tx.commit()?;
@@ -137,9 +131,7 @@ async fn update_beer(
     tx.commit()?;
     Ok(HttpResponse::from("OK"))
 }
-async fn delete_beer(
-    (db, request): (web::Data<Structsy>, HttpRequest),
-) -> Result<HttpResponse, Error> {
+async fn delete_beer((db, request): (web::Data<Structsy>, HttpRequest)) -> Result<HttpResponse, Error> {
     let p_id: structsy::Ref<Beer> = request.match_info()["id"].parse()?;
     let mut tx = db.begin()?;
     tx.delete(&p_id)?;
@@ -149,7 +141,8 @@ async fn delete_beer(
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
-    let structsy = Structsy::open("target/track.db")?;
+    let config = Structsy::config("./track.db").create(true);
+    let structsy = Structsy::open(config)?;
     structsy.define::<Coffee>()?;
     structsy.define::<Beer>()?;
     let data_persistence = web::Data::new(structsy);
