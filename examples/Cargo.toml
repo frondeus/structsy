@@ -1,2 +1,2 @@
 [workspace]
-members = ["actix_web"]
+members = ["actix_web","relm"]
