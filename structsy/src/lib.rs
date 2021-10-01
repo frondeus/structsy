@@ -57,6 +57,10 @@ pub use internal::{Persistent, PersistentEmbedded};
 mod projection;
 pub use queries::Filter;
 pub mod record;
+#[cfg(feature = "derive")]
+pub mod derive {
+    pub use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded, Projection};
+}
 
 /// Main API to persist structs with structsy.
 ///

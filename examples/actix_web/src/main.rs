@@ -1,8 +1,8 @@
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, ResponseError};
 use serde::{Deserialize, Serialize};
 use std::io::Error as IOError;
+use structsy::derive::Persistent;
 use structsy::{Structsy, StructsyError, StructsyTx};
-use structsy_derive::Persistent;
 
 #[derive(Debug)]
 enum Error {
