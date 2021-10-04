@@ -1,7 +1,12 @@
 [package]
 name = "structsy_tools"
+description = "Tools for structsy embedded dbms"
 version = "0.1.0"
+license = "MIT"
+authors = ["Tglman <tglman@tglman.com>"]
 edition = "2018"
+repository = "https://gitlab.com/tglman/structsy"
+readme = "README.md"
 
 [badges]
 gitlab = { repository = "tglman/structsy", branch = "master" }

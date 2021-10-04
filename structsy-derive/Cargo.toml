@@ -6,6 +6,7 @@ license = "MIT"
 authors = ["Tglman <tglman@tglman.com>"]
 edition = "2018"
 repository = "https://gitlab.com/tglman/structsy"
+readme = "README.md"
 
 [badges]
 gitlab = { repository = "tglman/structsy", branch = "master" }
@@ -19,7 +20,4 @@ quote = "1.0"
 proc-macro2 = "1.0"
 darling = "0.13"
 synstructure = "0.12"
-
-# [dev-dependencies]
-#structsy = {path="../"}
 
