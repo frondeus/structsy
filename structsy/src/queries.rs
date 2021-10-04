@@ -141,7 +141,7 @@ impl<P: Projection<T>, T: Persistent + 'static> Fetch<P> for ProjectionResult<P,
     }
 
     fn fetch(self, structsy: &Structsy) -> StructsyIter<P> {
-        let data = self.filter.finish(&structsy);
+        let data = self.filter.finish(structsy);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
@@ -151,7 +151,7 @@ impl<P: Projection<T>, T: Persistent + 'static> Fetch<P> for ProjectionResult<P,
     }
 
     fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<P> {
-        let data = self.filter.finish_snap(&snapshot);
+        let data = self.filter.finish_snap(snapshot);
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -293,7 +293,7 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
     }
 
     fn fetch(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
-        let data = self.extract_filter().finish(&structsy);
+        let data = self.extract_filter().finish(structsy);
         StructsyIter::new(data)
     }
 
@@ -303,7 +303,7 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
     }
 
     fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<(Ref<T>, T)> {
-        let data = self.extract_filter().finish_snap(&snapshot);
+        let data = self.extract_filter().finish_snap(snapshot);
         StructsyIter::new(data)
     }
 }

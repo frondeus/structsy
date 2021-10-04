@@ -130,12 +130,13 @@ impl Definitions {
     }
 
     pub fn list(&self) -> SRes<impl std::iter::Iterator<Item = Description>> {
-        let values = self
-            .definitions
-            .lock()?
-            .values()
-            .map(|v| v.desc.clone())
-            .collect::<Vec<_>>();
+        let values = {
+            self.definitions
+                .lock()?
+                .values()
+                .map(|v| v.desc.clone())
+                .collect::<Vec<_>>()
+        };
         Ok(values.into_iter())
     }
 
@@ -216,7 +217,7 @@ impl StructsyImpl {
             tx = self.begin()?;
         }
         tx.commit()?;
-        self.definitions.finish_migration::<S, D>(&self)?;
+        self.definitions.finish_migration::<S, D>(self)?;
         Ok(())
     }
 
@@ -281,7 +282,7 @@ impl StructsyImpl {
             }
         }
         tx.delete(INTERNAL_SEGMENT_NAME, &int_def.id)?;
-        tx.drop_segment(&int_def.info().segment_name())?;
+        tx.drop_segment(int_def.info().segment_name())?;
         tx.prepare()?.commit()?;
         Ok(())
     }
@@ -348,8 +349,8 @@ impl RawAccess for Structsy {
         })
     }
     fn raw_read(&self, id: &str) -> SRes<Option<Record>> {
-        let (ty, pid) = raw_parse(&id)?;
-        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let (ty, pid) = raw_parse(id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(ty)?;
         let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
         let raw = self.structsy_impl.persy.read(&definition.info().segment_name(), &rid)?;
         if let Some(data) = raw {
@@ -381,8 +382,8 @@ impl RawAccess for Snapshot {
         })
     }
     fn raw_read(&self, id: &str) -> SRes<Option<Record>> {
-        let (ty, pid) = raw_parse(&id)?;
-        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let (ty, pid) = raw_parse(id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(ty)?;
         let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
         let raw = self.structsy_impl.persy.read(&definition.info().segment_name(), &rid)?;
         if let Some(data) = raw {
@@ -447,8 +448,8 @@ impl RawTransaction {
     }
 
     pub fn raw_read(&mut self, id: &str) -> SRes<Option<Record>> {
-        let (ty, pid) = raw_parse(&id)?;
-        let definition = self.structsy_impl.definitions.full_definition_by_name(&ty)?;
+        let (ty, pid) = raw_parse(id)?;
+        let definition = self.structsy_impl.definitions.full_definition_by_name(ty)?;
         let rid: PersyId = pid.parse().or(Err(StructsyError::InvalidId))?;
         let raw = self.tx.read(&definition.info().segment_name(), &rid)?;
         if let Some(data) = raw {

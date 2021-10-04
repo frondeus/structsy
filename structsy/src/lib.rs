@@ -221,7 +221,7 @@ impl Snapshot {
     /// # }
     /// ```
     pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.structsy_impl.read_snapshot(&self, sref)
+        self.structsy_impl.read_snapshot(self, sref)
     }
 
     /// Scan records of a specific struct.
@@ -247,7 +247,7 @@ impl Snapshot {
     /// # }
     /// ```
     pub fn scan<T: Persistent>(&self) -> SRes<SnapshotRecordIter<T>> {
-        self.structsy_impl.scan_snapshot::<T>(&self)
+        self.structsy_impl.scan_snapshot::<T>(self)
     }
     pub(crate) fn structsy(&self) -> Structsy {
         Structsy {
@@ -651,12 +651,12 @@ impl Structsy {
     /// }
     /// ```
     pub fn fetch<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        filter.fetch(&self)
+        filter.fetch(self)
     }
 
     #[deprecated]
     pub fn into_iter<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        filter.fetch(&self)
+        filter.fetch(self)
     }
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {

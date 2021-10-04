@@ -29,7 +29,7 @@ impl StructBuilder {
         })
     }
     pub fn add_field<T: SupportedType>(mut self, name: &str, value: T) -> SRes<Self> {
-        let found = self.desc.fields().filter(|field| field.name == name).next().clone();
+        let found = self.desc.fields().find(|field| field.name == name);
         if let Some(field) = found {
             if field.field_type == T::resolve() {
                 let fv = FieldValue {
@@ -81,9 +81,9 @@ impl EnumBuilder {
     }
 
     pub fn set_value_variant<T: SupportedType>(&mut self, name: &str, val: T) -> SRes<()> {
-        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+        if let Some(v) = self.desc.variants().find(|v| v.name == name) {
             if v.value_type() == &Some(T::resolve()) {
-                self.variant = Some(Box::new(VariantValue::new(&v, Some(val.new()?))));
+                self.variant = Some(Box::new(VariantValue::new(v, Some(val.new()?))));
                 Ok(())
             } else {
                 Err(StructsyError::ValueChangeError(format!(
@@ -101,9 +101,9 @@ impl EnumBuilder {
     }
 
     pub fn set_simple_variant(&mut self, name: &str) -> SRes<()> {
-        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+        if let Some(v) = self.desc.variants().find(|v| v.name == name) {
             if v.value_type() == &None {
-                self.variant = Some(Box::new(VariantValue::new(&v, None)));
+                self.variant = Some(Box::new(VariantValue::new(v, None)));
                 Ok(())
             } else {
                 Err(StructsyError::ValueChangeError(format!(
@@ -151,7 +151,7 @@ impl Record {
     }
 
     pub fn write(&self, write: &mut dyn Write, desc: &Description) -> SRes<()> {
-        Ok(match self {
+        match self {
             Record::Struct(s) => {
                 let sd = match desc {
                     Description::Struct(ed) => ed,
@@ -166,29 +166,32 @@ impl Record {
                 };
                 e.write(write, ed)?;
             }
-        })
+        }
+        Ok(())
     }
 
     pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
-        Ok(match self {
+        match self {
             Record::Struct(s) => {
                 s.put_indexes(tx, id)?;
             }
             Record::Enum(e) => {
                 e.put_indexes(tx, id)?;
             }
-        })
+        }
+        Ok(())
     }
 
     pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, id: &PersyId) -> SRes<()> {
-        Ok(match self {
+        match self {
             Record::Struct(s) => {
                 s.remove_indexes(tx, id)?;
             }
             Record::Enum(e) => {
                 e.remove_indexes(tx, id)?;
             }
-        })
+        }
+        Ok(())
     }
 
     pub fn type_name(&self) -> &str {
@@ -213,7 +216,7 @@ impl StructRecord {
             fields.push(FieldValue::read(read, field)?);
         }
         Ok(StructRecord {
-            struct_name: desc.get_name().clone(),
+            struct_name: desc.get_name(),
             fields,
         })
     }
@@ -240,14 +243,14 @@ impl StructRecord {
     pub fn field(&self, name: &str) -> Option<&FieldValue> {
         for field in &self.fields {
             if field.name == name {
-                return Some(&field);
+                return Some(field);
             }
         }
         None
     }
 
     pub fn set_field<T: SupportedType>(&mut self, name: &str, value: T) -> SRes<()> {
-        if let Some(field) = &mut self.fields.iter_mut().filter(|field| field.name == name).next() {
+        if let Some(field) = &mut self.fields.iter_mut().find(|field| field.name == name) {
             if field.value_type == T::resolve() {
                 field.value = value.new()?;
                 Ok(())
@@ -293,7 +296,7 @@ impl EnumRecord {
         let pos = u32::read(read)?;
         let value = VariantValue::read(read, desc.variant(pos as usize))?;
         Ok(EnumRecord {
-            name: desc.get_name().clone(),
+            name: desc.get_name(),
             variant: Box::new(value),
             desc: desc.clone(),
         })
@@ -311,9 +314,9 @@ impl EnumRecord {
     }
 
     pub fn set_value_variant<T: SupportedType>(&mut self, name: &str, val: T) -> SRes<()> {
-        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+        if let Some(v) = self.desc.variants().find(|v| v.name == name) {
             if v.value_type() == &Some(T::resolve()) {
-                self.variant = Box::new(VariantValue::new(&v, Some(val.new()?)));
+                self.variant = Box::new(VariantValue::new(v, Some(val.new()?)));
                 Ok(())
             } else {
                 Err(StructsyError::ValueChangeError(format!(
@@ -331,9 +334,9 @@ impl EnumRecord {
     }
 
     pub fn set_simple_variant(&mut self, name: &str) -> SRes<()> {
-        if let Some(v) = self.desc.variants().filter(|v| v.name == name).next() {
+        if let Some(v) = self.desc.variants().find(|v| v.name == name) {
             if v.value_type() == &None {
-                self.variant = Box::new(VariantValue::new(&v, None));
+                self.variant = Box::new(VariantValue::new(v, None));
                 Ok(())
             } else {
                 Err(StructsyError::ValueChangeError(format!(
@@ -444,13 +447,13 @@ impl FieldValue {
         &self.value
     }
     pub(crate) fn put_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
-        if let Some(_) = self.indexed {
+        if self.indexed.is_some() {
             self.value.put_index(tx, type_name, &self.name, id)?;
         }
         Ok(())
     }
     pub(crate) fn remove_indexes(&self, tx: &mut persy::Transaction, type_name: &str, id: &PersyId) -> SRes<()> {
-        if let Some(_) = self.indexed {
+        if self.indexed.is_some() {
             self.value.remove_index(tx, type_name, &self.name, id)?;
         }
         Ok(())
@@ -505,7 +508,7 @@ impl Value {
     }
 
     fn write(&self, write: &mut dyn Write, field_type: &ValueType) -> SRes<()> {
-        Ok(match self {
+        match self {
             Value::Value(v) => {
                 let vt = match field_type {
                     ValueType::Value(vt) => vt,
@@ -550,11 +553,12 @@ impl Value {
                     u8::write(&0, write)?;
                 }
             }
-        })
+        }
+        Ok(())
     }
 
     pub(crate) fn put_index(&self, tx: &mut persy::Transaction, type_name: &str, name: &str, id: &PersyId) -> SRes<()> {
-        Ok(match self {
+        match self {
             Value::Value(v) => {
                 v.put_index(tx, type_name, name, id)?;
             }
@@ -575,7 +579,8 @@ impl Value {
                     }
                 }
             }
-        })
+        }
+        Ok(())
     }
     pub(crate) fn remove_index(
         &self,
@@ -584,7 +589,7 @@ impl Value {
         name: &str,
         id: &PersyId,
     ) -> SRes<()> {
-        Ok(match self {
+        match self {
             Value::Value(v) => {
                 v.remove_index(tx, type_name, name, id)?;
             }
@@ -605,7 +610,8 @@ impl Value {
                     }
                 }
             }
-        })
+        }
+        Ok(())
     }
 }
 
@@ -650,11 +656,11 @@ impl SimpleValue {
             Bool => SimpleValue::Bool(bool::read(read)?),
             String => SimpleValue::String(std::string::String::read(read)?),
             Ref(t) => SimpleValue::Ref(format!("{}@{}", t, std::string::String::read(read)?)),
-            Embedded(desc) => SimpleValue::Embedded(Record::read(read, &desc)?),
+            Embedded(desc) => SimpleValue::Embedded(Record::read(read, desc)?),
         })
     }
     fn write(&self, write: &mut dyn Write, value_type: &SimpleValueType) -> SRes<()> {
-        Ok(match self {
+        match self {
             SimpleValue::U8(v) => u8::write(v, write)?,
             SimpleValue::U16(v) => u16::write(v, write)?,
             SimpleValue::U32(v) => u32::write(v, write)?,
@@ -681,13 +687,14 @@ impl SimpleValue {
                     SimpleValueType::Embedded(desc) => desc,
                     _ => panic!("type do not mach desc"),
                 };
-                v.write(write, &desc)?;
+                v.write(write, desc)?;
             }
-        })
+        }
+        Ok(())
     }
 
     pub(crate) fn put_index(&self, tx: &mut persy::Transaction, type_name: &str, name: &str, id: &PersyId) -> SRes<()> {
-        Ok(match self {
+        match self {
             SimpleValue::U8(v) => put_index(tx, type_name, name, v, id)?,
             SimpleValue::U16(v) => put_index(tx, type_name, name, v, id)?,
             SimpleValue::U32(v) => put_index(tx, type_name, name, v, id)?,
@@ -700,7 +707,7 @@ impl SimpleValue {
             SimpleValue::I128(v) => put_index(tx, type_name, name, v, id)?,
             SimpleValue::F32(v) => put_index(tx, type_name, name, v, id)?,
             SimpleValue::F64(v) => put_index(tx, type_name, name, v, id)?,
-            SimpleValue::Bool(_v) => (),
+            SimpleValue::Bool(_v) => {}
             SimpleValue::String(v) => put_index(tx, type_name, name, &v.clone(), id)?,
             SimpleValue::Ref(v) => {
                 let values = v.split('@').collect::<Vec<_>>();
@@ -709,8 +716,9 @@ impl SimpleValue {
                 }
                 put_index(tx, type_name, name, &values[1].parse::<PersyId>()?, id)?;
             }
-            SimpleValue::Embedded(_v) => (),
-        })
+            SimpleValue::Embedded(_v) => {}
+        }
+        Ok(())
     }
 
     pub(crate) fn remove_index(
@@ -720,7 +728,7 @@ impl SimpleValue {
         name: &str,
         id: &PersyId,
     ) -> SRes<()> {
-        Ok(match self {
+        match self {
             SimpleValue::U8(v) => remove_index(tx, type_name, name, v, id)?,
             SimpleValue::U16(v) => remove_index(tx, type_name, name, v, id)?,
             SimpleValue::U32(v) => remove_index(tx, type_name, name, v, id)?,
@@ -733,7 +741,7 @@ impl SimpleValue {
             SimpleValue::I128(v) => remove_index(tx, type_name, name, v, id)?,
             SimpleValue::F32(v) => remove_index(tx, type_name, name, v, id)?,
             SimpleValue::F64(v) => remove_index(tx, type_name, name, v, id)?,
-            SimpleValue::Bool(_v) => (),
+            SimpleValue::Bool(_v) => {}
             SimpleValue::String(v) => remove_index(tx, type_name, name, &v.clone(), id)?,
             SimpleValue::Ref(v) => {
                 let values = v.split('@').collect::<Vec<_>>();
@@ -742,8 +750,9 @@ impl SimpleValue {
                 }
                 remove_index(tx, type_name, name, &values[1].parse::<PersyId>()?, id)?;
             }
-            SimpleValue::Embedded(_v) => (),
-        })
+            SimpleValue::Embedded(_v) => {}
+        }
+        Ok(())
     }
 }
 

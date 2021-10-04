@@ -213,10 +213,10 @@ pub trait StructsyTx: Sytx + Sized {
         sct.write(&mut buff)?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
-            old_rec.remove_indexes(self, &sref)?;
+            old_rec.remove_indexes(self, sref)?;
         }
         self.tx().trans.update(def.segment_name(), &sref.raw_id, &buff)?;
-        sct.put_indexes(self, &sref)?;
+        sct.put_indexes(self, sref)?;
         Ok(())
     }
 
@@ -245,7 +245,7 @@ pub trait StructsyTx: Sytx + Sized {
         let def = self.structsy().structsy_impl.check_defined::<T>()?;
         let old = self.read::<T>(sref)?;
         if let Some(old_rec) = old {
-            old_rec.remove_indexes(self, &sref)?;
+            old_rec.remove_indexes(self, sref)?;
         }
         self.tx().trans.delete(def.segment_name(), &sref.raw_id)?;
         Ok(())

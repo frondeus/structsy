@@ -201,7 +201,7 @@ fn impl_trait_methods(item: TraitItem, target_type: &str, embedded: bool) -> Opt
                     }
                 }
             });
-            let mut sign = m.sig.clone();
+            let mut sign = m.sig;
             if let Some(f) = sign.inputs.first_mut() {
                 *f = syn::parse_str::<FnArg>("mut self").expect("mut self parse correctly");
             }

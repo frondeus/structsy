@@ -225,7 +225,7 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         order: Orders<T>,
         snapshot: &Snapshot,
     ) -> ExecutionIterator<'static, T> {
-        let (buffered, iter) = order.scan_snapshot(&snapshot);
+        let (buffered, iter) = order.scan_snapshot(snapshot);
         if let Some(it) = iter {
             ExecutionIterator::new_raw(it, conditions, snapshot.structsy(), buffered)
         } else if let Ok(found) = snapshot.scan::<T>() {
@@ -378,16 +378,16 @@ pub enum Reader<'a> {
 }
 impl<'a> Reader<'a> {
     pub(crate) fn read<T: Persistent>(&mut self, id: &Ref<T>) -> SRes<Option<T>> {
-        Ok(match self {
+        match self {
             Reader::Structsy(st) => st.read(id),
             Reader::Snapshot(snap) => snap.read(id),
             Reader::Tx(tx) => tx.read(id),
-        }?)
+        }
     }
     pub(crate) fn find<K: IndexType, P: Persistent>(&mut self, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
         Ok(match self {
-            Reader::Structsy(st) => find(&st, name, k),
-            Reader::Snapshot(st) => find_snap(&st, name, k),
+            Reader::Structsy(st) => find(st, name, k),
+            Reader::Snapshot(st) => find_snap(st, name, k),
             Reader::Tx(tx) => find_tx(tx, name, k),
         }?
         .into_iter()
@@ -1111,7 +1111,7 @@ pub(crate) trait ScanOrderStep<P>: OrderStep<P> {
 
 impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
     fn compare(&self, first: &P, second: &P) -> std::cmp::Ordering {
-        let ord = (self.field.access)(&first).cmp((self.field.access)(&second));
+        let ord = (self.field.access)(first).cmp((self.field.access)(second));
         if self.order == Order::Asc {
             ord
         } else {
@@ -1165,8 +1165,8 @@ impl<T: 'static, V: 'static> EmbeddedOrder<T, V> {
 
 impl<P, V> OrderStep<P> for EmbeddedOrder<P, V> {
     fn compare(&self, first: &P, second: &P) -> std::cmp::Ordering {
-        let emb_first = (self.field.access)(&first);
-        let emb_second = (self.field.access)(&second);
+        let emb_first = (self.field.access)(first);
+        let emb_second = (self.field.access)(second);
         for order in &self.orders {
             let ord = order.compare(emb_first, emb_second);
             if ord != std::cmp::Ordering::Equal {

@@ -68,19 +68,15 @@ impl ProjectionInfo {
             .filter_map(|f| {
                 let field = f.ident.clone().unwrap();
                 let st = sub_type(&f.ty);
-                let sub = st.iter().filter_map(|x| get_type_ident(*x)).next();
-                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
-                if let Some(ty) = get_type_ident(&f.ty) {
-                    Some(FieldInfo {
-                        name: field,
-                        ty,
-                        template_ty: sub,
-                        sub_template_ty: subsub,
-                        index_mode: None,
-                    })
-                } else {
-                    None
-                }
+                let sub = st.iter().find_map(|x| get_type_ident(*x));
+                let subsub = st.iter().filter_map(|x| sub_type(x)).find_map(get_type_ident);
+                get_type_ident(&f.ty).map(|ty| FieldInfo {
+                    name: field,
+                    ty,
+                    template_ty: sub,
+                    sub_template_ty: subsub,
+                    index_mode: None,
+                })
             })
             .collect()
     }
@@ -106,7 +102,7 @@ impl ProjectionInfo {
         }
         match &self.data {
             Data::Struct(data) => {
-                let fields = self.field_infos(&data);
+                let fields = self.field_infos(data);
                 let ser = projection_tokens(&fields);
                 let target_ident = Ident::new(&target.expect("missing projection attributed"), Span::call_site());
                 quote! {
@@ -136,19 +132,15 @@ impl PersistentInfo {
             .filter_map(|f| {
                 let field = f.ident.clone().unwrap();
                 let st = sub_type(&f.ty);
-                let sub = st.iter().filter_map(|x| get_type_ident(*x)).next();
-                let subsub = st.iter().filter_map(|x| sub_type(&x)).filter_map(get_type_ident).next();
-                if let Some(ty) = get_type_ident(&f.ty) {
-                    Some(FieldInfo {
-                        name: field,
-                        ty,
-                        template_ty: sub,
-                        sub_template_ty: subsub,
-                        index_mode: f.mode.clone(),
-                    })
-                } else {
-                    None
-                }
+                let sub = st.iter().find_map(|x| get_type_ident(*x));
+                let subsub = st.iter().filter_map(|x| sub_type(x)).find_map(get_type_ident);
+                get_type_ident(&f.ty).map(|ty| FieldInfo {
+                    name: field,
+                    ty,
+                    template_ty: sub,
+                    sub_template_ty: subsub,
+                    index_mode: f.mode.clone(),
+                })
             })
             .collect()
     }
@@ -158,7 +150,7 @@ impl PersistentInfo {
         let string_name = name.to_string();
         match &self.data {
             Data::Struct(data) => {
-                let fields = self.field_infos(&data);
+                let fields = self.field_infos(data);
                 let (desc, ser) = serialization_tokens(name, &fields);
                 let indexes = indexes_tokens(name, &fields);
                 let filters = filter_tokens(&fields);
@@ -185,7 +177,7 @@ impl PersistentInfo {
                 }
             }
             Data::Enum(variants) => {
-                let (desc, ser) = enum_serialization_tokens(name, &variants);
+                let (desc, ser) = enum_serialization_tokens(name, variants);
 
                 quote! {
                 impl structsy::internal::FilterDefinition for #name {
@@ -222,7 +214,7 @@ impl PersistentInfo {
 
         match &self.data {
             Data::Struct(data) => {
-                let fields = self.field_infos(&data);
+                let fields = self.field_infos(data);
                 let (desc, ser) = serialization_tokens(name, &fields);
                 let filters = filter_tokens(&fields);
 
@@ -249,7 +241,7 @@ impl PersistentInfo {
                 }
             }
             Data::Enum(variants) => {
-                let (desc, ser) = enum_serialization_tokens(name, &variants);
+                let (desc, ser) = enum_serialization_tokens(name, variants);
 
                 quote! {
                     impl structsy::internal::FilterDefinition for #name {
@@ -280,7 +272,7 @@ fn enum_serialization_tokens(name: &Ident, variants: &[PersistentEnum]) -> (Toke
                             Type::Path(p) => Some(p.clone()),
                             _ => panic!("Supported only named types as enums values"),
                         }
-                    } else if vt.fields.fields.len() == 0 {
+                    } else if vt.fields.fields.is_empty() {
                         None
                     } else {
                         panic!("Tuples with multiple values not supported")
@@ -368,51 +360,47 @@ fn enum_serialization_tokens(name: &Ident, variants: &[PersistentEnum]) -> (Toke
     (desc, ser)
 }
 
-fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, TokenStream) {
-    let fields_info: Vec<((TokenStream, TokenStream), (TokenStream, TokenStream))> = fields
-        .iter()
-        .enumerate()
-        .map(|(position, field)| {
-            let pos = position as u32;
-            let indexed = translate_option_mode(&field.index_mode);
-            let field_name = field.name.to_string();
-            let field_ident = field.name.clone();
-            let read_fill = quote! {
-                #field_ident,
-            };
-            let ty = field.ty.clone();
-            let desc = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
-                (Some(x), Some(z)) => {
-                    quote! {
-                        structsy::internal::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed),
-                    }
+fn serialization_tokens(name: &Ident, fields: &[FieldInfo]) -> (TokenStream, TokenStream) {
+    let fields_info = fields.iter().enumerate().map(|(position, field)| {
+        let pos = position as u32;
+        let indexed = translate_option_mode(&field.index_mode);
+        let field_name = field.name.to_string();
+        let field_ident = field.name.clone();
+        let read_fill = quote! {
+            #field_ident,
+        };
+        let ty = field.ty.clone();
+        let desc = match (field.template_ty.clone(), field.sub_template_ty.clone()) {
+            (Some(x), Some(z)) => {
+                quote! {
+                    structsy::internal::FieldDescription::new::<#ty<#x<#z>>>(#pos,#field_name,#indexed),
                 }
-                (Some(x), None) => {
-                    quote! {
-                        structsy::internal::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed),
-                    }
+            }
+            (Some(x), None) => {
+                quote! {
+                    structsy::internal::FieldDescription::new::<#ty<#x>>(#pos,#field_name,#indexed),
                 }
-                (None, None) => {
-                    quote! {
-                        structsy::internal::FieldDescription::new::<#ty>(#pos,#field_name,#indexed),
-                    }
+            }
+            (None, None) => {
+                quote! {
+                    structsy::internal::FieldDescription::new::<#ty>(#pos,#field_name,#indexed),
                 }
-                (None, Some(_x)) => panic!(""),
-            };
+            }
+            (None, Some(_x)) => panic!(""),
+        };
 
-            let write = quote! {
-                self.#field_ident.write(write)?;
-            };
+        let write = quote! {
+            self.#field_ident.write(write)?;
+        };
 
-            let read = quote! {
-                let #field_ident= PersistentEmbedded::read(read)?;
-            };
-            ((desc, write), (read, read_fill))
-        })
-        .collect();
+        let read = quote! {
+            let #field_ident= PersistentEmbedded::read(read)?;
+        };
+        ((desc, write), (read, read_fill))
+    });
 
     let (fields_meta_write, fields_read_fill): (Vec<(TokenStream, TokenStream)>, Vec<(TokenStream, TokenStream)>) =
-        fields_info.into_iter().unzip();
+        fields_info.unzip();
     let (fields_meta, fields_write): (Vec<TokenStream>, Vec<TokenStream>) = fields_meta_write.into_iter().unzip();
     let (fields_read, fields_construct): (Vec<TokenStream>, Vec<TokenStream>) = fields_read_fill.into_iter().unzip();
 
@@ -445,38 +433,30 @@ fn serialization_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> (TokenStream, 
     (desc, serialization)
 }
 
-fn indexes_tokens(name: &Ident, fields: &Vec<FieldInfo>) -> TokenStream {
-    let only_indexed: Vec<FieldInfo> = fields
-        .iter()
-        .filter(|f| f.index_mode.is_some())
-        .map(|x| x.clone())
-        .collect();
+fn indexes_tokens(name: &Ident, fields: &[FieldInfo]) -> TokenStream {
+    let only_indexed: Vec<FieldInfo> = fields.iter().filter(|f| f.index_mode.is_some()).cloned().collect();
 
-    let snippets: Vec<(TokenStream, (TokenStream, TokenStream))> = only_indexed
-        .iter()
-        .map(|f| {
-            let index_name = format!("{}.{}", name, f.name);
-            let field = f.name.clone();
-            let mode = translate_mode(&f.index_mode.as_ref().unwrap());
-            let index_type = match (f.template_ty.clone(), f.sub_template_ty.clone()) {
-                (Some(_), Some(s1)) => s1,
-                (Some(s), None) => s,
-                _ => f.ty.clone(),
-            };
-            let declare = quote! {
-                structsy::internal::declare_index::<#index_type>(db,#index_name,#mode)?;
-            };
-            let put = quote! {
-                self.#field.puts(tx,#index_name,id)?;
-            };
-            let remove = quote! {
-                self.#field.removes(tx,#index_name,id)?;
-            };
-            (declare, (put, remove))
-        })
-        .collect();
-    let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) =
-        snippets.into_iter().unzip();
+    let snippets = only_indexed.iter().map(|f| {
+        let index_name = format!("{}.{}", name, f.name);
+        let field = f.name.clone();
+        let mode = translate_mode(f.index_mode.as_ref().unwrap());
+        let index_type = match (f.template_ty.clone(), f.sub_template_ty.clone()) {
+            (Some(_), Some(s1)) => s1,
+            (Some(s), None) => s,
+            _ => f.ty.clone(),
+        };
+        let declare = quote! {
+            structsy::internal::declare_index::<#index_type>(db,#index_name,#mode)?;
+        };
+        let put = quote! {
+            self.#field.puts(tx,#index_name,id)?;
+        };
+        let remove = quote! {
+            self.#field.removes(tx,#index_name,id)?;
+        };
+        (declare, (put, remove))
+    });
+    let (index_declare, index_put_remove): (Vec<TokenStream>, Vec<(TokenStream, TokenStream)>) = snippets.unzip();
     let (index_put, index_remove): (Vec<TokenStream>, Vec<TokenStream>) = index_put_remove.into_iter().unzip();
 
     let indexes = quote! {
@@ -558,7 +538,7 @@ fn get_type_ident(ty: &syn::Type) -> Option<Ident> {
     }
 }
 
-fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
+fn filter_tokens(fields: &[FieldInfo]) -> TokenStream {
     let methods: Vec<TokenStream> = fields
         .iter()
         .map(|field| {
@@ -587,7 +567,7 @@ fn filter_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
     }
 }
 
-fn projection_tokens(fields: &Vec<FieldInfo>) -> TokenStream {
+fn projection_tokens(fields: &[FieldInfo]) -> TokenStream {
     let fields_info: Vec<TokenStream> = fields
         .iter()
         .map(|field| {

@@ -25,7 +25,7 @@ impl StructDescriptionBuilder {
     pub fn add_field(mut self, position: u32, name: String, field_type: ValueType, indexed: Option<ValueMode>) -> Self {
         let field = FieldDescription {
             position,
-            name: name.to_owned(),
+            name,
             field_type,
             indexed,
         };
@@ -221,7 +221,7 @@ impl SimpleValueType {
             SimpleValueType::String => u8::write(&14, write)?,
             SimpleValueType::Ref(t) => {
                 u8::write(&15, write)?;
-                String::write(&t, write)?;
+                String::write(t, write)?;
             }
             SimpleValueType::Embedded(t) => {
                 u8::write(&16, write)?;
@@ -238,7 +238,7 @@ impl SimpleValueType {
         name: &str,
         value_mode: ValueMode,
     ) -> SRes<()> {
-        Ok(match self {
+        match self {
             SimpleValueType::U8 => create_index::<u8>(tx, type_name, name, value_mode)?,
             SimpleValueType::U16 => create_index::<u16>(tx, type_name, name, value_mode)?,
             SimpleValueType::U32 => create_index::<u32>(tx, type_name, name, value_mode)?,
@@ -257,7 +257,8 @@ impl SimpleValueType {
                 create_index::<PersyId>(tx, type_name, name, value_mode)?;
             }
             SimpleValueType::Embedded(_v) => (),
-        })
+        }
+        Ok(())
     }
 
     fn remap_refer(&mut self, old: &str, new: &str) -> bool {
