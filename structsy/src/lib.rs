@@ -59,6 +59,8 @@ pub use queries::Filter;
 pub mod record;
 #[cfg(feature = "derive")]
 pub mod derive {
+    //! Re Export proc macros
+    //!
     pub use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded, Projection};
 }
 
