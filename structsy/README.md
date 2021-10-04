@@ -38,7 +38,7 @@ Add it as dependency of your project:
 
 ```toml
 [dependencies]
-structsy="0.3"
+structsy="0.4"
 ```
 
 ## USAGE EXAMPLE 
