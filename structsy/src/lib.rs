@@ -41,7 +41,7 @@ pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter;
 mod structsy;
 pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
-use crate::structsy::{RecordIter, SnapshotRecordIter, StructsyImpl};
+use crate::structsy::{RecordIter, StructsyImpl};
 mod id;
 pub use crate::id::Ref;
 mod embedded_filter;
@@ -63,6 +63,8 @@ pub mod derive {
     //!
     pub use structsy_derive::{embedded_queries, queries, Persistent, PersistentEmbedded, Projection};
 }
+mod snapshot;
+pub use snapshot::Snapshot;
 
 /// Main API to persist structs with structsy.
 ///
@@ -187,173 +189,6 @@ pub trait Fetch<T> {
     fn into_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<T>;
     fn fetch_snapshot(self, structsy: &Snapshot) -> StructsyIter<T>;
-}
-
-/// Read data from a snapshot freezed in a specific moment ignoring all
-/// the subsequent committed transactions.
-///
-#[derive(Clone)]
-pub struct Snapshot {
-    structsy_impl: Arc<StructsyImpl>,
-    ps: persy::Snapshot,
-}
-
-impl Snapshot {
-    /// Read a persistent instance.
-    ///
-    /// # Example
-    /// ```
-    /// use structsy::{Structsy,StructsyTx};
-    /// use structsy_derive::Persistent;
-    /// #[derive(Persistent)]
-    /// struct Example {
-    ///     value:u8,
-    /// }
-    /// # use structsy::SRes;
-    /// # fn example() -> SRes<()> {
-    /// # let structsy = Structsy::open("path/to/file.stry")?;
-    /// //.. open structsy etc.
-    /// let mut tx = structsy.begin()?;
-    /// let id = tx.insert(&Example{value:10})?;
-    /// tx.commit()?;
-    /// let snapshot = structsy.snapshot()?;
-    /// let read = snapshot.read(&id)?;
-    /// assert_eq!(10,read.unwrap().value);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn read<T: Persistent>(&self, sref: &Ref<T>) -> SRes<Option<T>> {
-        self.structsy_impl.read_snapshot(self, sref)
-    }
-
-    /// Scan records of a specific struct.
-    ///
-    ///
-    /// # Example
-    /// ```
-    /// use structsy::Structsy;
-    /// use structsy_derive::Persistent;
-    /// #[derive(Persistent)]
-    /// struct Simple {
-    ///     name:String,
-    /// }
-    /// # use structsy::SRes;
-    /// # fn example() -> SRes<()> {
-    /// let stry = Structsy::open("path/to/file.stry")?;
-    /// stry.define::<Simple>()?;
-    /// let snapshot = stry.snapshot()?;
-    /// for (id, inst) in snapshot.scan::<Simple>()? {
-    ///     // logic here
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn scan<T: Persistent>(&self) -> SRes<SnapshotRecordIter<T>> {
-        self.structsy_impl.scan_snapshot::<T>(self)
-    }
-    pub(crate) fn structsy(&self) -> Structsy {
-        Structsy {
-            structsy_impl: self.structsy_impl.clone(),
-        }
-    }
-
-    /// Execute a filter query and return an iterator of results for the current snapshot
-    ///
-    ///
-    /// # Example
-    /// ```
-    /// use structsy::{ Structsy, StructsyTx, StructsyError, Filter};
-    /// use structsy_derive::{queries, embedded_queries, Persistent, PersistentEmbedded};
-    ///
-    /// #[derive(Persistent)]
-    /// struct WithEmbedded {
-    ///     embedded: Embedded,
-    /// }
-    ///
-    /// #[derive(PersistentEmbedded)]
-    /// struct Embedded {
-    ///     name: String,
-    /// }
-    /// impl WithEmbedded {
-    ///     fn new(name: &str) -> WithEmbedded {
-    ///         WithEmbedded {
-    ///             embedded: Embedded { name: name.to_string() },
-    ///         }
-    ///     }
-    /// }
-    ///
-    /// #[queries(WithEmbedded)]
-    /// trait WithEmbeddedQuery {
-    ///     fn embedded(self, embedded: Filter<Embedded>) -> Self;
-    /// }
-    ///
-    /// #[embedded_queries(Embedded)]
-    /// trait EmbeddedQuery {
-    ///     fn by_name(self, name: String) -> Self;
-    /// }
-    ///
-    /// fn embedded_query() -> Result<(), StructsyError> {
-    ///     let structsy = Structsy::open("file.structsy")?;
-    ///     structsy.define::<WithEmbedded>()?;
-    ///     let mut tx = structsy.begin()?;
-    ///     tx.insert(&WithEmbedded::new("aaa"))?;
-    ///     tx.commit()?;
-    ///     let snapshot = structsy.snapshot()?;
-    ///     let embedded_filter = Filter::<Embedded>::new().by_name("aaa".to_string());
-    ///     let filter = Filter::<WithEmbedded>::new().embedded(embedded_filter);
-    ///     let count = snapshot.fetch(filter).count();
-    ///     assert_eq!(count, 1);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn fetch<R: Fetch<T>, T>(&self, filter: R) -> StructsyIter<T> {
-        filter.fetch_snapshot(self)
-    }
-
-    ///
-    /// Query for a persistent struct in the snapshot
-    ///
-    /// # Example
-    /// ```
-    /// use structsy::{ Structsy, StructsyTx, StructsyError};
-    /// use structsy_derive::{queries, Persistent};
-    /// #[derive(Persistent)]
-    /// struct Basic {
-    ///     name: String,
-    /// }
-    /// impl Basic {
-    ///     fn new(name: &str) -> Basic {
-    ///         Basic { name: name.to_string() }
-    ///     }
-    /// }
-    ///
-    /// #[queries(Basic)]
-    /// trait BasicQuery {
-    ///      fn by_name(self, name: String) -> Self;
-    /// }
-    ///
-    /// fn basic_query() -> Result<(), StructsyError> {
-    ///     let structsy = Structsy::open("file.structsy")?;
-    ///     structsy.define::<Basic>()?;
-    ///     let mut tx = structsy.begin()?;
-    ///     tx.insert(&Basic::new("aaa"))?;
-    ///     tx.commit()?;
-    ///     let snapshot = structsy.snapshot()?;
-    ///     let count = snapshot.query::<Basic>().by_name("aaa".to_string()).fetch().count();
-    ///     assert_eq!(count, 1);
-    ///     Ok(())
-    /// }
-    /// ```
-    pub fn query<T: Persistent>(&self) -> SnapshotQuery<T> {
-        SnapshotQuery {
-            snapshot: self.clone(),
-            builder: FilterBuilder::new(),
-        }
-    }
-
-    pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = desc::Description>> {
-        self.structsy_impl.list_defined()
-    }
 }
 
 #[deprecated]
@@ -703,14 +538,25 @@ pub enum Order {
     Desc,
 }
 
-/// Trait for data operations that do not require original structs and enums source code.
-pub trait RawAccess {
-    /// Declare a new struct or enum from the generic description
-    fn raw_define(&self, desc: Description) -> SRes<bool>;
+pub trait RawRead {
     /// Scan the records of a struct or enum in a raw format
     fn raw_scan(&self, ty_name: &str) -> SRes<RawIter>;
     /// read a single record in a raw formant from a string id
     fn raw_read(&self, id: &str) -> SRes<Option<Record>>;
+}
+
+/// Trait for data operations that do not require original structs and enums source code.
+pub trait RawAccess: RawRead {
+    /// Scan the records of a struct or enum in a raw format
+    fn raw_scan(&self, ty_name: &str) -> SRes<RawIter> {
+        RawRead::raw_scan(self, ty_name)
+    }
+    /// read a single record in a raw formant from a string id
+    fn raw_read(&self, id: &str) -> SRes<Option<Record>> {
+        RawRead::raw_read(self, id)
+    }
+    /// Declare a new struct or enum from the generic description
+    fn raw_define(&self, desc: Description) -> SRes<bool>;
     /// Begin a new raw transaction
     fn raw_begin(&self) -> SRes<RawTransaction>;
 }
