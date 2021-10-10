@@ -16,11 +16,11 @@ pub use crate::index::{
 };
 pub use crate::projection::Projection;
 pub use crate::queries::EmbeddedQuery;
-pub use crate::queries::EqualAction;
-pub use crate::queries::OrderAction;
+pub use crate::actions::EqualAction;
+pub use crate::actions::OrderAction;
 pub use crate::queries::Query;
-pub use crate::queries::QueryAction;
-pub use crate::queries::RangeAction;
+pub use crate::actions::QueryAction;
+pub use crate::actions::RangeAction;
 use crate::{Ref, SRes, Sytx};
 use std::io::{Read, Write};
 

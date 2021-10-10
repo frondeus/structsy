@@ -58,6 +58,8 @@ mod filter;
 mod projection;
 pub use filter::Filter;
 pub mod record;
+mod actions;
+
 #[cfg(feature = "derive")]
 pub mod derive {
     //! Re Export proc macros
