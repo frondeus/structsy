@@ -7,6 +7,7 @@ pub use crate::desc::{
     StructDescriptionBuilder, ValueTypeBuilder, VariantDescription,
 };
 pub use crate::embedded_filter::EmbeddedFilterBuilder;
+pub use crate::filter::Filter;
 pub use crate::filter_builder::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
 pub use crate::index::{
@@ -16,7 +17,6 @@ pub use crate::index::{
 pub use crate::projection::Projection;
 pub use crate::queries::EmbeddedQuery;
 pub use crate::queries::EqualAction;
-pub use crate::queries::Filter;
 pub use crate::queries::OrderAction;
 pub use crate::queries::Query;
 pub use crate::queries::QueryAction;

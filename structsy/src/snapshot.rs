@@ -164,7 +164,7 @@ impl Snapshot {
     ///     Ok(())
     /// }
     /// ```
-    pub fn query<T: Persistent>(&self) -> SnapshotQuery<T> {
+    pub fn query<T: Persistent + 'static>(&self) -> SnapshotQuery<T> {
         SnapshotQuery {
             snapshot: self.clone(),
             builder: FilterBuilder::new(),

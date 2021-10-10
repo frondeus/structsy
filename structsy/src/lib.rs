@@ -54,8 +54,9 @@ pub use crate::transaction::{OwnedSytx, Prepared, RefSytx, StructsyTx, Sytx};
 use filter_builder::FilterBuilder;
 pub mod internal;
 pub use internal::{Persistent, PersistentEmbedded};
+mod filter;
 mod projection;
-pub use queries::Filter;
+pub use filter::Filter;
 pub mod record;
 #[cfg(feature = "derive")]
 pub mod derive {
