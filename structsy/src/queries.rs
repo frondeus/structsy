@@ -1,6 +1,6 @@
 #[allow(deprecated)]
 use crate::{
-    embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
+    embedded_filter_builder::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::Filter,
     filter_builder::{RangeCondition, SimpleCondition},
     internal::{EmbeddedDescription, Field, FilterDefinition, Projection},

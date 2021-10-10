@@ -6,7 +6,7 @@ pub use crate::desc::{
     Description, EnumDescription, EnumDescriptionBuilder, FieldDescription, SimpleValueTypeBuilder, StructDescription,
     StructDescriptionBuilder, ValueTypeBuilder, VariantDescription,
 };
-pub use crate::embedded_filter::EmbeddedFilterBuilder;
+pub use crate::embedded_filter_builder::EmbeddedFilterBuilder;
 pub use crate::filter::Filter;
 pub use crate::filter_builder::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
