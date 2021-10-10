@@ -1,5 +1,5 @@
 use crate::error::{SRes, StructsyError};
-use crate::filter::FilterBuilder;
+use crate::filter_builder::FilterBuilder;
 use crate::id::raw_parse;
 use crate::queries::SnapshotQuery;
 use crate::record::Record;

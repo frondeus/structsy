@@ -2,7 +2,7 @@ use crate::Snapshot;
 #[allow(deprecated)]
 use crate::{
     embedded_filter::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
-    filter::{RangeCondition, SimpleCondition},
+    filter_builder::{RangeCondition, SimpleCondition},
     internal::{EmbeddedDescription, Field, FilterDefinition, Projection},
     Fetch, FilterBuilder, IntoResult, Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Structsy,
 };
@@ -975,7 +975,7 @@ pub trait OrderAction {
 impl<T, V> OrderAction for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: Ord + crate::filter::Scan<T> + 'static,
+    V: Ord + crate::filter_builder::Scan<T> + 'static,
 {
     #[inline]
     fn order(self, value: Order) {

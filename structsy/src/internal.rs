@@ -7,7 +7,7 @@ pub use crate::desc::{
     StructDescriptionBuilder, ValueTypeBuilder, VariantDescription,
 };
 pub use crate::embedded_filter::EmbeddedFilterBuilder;
-pub use crate::filter::FilterBuilder;
+pub use crate::filter_builder::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
 pub use crate::index::{
     declare_index, find, find_range, find_range_tx, find_tx, find_unique, find_unique_range, find_unique_range_tx,
