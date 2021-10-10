@@ -1,7 +1,7 @@
 [package]
 name = "structsy_tools"
 description = "Tools for structsy embedded dbms"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 authors = ["Tglman <tglman@tglman.com>"]
 edition = "2018"
