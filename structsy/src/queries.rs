@@ -84,21 +84,6 @@ pub trait EmbeddedQuery<T: PersistentEmbedded + FilterDefinition + 'static>: Siz
     fn add_group(&mut self, filter: Filter<T>);
 }
 
-impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
-    fn or<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().or(builder(StructsyFilter::<T>::new()));
-        self
-    }
-    fn and<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().and(builder(StructsyFilter::<T>::new()));
-        self
-    }
-    fn not<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
-        self.filter_builder().not(builder(StructsyFilter::<T>::new()));
-        self
-    }
-}
-
 impl<T: EmbeddedDescription + FilterDefinition + 'static, Q: EmbeddedQuery<T>> Operators<Filter<T>> for Q {
     fn or<FN: Fn(Filter<T>) -> Filter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(Filter::<T>::new()).extract_filter());
@@ -458,37 +443,50 @@ impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
 }
 
 pub struct StructsyFilter<T: Persistent> {
-    pub(crate) builder: FilterBuilder<T>,
+    filter: Filter<T>,
 }
 
 impl<T: Persistent + 'static> StructsyFilter<T> {
     pub fn new() -> StructsyFilter<T> {
         StructsyFilter {
-            builder: FilterBuilder::new(),
+            filter: Filter::<T>::new(),
         }
-    }
-    pub(crate) fn filter(self) -> FilterBuilder<T> {
-        self.builder
     }
 }
 impl<T: Persistent + 'static> Query<T> for StructsyFilter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
-        &mut self.builder
+        self.filter.filter_builder()
     }
     fn add_group(&mut self, filter: Filter<T>) {
-        let base = self.filter_builder();
-        base.and_filter(filter.extract_filter());
+        self.filter.add_group(filter)
     }
 }
 
+impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
+    fn or<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder()
+            .or(builder(StructsyFilter::<T>::new()).filter.extract_filter());
+        self
+    }
+    fn and<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder()
+            .and(builder(StructsyFilter::<T>::new()).filter.extract_filter());
+        self
+    }
+    fn not<FN: Fn(StructsyFilter<T>) -> StructsyFilter<T>>(mut self, builder: FN) -> Self {
+        self.filter_builder()
+            .not(builder(StructsyFilter::<T>::new()).filter.extract_filter());
+        self
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use super::{FilterBuilder, Query, StructsyFilter};
+    use super::{FilterBuilder, Query};
     use crate::{
-        internal::{Description, Field, FilterDefinition},
-        Persistent, Ref, SRes, Sytx,
         actions::EqualAction,
+        internal::{Description, Field, FilterDefinition},
+        Filter, Persistent, Ref, SRes, Sytx,
     };
 
     use std::io::{Read, Write};
@@ -550,7 +548,7 @@ mod tests {
         fn by_first_and_second(self, first: String, second: String) -> Self;
     }
 
-    impl MyQuery for StructsyFilter<ToQuery> {
+    impl MyQuery for Filter<ToQuery> {
         fn by_name(mut self, first: String) -> Self {
             let builder = self.filter_builder();
             EqualAction::equal((ToQuery::field_first(), builder), first);
@@ -569,7 +567,7 @@ mod tests {
     }
     #[test]
     fn test_query_build() {
-        let filter = StructsyFilter::<ToQuery>::new();
+        let filter = Filter::<ToQuery>::new();
         filter.by_name("one".to_string()).by_second("second".to_string());
     }
 }

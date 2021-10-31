@@ -2,6 +2,10 @@
 //!
 //!
 //!
+pub use crate::actions::EqualAction;
+pub use crate::actions::OrderAction;
+pub use crate::actions::QueryAction;
+pub use crate::actions::RangeAction;
 pub use crate::desc::{
     Description, EnumDescription, EnumDescriptionBuilder, FieldDescription, SimpleValueTypeBuilder, StructDescription,
     StructDescriptionBuilder, ValueTypeBuilder, VariantDescription,
@@ -16,11 +20,7 @@ pub use crate::index::{
 };
 pub use crate::projection::Projection;
 pub use crate::queries::EmbeddedQuery;
-pub use crate::actions::EqualAction;
-pub use crate::actions::OrderAction;
 pub use crate::queries::Query;
-pub use crate::actions::QueryAction;
-pub use crate::actions::RangeAction;
 use crate::{Ref, SRes, Sytx};
 use std::io::{Read, Write};
 

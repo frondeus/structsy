@@ -2,7 +2,6 @@ use crate::{
     embedded_filter_builder::{build_condition, EmbeddedFilterBuilder, EmbeddedFilterBuilderStep},
     index::{find, find_range, find_range_snap, find_range_tx, find_snap, find_tx},
     internal::{Description, EmbeddedDescription, Field},
-    queries::StructsyFilter,
     structsy::SnapshotIterator,
     transaction::{RefSytx, TxIterator},
     Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, SRes, Snapshot, Structsy, StructsyTx,
@@ -1467,12 +1466,12 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(OptionQueryFilter::new(query, field))
     }
 
-    pub fn or(&mut self, filters: StructsyFilter<T>) {
-        self.add(OrFilter::new(filters.filter()))
+    pub fn or(&mut self, builder: FilterBuilder<T>) {
+        self.add(OrFilter::new(builder))
     }
 
-    pub fn and(&mut self, filters: StructsyFilter<T>) {
-        self.add(AndFilter::new(filters.filter()))
+    pub fn and(&mut self, builder: FilterBuilder<T>) {
+        self.add(AndFilter::new(builder))
     }
 
     pub fn and_filter(&mut self, mut filters: FilterBuilder<T>) {
@@ -1482,8 +1481,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.add(AndFilter::new(filters));
     }
 
-    pub fn not(&mut self, filters: StructsyFilter<T>) {
-        self.add(NotFilter::new(filters.filter()))
+    pub fn not(&mut self, builder: FilterBuilder<T>) {
+        self.add(NotFilter::new(builder))
     }
 
     pub fn order<V: Ord + 'static + Scan<T>>(&mut self, field: Field<T, V>, order: Order) {

@@ -57,8 +57,8 @@ pub use internal::{Persistent, PersistentEmbedded};
 mod filter;
 mod projection;
 pub use filter::Filter;
-pub mod record;
 mod actions;
+pub mod record;
 
 #[cfg(feature = "derive")]
 pub mod derive {
