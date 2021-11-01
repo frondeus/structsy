@@ -1,4 +1,7 @@
-use crate::filter_builder::filter_builder::{EmbeddedOrder, FieldOrder, FilterBuilder, Item, OrderStep, Reader};
+use crate::filter_builder::{
+    filter_builder::{EmbeddedOrder, FieldOrder, FilterBuilder, Item, OrderStep},
+    reader::Reader,
+};
 use crate::internal::Field;
 use crate::{Order, Persistent, Ref};
 use std::ops::{Bound, RangeBounds};
