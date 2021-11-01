@@ -1,7 +1,7 @@
 #[allow(deprecated)]
 use crate::{
-    embedded_filter_builder::EmbeddedFilterBuilder,
     filter::Filter,
+    filter_builder::EmbeddedFilterBuilder,
     internal::{EmbeddedDescription, FilterDefinition, Projection},
     Fetch, FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };

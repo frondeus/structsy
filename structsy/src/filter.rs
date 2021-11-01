@@ -1,7 +1,6 @@
 use crate::internal::{EmbeddedDescription, FilterDefinition};
 use crate::{
-    embedded_filter_builder::EmbeddedFilterBuilder,
-    filter_builder::FilterBuilder,
+    filter_builder::{EmbeddedFilterBuilder, FilterBuilder},
     projection::Projection,
     queries::ProjectionResult,
     queries::{EmbeddedQuery, Query},

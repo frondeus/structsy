@@ -1,5 +1,5 @@
 use crate::{
-    embedded_filter_builder::{build_condition, EmbeddedFilterBuilder, EmbeddedFilterBuilderStep},
+    filter_builder::embedded_filter_builder::{build_condition, EmbeddedFilterBuilder, EmbeddedFilterBuilderStep},
     index::{find, find_range, find_range_snap, find_range_tx, find_snap, find_tx},
     internal::{Description, EmbeddedDescription, Field},
     structsy::SnapshotIterator,

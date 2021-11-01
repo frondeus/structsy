@@ -44,7 +44,6 @@ pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
 use crate::structsy::{RecordIter, StructsyImpl};
 mod id;
 pub use crate::id::Ref;
-mod embedded_filter_builder;
 mod error;
 pub use crate::error::{SRes, StructsyError};
 mod queries;

@@ -1,7 +1,9 @@
 use crate::{
-    embedded_filter_builder::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition},
     filter::Filter,
-    filter_builder::{FilterBuilder, RangeCondition, SimpleCondition},
+    filter_builder::{
+        EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, RangeCondition, SimpleCondition,
+        SimpleEmbeddedCondition,
+    },
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
     Order, Persistent, PersistentEmbedded, Ref,
