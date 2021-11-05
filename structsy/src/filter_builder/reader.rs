@@ -1,9 +1,16 @@
 use crate::{
-    index::{find, find_range, find_range_snap, find_range_tx, find_snap, find_tx},
-    Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx,
+    index::{map_entry, map_entry_snapshot, map_entry_tx},
+    Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
 };
-use persy::IndexType;
-use std::ops::RangeBounds;
+use std::ops::{Bound, RangeBounds};
+
+fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
+    match bound {
+        Bound::Included(x) => Bound::Included((*x).clone()),
+        Bound::Excluded(x) => Bound::Excluded((*x).clone()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
 
 pub enum Reader<'a> {
     Structsy(Structsy),
@@ -18,52 +25,47 @@ impl<'a> Reader<'a> {
             Reader::Tx(tx) => tx.read(id),
         }
     }
-    pub(crate) fn find<K: IndexType, P: Persistent>(&mut self, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
+
+    pub(crate) fn find<K: PersistentEmbedded + 'static, P: Persistent>(
+        &mut self,
+        name: &str,
+        k: &K,
+    ) -> SRes<Vec<(Ref<P>, P)>> {
+        let iter = K::finder().find(self, name, k)?;
         Ok(match self {
-            Reader::Structsy(st) => find(st, name, k),
-            Reader::Snapshot(st) => find_snap(st, name, k),
-            Reader::Tx(tx) => find_tx(tx, name, k),
-        }?
-        .into_iter()
-        .collect())
+            Reader::Structsy(st) => map_entry(st, iter),
+            Reader::Snapshot(st) => map_entry_snapshot(st, iter),
+            Reader::Tx(tx) => {
+                let st = tx.structsy().structsy_impl.clone();
+                map_entry_tx(tx.tx().trans, &st, iter)
+            }
+        })
     }
 
-    pub(crate) fn find_range_first<K: IndexType + 'static, P: Persistent + 'static, R: RangeBounds<K> + 'static>(
+    pub(crate) fn find_range_first<
+        K: PersistentEmbedded + Clone + 'static,
+        P: Persistent + 'static,
+        R: RangeBounds<K> + 'static,
+    >(
         &mut self,
         name: &str,
         range: R,
     ) -> SRes<Option<Vec<(Ref<P>, P)>>> {
-        let mut vec = Vec::new();
-        match self {
-            Reader::Structsy(st) => {
-                let iter = find_range(st, name, range)?;
-                let no_key = iter.map(|(r, e, _)| (r, e));
-                for el in no_key {
-                    vec.push(el);
-                    if vec.len() == 1000 {
-                        break;
-                    }
-                }
-            }
-            Reader::Snapshot(snap) => {
-                let iter = find_range_snap(snap, name, range)?;
-                let no_key = iter.map(|(r, e, _)| (r, e));
-                for el in no_key {
-                    vec.push(el);
-                    if vec.len() == 1000 {
-                        break;
-                    }
-                }
-            }
+        let iter = K::finder().find_range_first(
+            self,
+            name,
+            (
+                clone_bound_ref(&range.start_bound()),
+                clone_bound_ref(&range.end_bound()),
+            ),
+        )?;
+
+        let vec = match self {
+            Reader::Structsy(st) => map_entry(st, iter.into_iter()),
+            Reader::Snapshot(st) => map_entry_snapshot(st, iter.into_iter()),
             Reader::Tx(tx) => {
-                let iter = find_range_tx(tx, name, range)?;
-                let no_key = iter.map(|(r, e, _)| (r, e));
-                for el in no_key {
-                    vec.push(el);
-                    if vec.len() == 1000 {
-                        break;
-                    }
-                }
+                let st = tx.structsy().structsy_impl.clone();
+                map_entry_tx(tx.tx().trans, &st, iter.into_iter())
             }
         };
         if vec.len() < 1000 {

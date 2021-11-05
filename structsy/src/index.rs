@@ -1,11 +1,11 @@
 use crate::transaction::TxIterator;
 use crate::{
-    structsy::tx_read, structsy::SnapshotIterator, Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl,
-    Sytx,
+    filter_builder::Reader, structsy::tx_read, structsy::SnapshotIterator, Persistent, Ref, RefSytx, SRes, Snapshot,
+    Structsy, StructsyImpl, Sytx,
 };
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
 use std::marker::PhantomData;
-use std::ops::RangeBounds;
+use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
 use std::vec::IntoIter;
 
@@ -95,7 +95,7 @@ fn map_unique_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> 
     }
 }
 
-fn map_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
+pub(crate) fn map_entry<P: Persistent>(db: &Structsy, entry: impl Iterator<Item = PersyId>) -> Vec<(Ref<P>, P)> {
     entry
         .into_iter()
         .filter_map(|id| {
@@ -109,7 +109,10 @@ fn map_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Vec<(Re
         .collect()
 }
 
-fn map_entry_snapshot<P: Persistent>(snap: &Snapshot, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
+pub(crate) fn map_entry_snapshot<P: Persistent>(
+    snap: &Snapshot,
+    entry: impl Iterator<Item = PersyId>,
+) -> Vec<(Ref<P>, P)> {
     entry
         .into_iter()
         .filter_map(|id| {
@@ -123,10 +126,10 @@ fn map_entry_snapshot<P: Persistent>(snap: &Snapshot, entry: ValueIter<PersyId>)
         .collect()
 }
 
-fn map_unique_entry_tx<P: Persistent>(
+pub(crate) fn map_unique_entry_tx<P: Persistent>(
     tx: &mut Transaction,
     st: &StructsyImpl,
-    entry: ValueIter<PersyId>,
+    entry: impl Iterator<Item = PersyId>,
 ) -> Option<(Ref<P>, P)> {
     let info = st.check_defined::<P>().expect("already checked here");
     if let Some(id) = entry.into_iter().next() {
@@ -141,7 +144,11 @@ fn map_unique_entry_tx<P: Persistent>(
     }
 }
 
-fn map_entry_tx<P: Persistent>(tx: &mut Transaction, st: &StructsyImpl, entry: ValueIter<PersyId>) -> Vec<(Ref<P>, P)> {
+pub(crate) fn map_entry_tx<P: Persistent>(
+    tx: &mut Transaction,
+    st: &StructsyImpl,
+    entry: impl Iterator<Item = PersyId>,
+) -> Vec<(Ref<P>, P)> {
     let info = st.check_defined::<P>().expect("already checked here");
     entry
         .into_iter()
@@ -448,4 +455,79 @@ pub fn find_range_snap<K: IndexType, P: Persistent, R: RangeBounds<K>>(
 pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {
     db.tx().trans.create_index::<T, PersyId>(name, mode)?;
     Ok(())
+}
+
+pub trait Finder<K> {
+    fn find(&self, reader: &mut Reader, name: &str, k: &K) -> SRes<ValueIter<PersyId>>;
+    fn find_range_first(&self, reader: &mut Reader, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>>;
+}
+
+pub struct IndexFinder<K> {
+    p: std::marker::PhantomData<K>,
+}
+
+impl<K> Default for IndexFinder<K> {
+    fn default() -> Self {
+        Self {
+            p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<K: IndexType> Finder<K> for IndexFinder<K> {
+    fn find(&self, reader: &mut Reader, name: &str, k: &K) -> SRes<ValueIter<PersyId>> {
+        Ok(match reader {
+            Reader::Structsy(st) => st.structsy_impl.persy.get::<K, PersyId>(name, k)?,
+            Reader::Snapshot(st) => st.ps.get::<K, PersyId>(name, k)?,
+            Reader::Tx(tx) => tx.tx().trans.get::<K, PersyId>(name, k)?,
+        })
+    }
+    fn find_range_first(&self, reader: &mut Reader, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>> {
+        Ok(match reader {
+            Reader::Structsy(st) => st
+                .structsy_impl
+                .persy
+                .range::<K, PersyId, _>(name, range)?
+                .map(|(_, v)| v.into_iter())
+                .flatten()
+                .take(1000)
+                .collect(),
+            Reader::Snapshot(snap) => snap
+                .ps
+                .range::<K, PersyId, _>(name, range)?
+                .map(|(_, v)| v.into_iter())
+                .flatten()
+                .take(1000)
+                .collect(),
+            Reader::Tx(tx) => tx
+                .tx()
+                .trans
+                .range::<K, PersyId, _>(name, range)?
+                .map(|(_, v)| v.into_iter())
+                .flatten()
+                .take(1000)
+                .collect(),
+        })
+    }
+}
+
+pub struct NoneFinder<K> {
+    p: std::marker::PhantomData<K>,
+}
+impl<K> Default for NoneFinder<K> {
+    fn default() -> Self {
+        Self {
+            p: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<K> Finder<K> for NoneFinder<K> {
+    fn find(&self, _reader: &mut Reader, _name: &str, _k: &K) -> SRes<ValueIter<PersyId>> {
+        unreachable!();
+    }
+
+    fn find_range_first(&self, _reader: &mut Reader, _name: &str, _range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>> {
+        unreachable!()
+    }
 }

@@ -6,6 +6,7 @@ use crate::{
         reader::Reader,
     },
     internal::Field,
+    format::PersistentEmbedded,
     Persistent, Ref,
 };
 use persy::IndexType;
@@ -25,7 +26,7 @@ pub(crate) struct IndexFilter<V, T> {
     phantom: PhantomData<T>,
 }
 
-impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
+impl<V: 'static, T: Persistent + 'static> IndexFilter<V, T> {
     pub(crate) fn new(index_name: String, index_value: V) -> Self {
         IndexFilter {
             index_name,
@@ -35,7 +36,7 @@ impl<V: IndexType + 'static, T: Persistent + 'static> IndexFilter<V, T> {
     }
 }
 
-impl<V: IndexType + 'static, T: Persistent + 'static> FilterBuilderStep for IndexFilter<V, T> {
+impl<V: PersistentEmbedded+Clone + 'static, T: Persistent + 'static> FilterBuilderStep for IndexFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         let data = reader
@@ -98,7 +99,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFil
     }
 }
 
-impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
+impl<V: PersistentEmbedded+Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         if let Ok(Some(values)) = reader.find_range_first(&self.index_name, self.values.clone()) {
@@ -126,7 +127,7 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIn
     }
 }
 
-impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleIndexFilter<V, T> {
+impl<V: PersistentEmbedded+Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleIndexFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         if let Ok(Some(values)) = reader.find_range_first(&self.index_name, self.values.clone()) {

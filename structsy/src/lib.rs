@@ -37,7 +37,6 @@ mod desc;
 mod format;
 use desc::{Description, InternalDescription};
 mod index;
-pub use index::{RangeIterator, UniqueRangeIterator};
 mod filter_builder;
 mod structsy;
 pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
