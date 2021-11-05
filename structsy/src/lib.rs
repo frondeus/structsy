@@ -36,8 +36,8 @@ use std::sync::Arc;
 mod desc;
 mod format;
 use desc::{Description, InternalDescription};
-mod index;
 mod filter_builder;
+mod index;
 mod structsy;
 pub use crate::structsy::{RawIter, RawPrepare, RawTransaction};
 use crate::structsy::{RecordIter, StructsyImpl};
@@ -565,8 +565,8 @@ pub trait RawAccess: RawRead {
 #[cfg(test)]
 mod test {
     use super::{
-        internal::{find, find_range, find_range_tx, find_tx, Description, FieldDescription, Query, StructDescription},
-        Persistent, RangeIterator, Ref, SRes, Structsy, StructsyTx, Sytx,
+        internal::{Description, FieldDescription, Query, StructDescription},
+        Persistent, Ref, SRes, Structsy, StructsyTx, Sytx,
     };
     use persy::ValueMode;
     use std::fs;
@@ -624,26 +624,7 @@ mod test {
             Ok(())
         }
     }
-    impl ToTest {
-        fn find_by_name(st: &Structsy, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
-            find(st, "ToTest.name", val)
-        }
-        fn find_by_name_tx(st: &mut dyn Sytx, val: &String) -> SRes<Vec<(Ref<Self>, Self)>> {
-            find_tx(st, "ToTest.name", val)
-        }
-        fn find_by_name_range<R: std::ops::RangeBounds<String>>(
-            st: &Structsy,
-            range: R,
-        ) -> SRes<impl Iterator<Item = (Ref<Self>, Self, String)>> {
-            find_range(st, "ToTest.name", range)
-        }
-        fn find_by_name_range_tx<'a, R: std::ops::RangeBounds<String>>(
-            st: &'a mut dyn Sytx,
-            range: R,
-        ) -> SRes<RangeIterator<'a, String, Self>> {
-            find_range_tx(st, "ToTest.name", range)
-        }
-    }
+
     trait ToTestQueries {
         fn all(self) -> Self;
     }
@@ -668,20 +649,6 @@ mod test {
         let mut read = tx.read(&id).expect("read correctly").expect("this should be some");
         assert_eq!(read.name, val.name);
         assert_eq!(read.length, val.length);
-        let looked_up_tx = ToTest::find_by_name_tx(&mut tx, &"one".to_string())
-            .map(|x| x.into_iter())
-            .into_iter()
-            .flatten()
-            .map(|(_id, e)| e.name.clone())
-            .next();
-        assert_eq!(looked_up_tx, Some("one".to_string()));
-        let looked_up = ToTest::find_by_name_range_tx(&mut tx, &"mne".to_string()..&"pne".to_string())
-            .map(|x| x.into_iter())
-            .into_iter()
-            .flatten()
-            .map(|(_id, e, _k)| e.name.clone())
-            .next();
-        assert_eq!(looked_up, Some("one".to_string()));
         read.name = "new".to_string();
         tx.update(&id, &read).expect("updated correctly");
 
@@ -707,20 +674,6 @@ mod test {
         assert_eq!(count, 1);
         tx.commit().expect("tx committed correctly");
 
-        let looked_up = ToTest::find_by_name(&db, &"new".to_string())
-            .map(|x| x.into_iter())
-            .into_iter()
-            .flatten()
-            .map(|(_id, e)| e.name.clone())
-            .next();
-        assert_eq!(looked_up, Some("new".to_string()));
-        let looked_up = ToTest::find_by_name_range(&db, &"mew".to_string()..&"oew".to_string())
-            .map(|x| x.into_iter())
-            .into_iter()
-            .flatten()
-            .map(|(_id, e, _k)| e.name.clone())
-            .next();
-        assert_eq!(looked_up, Some("new".to_string()));
         let read_persistent = db.read(&id).expect("read correctly").expect("this is some");
         assert_eq!(read_persistent.name, read.name);
         assert_eq!(read_persistent.length, val.length);

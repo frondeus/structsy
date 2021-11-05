@@ -4,7 +4,6 @@ use crate::{
     Structsy, StructsyImpl, Sytx,
 };
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
-use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
 use std::vec::IntoIter;
@@ -82,19 +81,6 @@ fn remove_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &
     Ok(())
 }
 
-fn map_unique_entry<P: Persistent>(db: &Structsy, entry: ValueIter<PersyId>) -> Option<(Ref<P>, P)> {
-    if let Some(id) = entry.into_iter().next() {
-        let r = Ref::new(id);
-        if let Ok(val) = db.read(&r) {
-            val.map(|c| (r, c))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
 pub(crate) fn map_entry<P: Persistent>(db: &Structsy, entry: impl Iterator<Item = PersyId>) -> Vec<(Ref<P>, P)> {
     entry
         .into_iter()
@@ -126,24 +112,6 @@ pub(crate) fn map_entry_snapshot<P: Persistent>(
         .collect()
 }
 
-pub(crate) fn map_unique_entry_tx<P: Persistent>(
-    tx: &mut Transaction,
-    st: &StructsyImpl,
-    entry: impl Iterator<Item = PersyId>,
-) -> Option<(Ref<P>, P)> {
-    let info = st.check_defined::<P>().expect("already checked here");
-    if let Some(id) = entry.into_iter().next() {
-        if let Ok(val) = tx_read::<P>(info.segment_name(), tx, &id) {
-            let r = Ref::new(id);
-            val.map(|c| (r, c))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
 pub(crate) fn map_entry_tx<P: Persistent>(
     tx: &mut Transaction,
     st: &StructsyImpl,
@@ -163,32 +131,6 @@ pub(crate) fn map_entry_tx<P: Persistent>(
         .collect()
 }
 
-pub fn find_unique<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    let id_container = db.structsy_impl.persy.get::<K, PersyId>(name, k)?;
-    Ok(map_unique_entry(db, id_container))
-}
-
-pub fn find_unique_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &Structsy,
-    name: &str,
-    range: R,
-) -> SRes<impl Iterator<Item = (Ref<P>, P, K)>> {
-    let db1: Structsy = db.clone();
-    Ok(db
-        .structsy_impl
-        .persy
-        .range::<K, PersyId, R>(name, range)?
-        .filter_map(move |e| {
-            let k = e.0;
-            map_unique_entry(&db1, e.1).map(|(r, v)| (r, v, k))
-        }))
-}
-
-pub fn find<K: IndexType, P: Persistent>(db: &Structsy, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    let e = db.structsy_impl.persy.get::<K, PersyId>(name, k)?;
-    Ok(map_entry(db, e))
-}
-
 pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
     db: &Structsy,
     name: &str,
@@ -205,23 +147,6 @@ pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
                 .map(move |(id, val)| (id, val, key.clone()))
         })
         .flatten())
-}
-
-pub fn find_unique_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Option<(Ref<P>, P)>> {
-    let id_container = db.tx().trans.get::<K, PersyId>(name, k)?;
-    let st = db.structsy().structsy_impl;
-    Ok(map_unique_entry_tx(&mut db.tx().trans, &st, id_container))
-}
-
-pub fn find_tx<K: IndexType, P: Persistent>(db: &mut dyn Sytx, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    let e = db.tx().trans.get::<K, PersyId>(name, k)?;
-    let st = db.structsy().structsy_impl;
-    Ok(map_entry_tx(&mut db.tx().trans, &st, e))
-}
-
-pub fn find_snap<K: IndexType, P: Persistent>(snapshot: &Snapshot, name: &str, k: &K) -> SRes<Vec<(Ref<P>, P)>> {
-    let e = snapshot.ps.get::<K, PersyId>(name, k)?;
-    Ok(map_entry_snapshot(snapshot, e))
 }
 
 /// Iterator implementation for Range of indexed persistent types
@@ -250,26 +175,6 @@ impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
         RefSytx {
             structsy_impl: self.structsy.clone(),
             trans: self.persy_iter.tx(),
-        }
-    }
-
-    pub fn next_tx<'b: 'a>(&'b mut self) -> Option<(Vec<(Ref<P>, P)>, K, RefSytx<'a>)> {
-        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
-            let info = self.structsy.check_defined::<P>().expect("already checked here");
-            let mut pv = Vec::new();
-            for id in v {
-                if let Ok(Some(val)) = tx_read::<P>(info.segment_name(), tx, &id) {
-                    let r = Ref::new(id);
-                    pv.push((r, val));
-                }
-            }
-            let ref_tx = RefSytx {
-                structsy_impl: self.structsy.clone(),
-                trans: tx,
-            };
-            Some((pv, k, ref_tx))
-        } else {
-            None
         }
     }
 }
@@ -329,78 +234,6 @@ impl<'a, P: Persistent, K: IndexType> DoubleEndedIterator for RangeIterator<'a, 
             }
         }
     }
-}
-
-/// Iterator implementation for Range of unique indexed persistent types
-pub struct UniqueRangeIterator<'a, K: IndexType, P: Persistent> {
-    structsy: Arc<StructsyImpl>,
-    persy_iter: persy::TxIndexIter<'a, K, PersyId>,
-    phantom: PhantomData<P>,
-}
-
-impl<'a, K: IndexType, P: Persistent> UniqueRangeIterator<'a, K, P> {
-    fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> UniqueRangeIterator<'a, K, P> {
-        UniqueRangeIterator {
-            structsy,
-            persy_iter: iter,
-            phantom: PhantomData,
-        }
-    }
-    pub fn tx(&'a mut self) -> RefSytx<'a> {
-        RefSytx {
-            structsy_impl: self.structsy.clone(),
-            trans: self.persy_iter.tx(),
-        }
-    }
-
-    pub fn next_tx(&'a mut self) -> Option<(Ref<P>, P, K, RefSytx<'a>)> {
-        let info = self.structsy.check_defined::<P>().expect("already checked here");
-        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
-            if let Some(id) = v.into_iter().next() {
-                if let Ok(Some(val)) = tx_read::<P>(info.segment_name(), tx, &id) {
-                    let r = Ref::new(id);
-                    Some((r, val, k, self.tx()))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, P: Persistent, K: IndexType> Iterator for UniqueRangeIterator<'a, K, P> {
-    type Item = (Ref<P>, P, K);
-    fn next(&mut self) -> Option<Self::Item> {
-        let info = self.structsy.check_defined::<P>().expect("already checked here");
-        if let Some((k, v, tx)) = self.persy_iter.next_tx() {
-            if let Some(id) = v.into_iter().next() {
-                if let Ok(Some(val)) = tx_read::<P>(info.segment_name(), tx, &id) {
-                    let r = Ref::new(id);
-                    Some((r, val, k))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-
-pub fn find_unique_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &'a mut dyn Sytx,
-    name: &str,
-    r: R,
-) -> SRes<UniqueRangeIterator<'a, K, P>> {
-    let p1 = db.structsy().structsy_impl;
-    let iter = db.tx().trans.range::<K, PersyId, R>(name, r)?;
-    Ok(UniqueRangeIterator::new(p1, iter))
 }
 
 pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(

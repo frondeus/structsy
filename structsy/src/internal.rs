@@ -14,10 +14,7 @@ pub use crate::filter::Filter;
 pub use crate::filter_builder::EmbeddedFilterBuilder;
 pub use crate::filter_builder::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
-pub use crate::index::{
-    declare_index, find, find_range, find_range_tx, find_tx, 
-    IndexableValue,
-};
+pub use crate::index::{declare_index, IndexableValue};
 pub use crate::projection::Projection;
 pub use crate::queries::EmbeddedQuery;
 pub use crate::queries::Query;

@@ -5,8 +5,8 @@ use crate::{
         filter_builder::{FilterBuilder, Item},
         reader::Reader,
     },
-    internal::Field,
     format::PersistentEmbedded,
+    internal::Field,
     Persistent, Ref,
 };
 use persy::IndexType;
@@ -36,7 +36,7 @@ impl<V: 'static, T: Persistent + 'static> IndexFilter<V, T> {
     }
 }
 
-impl<V: PersistentEmbedded+Clone + 'static, T: Persistent + 'static> FilterBuilderStep for IndexFilter<V, T> {
+impl<V: PersistentEmbedded + Clone + 'static, T: Persistent + 'static> FilterBuilderStep for IndexFilter<V, T> {
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         let data = reader
@@ -99,7 +99,9 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFil
     }
 }
 
-impl<V: PersistentEmbedded+Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeIndexFilter<V, T> {
+impl<V: PersistentEmbedded + Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep
+    for RangeIndexFilter<V, T>
+{
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         if let Ok(Some(values)) = reader.find_range_first(&self.index_name, self.values.clone()) {
@@ -127,7 +129,9 @@ impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIn
     }
 }
 
-impl<V: PersistentEmbedded+Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep for RangeSingleIndexFilter<V, T> {
+impl<V: PersistentEmbedded + Clone + PartialOrd + 'static, T: Persistent + 'static> FilterBuilderStep
+    for RangeSingleIndexFilter<V, T>
+{
     type Target = T;
     fn prepare(self: Box<Self>, reader: &mut Reader) -> Box<dyn ExecutionStep<Target = Self::Target>> {
         if let Ok(Some(values)) = reader.find_range_first(&self.index_name, self.values.clone()) {
