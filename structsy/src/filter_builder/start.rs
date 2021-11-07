@@ -2,6 +2,7 @@ use crate::{
     filter_builder::{
         execution_iterator::ExecutionIterator,
         filter_builder::{Conditions, Iter, Orders},
+        reader::Reader,
     },
     OwnedSytx, Persistent, Ref, Snapshot, Structsy, StructsyTx,
 };
@@ -40,7 +41,7 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         order: Orders<T>,
         structsy: Structsy,
     ) -> ExecutionIterator<'static, T> {
-        let (buffered, iter) = order.scan(structsy.clone());
+        let (buffered, iter) = order.scan(Reader::Structsy(structsy.clone()));
         if let Some(it) = iter {
             ExecutionIterator::new_raw(it, conditions, structsy, buffered)
         } else if let Ok(found) = structsy.scan::<T>() {
@@ -59,7 +60,7 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
             structsy_impl: tx.structsy_impl.clone(),
         };
         if order.index_order() {
-            let (buffered, iter) = order.scan_tx(tx);
+            let (buffered, iter) = order.scan(Reader::Tx(tx.reference()));
             ExecutionIterator::new_raw(iter.unwrap(), conditions, structsy, buffered)
         } else if let Ok(found) = tx.scan::<T>() {
             ExecutionIterator::new_raw(Iter::TxIter(Box::new(found)), conditions, structsy, order.buffered())
@@ -73,7 +74,7 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         order: Orders<T>,
         snapshot: &Snapshot,
     ) -> ExecutionIterator<'static, T> {
-        let (buffered, iter) = order.scan_snapshot(snapshot);
+        let (buffered, iter) = order.scan(Reader::Snapshot(snapshot.clone()));
         if let Some(it) = iter {
             ExecutionIterator::new_raw(it, conditions, snapshot.structsy(), buffered)
         } else if let Ok(found) = snapshot.scan::<T>() {

@@ -389,13 +389,13 @@ impl<T: 'static> Orders<T> {
     }
 }
 impl<T: Persistent + 'static> Orders<T> {
-    pub(crate) fn scan(self, structsy: Structsy) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'static, T>>) {
+    pub(crate) fn scan<'a>(self, reader: Reader<'a>) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'a, T>>) {
         if self.order.is_empty() {
             return (None, None);
         }
         let mut orders = self.order;
         let first_entry = orders.remove(0);
-        let scan = first_entry.scan_reader(Reader::Structsy(structsy));
+        let scan = first_entry.scan_reader(reader);
         if let Some(iter) = scan {
             if orders.is_empty() {
                 (None, Some(iter))
@@ -407,52 +407,11 @@ impl<T: Persistent + 'static> Orders<T> {
             (Some(BufferedOrderExecution::new(orders)), None)
         }
     }
-
     pub(crate) fn index_order(&self) -> bool {
         if let Some(first) = self.order.first() {
             first.is_indexed()
         } else {
             false
-        }
-    }
-
-    pub(crate) fn scan_tx(self, tx: &mut OwnedSytx) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<T>>) {
-        if self.order.is_empty() {
-            return (None, None);
-        }
-        let mut orders = self.order;
-        let first_entry = orders.remove(0);
-        let scan = first_entry.scan_reader(Reader::Tx(tx.reference()));
-        if let Some(iter) = scan {
-            if orders.is_empty() {
-                (None, Some(iter))
-            } else {
-                (Some(BufferedOrderExecution::new(orders)), Some(iter))
-            }
-        } else {
-            orders.insert(0, first_entry);
-            (Some(BufferedOrderExecution::new(orders)), None)
-        }
-    }
-    pub(crate) fn scan_snapshot(
-        self,
-        snapshot: &Snapshot,
-    ) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'static, T>>) {
-        if self.order.is_empty() {
-            return (None, None);
-        }
-        let mut orders = self.order;
-        let first_entry = orders.remove(0);
-        let scan = first_entry.scan_reader(Reader::Snapshot(snapshot.clone()));
-        if let Some(iter) = scan {
-            if orders.is_empty() {
-                (None, Some(iter))
-            } else {
-                (Some(BufferedOrderExecution::new(orders)), Some(iter))
-            }
-        } else {
-            orders.insert(0, first_entry);
-            (Some(BufferedOrderExecution::new(orders)), None)
         }
     }
 }
