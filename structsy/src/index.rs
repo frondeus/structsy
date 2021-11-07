@@ -1,10 +1,10 @@
 use crate::transaction::TxIterator;
 use crate::{
-    filter_builder::Reader, structsy::tx_read, structsy::SnapshotIterator, Persistent, Ref, RefSytx, SRes, Snapshot,
+    filter_builder::Reader, structsy::tx_read, Persistent, Ref, RefSytx, SRes, Snapshot,
     Structsy, StructsyImpl, Sytx,
 };
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
-use std::ops::{Bound, RangeBounds};
+use std::ops::Bound;
 use std::sync::Arc;
 use std::vec::IntoIter;
 
@@ -129,160 +129,6 @@ pub(crate) fn map_entry_tx<P: Persistent>(
             }
         })
         .collect()
-}
-
-pub fn find_range<K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &Structsy,
-    name: &str,
-    range: R,
-) -> SRes<impl DoubleEndedIterator<Item = (Ref<P>, P, K)>> {
-    let db1: Structsy = db.clone();
-    Ok(db
-        .structsy_impl
-        .persy
-        .range::<K, PersyId, R>(name, range)?
-        .map(move |(key, value)| {
-            map_entry(&db1, value)
-                .into_iter()
-                .map(move |(id, val)| (id, val, key.clone()))
-        })
-        .flatten())
-}
-
-/// Iterator implementation for Range of indexed persistent types
-pub struct RangeIterator<'a, K: IndexType, P: Persistent> {
-    structsy: Arc<StructsyImpl>,
-    persy_iter: persy::TxIndexIter<'a, K, PersyId>,
-    iter: Option<IntoIter<(Ref<P>, P, K)>>,
-}
-
-impl<'a, K: IndexType, P: Persistent> TxIterator<'a> for RangeIterator<'a, K, P> {
-    fn tx(&mut self) -> RefSytx {
-        self.tx()
-    }
-}
-
-impl<'a, K: IndexType, P: Persistent> RangeIterator<'a, K, P> {
-    fn new(structsy: Arc<StructsyImpl>, iter: persy::TxIndexIter<'a, K, PersyId>) -> RangeIterator<'a, K, P> {
-        RangeIterator {
-            structsy,
-            persy_iter: iter,
-            iter: None,
-        }
-    }
-
-    pub fn tx(&mut self) -> RefSytx {
-        RefSytx {
-            structsy_impl: self.structsy.clone(),
-            trans: self.persy_iter.tx(),
-        }
-    }
-}
-
-impl<'a, P: Persistent, K: IndexType> Iterator for RangeIterator<'a, K, P> {
-    type Item = (Ref<P>, P, K);
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if let Some(it) = &mut self.iter {
-                let next = it.next();
-                if next.is_some() {
-                    return next;
-                }
-            }
-
-            if let Some((k, v)) = self.persy_iter.next() {
-                let info = self.structsy.check_defined::<P>().expect("already checked here");
-                let mut pv = Vec::new();
-                for id in v {
-                    let tx = self.persy_iter.tx();
-                    if let Ok(Some(val)) = tx_read::<P>(info.segment_name(), tx, &id) {
-                        let r = Ref::new(id);
-                        pv.push((r, val, k.clone()));
-                    }
-                }
-                self.iter = Some(pv.into_iter());
-            } else {
-                return None;
-            }
-        }
-    }
-}
-
-impl<'a, P: Persistent, K: IndexType> DoubleEndedIterator for RangeIterator<'a, K, P> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        loop {
-            if let Some(it) = &mut self.iter {
-                let next = it.next_back();
-                if next.is_some() {
-                    return next;
-                }
-            }
-
-            if let Some((k, v)) = self.persy_iter.next_back() {
-                let info = self.structsy.check_defined::<P>().expect("already checked here");
-                let mut pv = Vec::new();
-                for id in v {
-                    let tx = self.persy_iter.tx();
-                    if let Ok(Some(val)) = tx_read::<P>(info.segment_name(), tx, &id) {
-                        let r = Ref::new(id);
-                        pv.push((r, val, k.clone()));
-                    }
-                }
-                self.iter = Some(pv.into_iter());
-            } else {
-                return None;
-            }
-        }
-    }
-}
-
-pub fn find_range_tx<'a, K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    db: &'a mut dyn Sytx,
-    name: &str,
-    r: R,
-) -> SRes<RangeIterator<'a, K, P>> {
-    let p1 = db.structsy().structsy_impl;
-    let iter = db.tx().trans.range::<K, PersyId, R>(name, r)?;
-    Ok(RangeIterator::new(p1, iter))
-}
-
-struct SnapshotRangeIterator<K, P> {
-    snap: Snapshot,
-    iter: Box<dyn DoubleEndedIterator<Item = (Ref<P>, P, K)>>,
-}
-
-impl<K: IndexType, P: Persistent> Iterator for SnapshotRangeIterator<K, P> {
-    type Item = (Ref<P>, P, K);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-impl<K: IndexType, P: Persistent> DoubleEndedIterator for SnapshotRangeIterator<K, P> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.iter.next_back()
-    }
-}
-impl<K: IndexType, P: Persistent> SnapshotIterator for SnapshotRangeIterator<K, P> {
-    fn snapshot(&self) -> &Snapshot {
-        &self.snap
-    }
-}
-
-pub fn find_range_snap<K: IndexType, P: Persistent, R: RangeBounds<K>>(
-    snap: &Snapshot,
-    name: &str,
-    r: R,
-) -> SRes<impl DoubleEndedIterator<Item = (Ref<P>, P, K)>> {
-    let ms = snap.clone();
-    Ok(snap
-        .ps
-        .range::<K, PersyId, R>(name, r)?
-        .map(move |(key, value)| {
-            map_entry_snapshot(&ms, value)
-                .into_iter()
-                .map(move |(id, val)| (id, val, key.clone()))
-        })
-        .flatten())
 }
 
 pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {

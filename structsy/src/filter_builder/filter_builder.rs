@@ -11,7 +11,7 @@ use crate::{
         reader::Reader,
         start::{ScanStartStep, StartStep},
     },
-    index::{find_range, find_range_snap, find_range_tx, RangeInstanceIter},
+    index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
     structsy::SnapshotIterator,
     transaction::{RefSytx, TxIterator},
@@ -58,12 +58,6 @@ where
 
 struct MapTx<'a, P, K> {
     base: Box<dyn TxIterator<'a, Item = (Ref<P>, P, K)> + 'a>,
-}
-
-impl<'a, P, K> MapTx<'a, P, K> {
-    fn new<T: TxIterator<'a, Item = (Ref<P>, P, K)> + 'a>(base: T) -> Self {
-        MapTx { base: Box::new(base) }
-    }
 }
 
 impl<'a, P, K> Iterator for MapTx<'a, P, K> {
@@ -255,57 +249,7 @@ macro_rules! index_conditions {
                     None
                 }
             }
-            fn scan_impl<'a>( field:&Field<P,Self>, structsy:Structsy, order:&Order) -> Option<Iter<'a,P>> {
-                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-                    if let Ok(iter) =  find_range::<Self,P,_>(&structsy, &index_name, ..) {
-                        let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
-                            Box::new(iter.rev().map(|(r, e, _)| (r, e)))
-                        } else {
-                            Box::new(iter.map(|(r, e, _)| (r, e)))
-                        };
-                        Some(Iter::Iter(it))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-
-            fn scan_tx_impl<'a>(field:&Field<P,Self>, tx:&'a mut OwnedSytx, order:&Order) -> Option<Iter<'a,P>> {
-                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-                    if let Ok(iter) = find_range_tx::<Self,P,_>(tx, &index_name, ..) {
-                        let it = if order == &Order::Desc {
-                            MapTx::new(RevTx{base:iter})
-                        } else {
-                            MapTx::new(iter)
-                        };
-                        Some(Iter::<'a>::TxIter(Box::new(it)))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-
-            fn scan_snapshot_impl<'a>( field:&Field<P,Self>, snapshot:&Snapshot, order:&Order) -> Option<Iter<'a,P>> {
-                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-                    if let Ok(iter) = find_range_snap::<Self,P,_>(snapshot, &index_name, ..) {
-                        let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
-                            Box::new(iter.rev().map(|(r, e, _)| (r, e)))
-                        } else {
-                            Box::new(iter.map(|(r, e, _)| (r, e)))
-                        };
-                        Some(Iter::Iter(it))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-
+            
             fn is_indexed_impl(field:&Field<P,Self>) -> bool {
                 if let Some(_) = FilterBuilder::<P>::is_indexed(field.name) {
                     true
@@ -379,9 +323,6 @@ pub(crate) trait OrderStep<P> {
 
 pub(crate) trait ScanOrderStep<P>: OrderStep<P> {
     fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>>;
-    fn scan(&self, structsy: Structsy) -> Option<Iter<'static, P>>;
-    fn scan_tx<'a>(&self, tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>>;
-    fn scan_snapshot(&self, snapshot: &Snapshot) -> Option<Iter<'static, P>>;
     fn is_indexed(&self) -> bool;
 }
 
@@ -400,30 +341,12 @@ impl<P, V: Ord + Scan<P>> ScanOrderStep<P> for FieldOrder<P, V> {
     fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>> {
         Scan::scan_new(&self.field, reader, &self.order)
     }
-    fn scan(&self, structsy: Structsy) -> Option<Iter<'static, P>> {
-        Scan::scan_impl(&self.field, structsy, &self.order)
-    }
-    fn scan_tx<'a>(&self, tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>> {
-        Scan::scan_tx_impl(&self.field, tx, &self.order)
-    }
-    fn scan_snapshot(&self, snapshot: &Snapshot) -> Option<Iter<'static, P>> {
-        Scan::scan_snapshot_impl(&self.field, snapshot, &self.order)
-    }
     fn is_indexed(&self) -> bool {
         Scan::is_indexed_impl(&self.field)
     }
 }
 pub trait Scan<P>: Sized {
     fn scan_new<'a>(_filed: &Field<P, Self>, _reader: Reader<'a>, _order: &Order) -> Option<Iter<'a, P>> {
-        None
-    }
-    fn scan_impl<'a>(_field: &Field<P, Self>, _structsy: Structsy, _order: &Order) -> Option<Iter<'a, P>> {
-        None
-    }
-    fn scan_tx_impl<'a>(_field: &Field<P, Self>, _tx: &'a mut OwnedSytx, _order: &Order) -> Option<Iter<'a, P>> {
-        None
-    }
-    fn scan_snapshot_impl<'a>(_field: &Field<P, Self>, _snapshot: &Snapshot, _order: &Order) -> Option<Iter<'a, P>> {
         None
     }
     fn is_indexed_impl(_field: &Field<P, Self>) -> bool {
@@ -460,15 +383,6 @@ impl<P, V> OrderStep<P> for EmbeddedOrder<P, V> {
 }
 impl<P, V> ScanOrderStep<P> for EmbeddedOrder<P, V> {
     fn scan_reader<'a>(&self, _reader: Reader<'a>) -> Option<Iter<'a, P>> {
-        None
-    }
-    fn scan(&self, _structsy: Structsy) -> Option<Iter<'static, P>> {
-        None
-    }
-    fn scan_tx<'a>(&self, _tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>> {
-        None
-    }
-    fn scan_snapshot(&self, _snapshot: &Snapshot) -> Option<Iter<'static, P>> {
         None
     }
     fn is_indexed(&self) -> bool {
