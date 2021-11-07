@@ -53,17 +53,33 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     }
 }
 
-pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'static> {
+pub trait RangeCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialOrd + 'static> {
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeConditionFilter::new(field, (start, end)))
+        if V::indexable() {
+            if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+                filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
+            } else {
+                filter.add(RangeConditionFilter::new(field, (start, end)))
+            }
+        } else {
+            filter.add(RangeConditionFilter::new(field, (start, end)))
+        }
     }
 
     fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add(RangeSingleConditionFilter::new(field, (start, end)))
+        if V::indexable() {
+            if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+                filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
+            } else {
+                filter.add(RangeSingleConditionFilter::new(field, (start, end)))
+            }
+        } else {
+            filter.add(RangeSingleConditionFilter::new(field, (start, end)))
+        }
     }
 
     fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
@@ -81,17 +97,41 @@ pub trait RangeCondition<T: Persistent + 'static, V: Clone + PartialOrd + 'stati
         filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
 }
-pub trait SimpleCondition<T: Persistent + 'static, V: Clone + PartialEq + 'static> {
+pub trait SimpleCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialEq + 'static> {
     fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter.add(ConditionFilter::new(field, value))
+        if V::indexable() {
+            if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+                filter.add(IndexFilter::new(index_name, value))
+            } else {
+                filter.add(ConditionFilter::new(field, value))
+            }
+        } else {
+            filter.add(ConditionFilter::new(field, value))
+        }
     }
 
     fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter.add(ConditionSingleFilter::new(field, value))
+        if V::indexable() {
+            if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+                filter.add(IndexFilter::new(index_name, value))
+            } else {
+                filter.add(ConditionSingleFilter::new(field, value))
+            }
+        } else {
+            filter.add(ConditionSingleFilter::new(field, value))
+        }
     }
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.add(ConditionFilter::new(field, Some(value)))
+        if V::indexable() {
+            if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
+                filter.add(IndexFilter::new(index_name, value))
+            } else {
+                filter.add(ConditionFilter::new(field, Some(value)))
+            }
+        } else {
+            filter.add(ConditionFilter::new(field, Some(value)))
+        }
     }
 }
 
@@ -109,68 +149,13 @@ impl<T: Persistent + 'static, R: Persistent + 'static> RangeCondition<T, Option<
 macro_rules! index_conditions {
     ($($t:ty),+) => {
         $(
-        impl<T: Persistent + 'static> RangeCondition<T, $t> for $t {
-            fn range<R: RangeBounds<$t>>(filter: &mut FilterBuilder<T>, field: Field<T, $t>, range: R) {
-                let start = clone_bound_ref(&range.start_bound());
-                let end = clone_bound_ref(&range.end_bound());
-                if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
-                } else {
-                    filter.add(RangeConditionFilter::new(field,( start, end)))
-                }
-            }
+        impl<T: Persistent + 'static> SimpleCondition<T, $t>  for $t {}
 
-            fn range_contains<R: RangeBounds<$t>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<$t>>, range: R) {
-                let start = clone_bound_ref(&range.start_bound());
-                let end = clone_bound_ref(&range.end_bound());
-                if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
-                } else {
-                    filter.add(RangeSingleConditionFilter::new(field, (start, end)))
-                }
-            }
-        }
-
-        impl<T: Persistent + 'static> SimpleCondition<T, $t>  for $t {
-            fn equal(filter: &mut FilterBuilder<T>, field: Field<T, $t>, value: $t) {
-                if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(IndexFilter::new(index_name, value))
-                } else {
-                    filter.add(ConditionFilter::new(field, value))
-                }
-            }
-            fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<$t>>, value: $t) {
-                if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(IndexFilter::new(index_name, value))
-                } else {
-                    filter.add(ConditionSingleFilter::new(field, value))
-                }
-            }
-            fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: $t) {
-                if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    filter.add(IndexFilter::new(index_name, value))
-                } else {
-                    filter.add(ConditionFilter::new(field, Some(value)))
-                }
-            }
-        }
-
-        impl<T: Persistent + 'static> SimpleCondition<T, Vec<$t>> for Vec<$t> {
-            fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Vec<$t>>, value: Vec<$t>) {
-                if let Some(_index_name) = FilterBuilder::<T>::is_indexed(field.name) {
-                    // TODO: support index search for vec types
-                    filter.add(ConditionFilter::new(field, value))
-                //filter.add(IndexFilter::new(index_name, value))
-                } else {
-                    filter.add(ConditionFilter::new(field, value))
-                }
-            }
-        }
+        impl<T: Persistent + 'static> SimpleCondition<T, Vec<$t>> for Vec<$t> {}
 
         impl<T: Persistent + 'static> RangeCondition<T, Vec<$t>> for Vec<$t>{}
 
-        impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t>
-        {
+        impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t> {
             fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: Option<$t>) {
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
                     filter.add(IndexFilter::new(index_name, v));
@@ -180,7 +165,9 @@ macro_rules! index_conditions {
             }
         }
 
-        impl<T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
+        impl<T: Persistent + 'static> RangeCondition<T, $t> for $t {}
+
+        impl< T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
             fn range<R: RangeBounds<Option<$t>>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, range: R) {
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());

@@ -9,7 +9,6 @@ use crate::{
     internal::Field,
     Persistent, Ref,
 };
-use persy::IndexType;
 use std::{
     marker::PhantomData,
     ops::{Bound, RangeBounds},
@@ -89,7 +88,7 @@ pub(crate) struct RangeIndexFilter<V, T> {
     values: (Bound<V>, Bound<V>),
 }
 
-impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeIndexFilter<V, T> {
+impl<V: 'static, T: 'static> RangeIndexFilter<V, T> {
     pub(crate) fn new(index_name: String, field: Field<T, V>, values: (Bound<V>, Bound<V>)) -> Self {
         RangeIndexFilter {
             index_name,
@@ -119,7 +118,7 @@ pub(crate) struct RangeSingleIndexFilter<V, T> {
     values: (Bound<V>, Bound<V>),
 }
 
-impl<V: IndexType + PartialOrd + 'static, T: Persistent + 'static> RangeSingleIndexFilter<V, T> {
+impl<V: 'static, T: 'static> RangeSingleIndexFilter<V, T> {
     pub(crate) fn new(index_name: String, field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Self {
         RangeSingleIndexFilter {
             index_name,
@@ -156,7 +155,7 @@ pub(crate) struct RangeSingleConditionFilter<V, T> {
     field: Field<T, Vec<V>>,
 }
 
-impl<V: PartialOrd + Clone + 'static, T: Persistent + 'static> RangeSingleConditionFilter<V, T> {
+impl<V: 'static, T: 'static> RangeSingleConditionFilter<V, T> {
     pub(crate) fn new(field: Field<T, Vec<V>>, values: (Bound<V>, Bound<V>)) -> Self {
         RangeSingleConditionFilter { field, values }
     }
