@@ -14,7 +14,7 @@ use crate::{
     index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
     structsy::SnapshotIterator,
-    transaction::{RefSytx, TxIterator},
+    transaction::TxIterator,
     Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
 use std::ops::{Bound, RangeBounds};
@@ -27,49 +27,6 @@ pub(crate) struct Item<P> {
 impl<P> Item<P> {
     pub(crate) fn new((id, record): (Ref<P>, P)) -> Self {
         Self { id, record }
-    }
-}
-
-struct RevTx<X> {
-    base: X,
-}
-
-impl<X, P, K> Iterator for RevTx<X>
-where
-    X: Iterator<Item = (Ref<P>, P, K)>,
-    X: DoubleEndedIterator,
-{
-    type Item = (Ref<P>, P, K);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.base.next_back()
-    }
-}
-
-impl<'a, X, P, K> TxIterator<'a> for RevTx<X>
-where
-    X: TxIterator<'a>,
-    X: Iterator<Item = (Ref<P>, P, K)>,
-    X: DoubleEndedIterator,
-{
-    fn tx(&mut self) -> RefSytx {
-        self.base.tx()
-    }
-}
-
-struct MapTx<'a, P, K> {
-    base: Box<dyn TxIterator<'a, Item = (Ref<P>, P, K)> + 'a>,
-}
-
-impl<'a, P, K> Iterator for MapTx<'a, P, K> {
-    type Item = (Ref<P>, P);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.base.next().map(|(id, rec, _)| (id, rec))
-    }
-}
-
-impl<'a, P, K> TxIterator<'a> for MapTx<'a, P, K> {
-    fn tx(&mut self) -> RefSytx {
-        self.base.tx()
     }
 }
 
@@ -232,33 +189,6 @@ macro_rules! index_conditions {
             }
         }
 
-        impl<P:Persistent + 'static> Scan<P> for $t {
-            fn scan_new<'a>(field:&Field<P,Self>, reader: Reader<'a>, order:&Order) -> Option<Iter<'a, P>> {
-                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-                    if let Ok(iter) = Self::finder().find_range(reader,&index_name, (Bound::Unbounded,Bound::Unbounded)) {
-                        let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
-                            Box::new(RangeInstanceIter::new(iter).rev())
-                        } else {
-                            Box::new(RangeInstanceIter::new(iter))
-                        };
-                        Some(Iter::Iter(it))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            
-            fn is_indexed_impl(field:&Field<P,Self>) -> bool {
-                if let Some(_) = FilterBuilder::<P>::is_indexed(field.name) {
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-
         )+
     };
 }
@@ -284,7 +214,32 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 {
 }
 
-impl<P, V: EmbeddedDescription> Scan<P> for V {}
+impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
+    fn scan_new<'a>(field: &Field<P, Self>, reader: Reader<'a>, order: &Order) -> Option<Iter<'a, P>> {
+        if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
+            if let Ok(iter) = Self::finder().find_range(reader, &index_name, (Bound::Unbounded, Bound::Unbounded)) {
+                let it: Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
+                    Box::new(RangeInstanceIter::new(iter).rev())
+                } else {
+                    Box::new(RangeInstanceIter::new(iter))
+                };
+                Some(Iter::Iter(it))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn is_indexed_impl(field: &Field<P, Self>) -> bool {
+        if let Some(_) = FilterBuilder::<P>::is_indexed(field.name) {
+            true
+        } else {
+            false
+        }
+    }
+}
 
 pub(crate) struct Conditions<T> {
     conditions: Vec<Box<dyn ExecutionStep<Target = T>>>,

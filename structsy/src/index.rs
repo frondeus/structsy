@@ -1,7 +1,6 @@
 use crate::transaction::TxIterator;
 use crate::{
-    filter_builder::Reader, structsy::tx_read, Persistent, Ref, RefSytx, SRes, Snapshot,
-    Structsy, StructsyImpl, Sytx,
+    filter_builder::Reader, structsy::tx_read, Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl, Sytx,
 };
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
 use std::ops::Bound;
