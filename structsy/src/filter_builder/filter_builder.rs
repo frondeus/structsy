@@ -11,7 +11,7 @@ use crate::{
         reader::Reader,
         start::{ScanStartStep, StartStep},
     },
-    index::{find_range, find_range_snap, find_range_tx},
+    index::{find_range, find_range_snap, find_range_tx, RangeInstanceIter},
     internal::{Description, EmbeddedDescription, Field},
     structsy::SnapshotIterator,
     transaction::{RefSytx, TxIterator},
@@ -82,7 +82,7 @@ impl<'a, P, K> TxIterator<'a> for MapTx<'a, P, K> {
 pub enum Iter<'a, P> {
     TxIter(Box<dyn TxIterator<'a, Item = (Ref<P>, P)> + 'a>),
     SnapshotIter(Box<dyn SnapshotIterator<Item = (Ref<P>, P)>>),
-    Iter(Box<dyn Iterator<Item = (Ref<P>, P)>>),
+    Iter(Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>),
 }
 
 pub(crate) trait Source<T> {
@@ -239,9 +239,25 @@ macro_rules! index_conditions {
         }
 
         impl<P:Persistent + 'static> Scan<P> for $t {
+            fn scan_new<'a>(field:&Field<P,Self>, reader: Reader<'a>, order:&Order) -> Option<Iter<'a, P>> {
+                if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
+                    if let Ok(iter) = Self::finder().find_range(reader,&index_name, (Bound::Unbounded,Bound::Unbounded)) {
+                        let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
+                            Box::new(RangeInstanceIter::new(iter).rev())
+                        } else {
+                            Box::new(RangeInstanceIter::new(iter))
+                        };
+                        Some(Iter::Iter(it))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
             fn scan_impl<'a>( field:&Field<P,Self>, structsy:Structsy, order:&Order) -> Option<Iter<'a,P>> {
                 if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-                    if let Ok(iter) = find_range::<Self,P,_>(&structsy, &index_name, ..) {
+                    if let Ok(iter) =  find_range::<Self,P,_>(&structsy, &index_name, ..) {
                         let it:Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
                             Box::new(iter.rev().map(|(r, e, _)| (r, e)))
                         } else {
@@ -362,6 +378,7 @@ pub(crate) trait OrderStep<P> {
 }
 
 pub(crate) trait ScanOrderStep<P>: OrderStep<P> {
+    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>>;
     fn scan(&self, structsy: Structsy) -> Option<Iter<'static, P>>;
     fn scan_tx<'a>(&self, tx: &'a mut OwnedSytx) -> Option<Iter<'a, P>>;
     fn scan_snapshot(&self, snapshot: &Snapshot) -> Option<Iter<'static, P>>;
@@ -380,6 +397,9 @@ impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
 }
 
 impl<P, V: Ord + Scan<P>> ScanOrderStep<P> for FieldOrder<P, V> {
+    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>> {
+        Scan::scan_new(&self.field, reader, &self.order)
+    }
     fn scan(&self, structsy: Structsy) -> Option<Iter<'static, P>> {
         Scan::scan_impl(&self.field, structsy, &self.order)
     }
@@ -394,6 +414,9 @@ impl<P, V: Ord + Scan<P>> ScanOrderStep<P> for FieldOrder<P, V> {
     }
 }
 pub trait Scan<P>: Sized {
+    fn scan_new<'a>(_filed: &Field<P, Self>, _reader: Reader<'a>, _order: &Order) -> Option<Iter<'a, P>> {
+        None
+    }
     fn scan_impl<'a>(_field: &Field<P, Self>, _structsy: Structsy, _order: &Order) -> Option<Iter<'a, P>> {
         None
     }
@@ -436,6 +459,9 @@ impl<P, V> OrderStep<P> for EmbeddedOrder<P, V> {
     }
 }
 impl<P, V> ScanOrderStep<P> for EmbeddedOrder<P, V> {
+    fn scan_reader<'a>(&self, _reader: Reader<'a>) -> Option<Iter<'a, P>> {
+        None
+    }
     fn scan(&self, _structsy: Structsy) -> Option<Iter<'static, P>> {
         None
     }
@@ -513,7 +539,7 @@ impl<T: Persistent + 'static> Orders<T> {
         }
         let mut orders = self.order;
         let first_entry = orders.remove(0);
-        let scan = first_entry.scan(structsy);
+        let scan = first_entry.scan_reader(Reader::Structsy(structsy));
         if let Some(iter) = scan {
             if orders.is_empty() {
                 (None, Some(iter))
@@ -540,7 +566,7 @@ impl<T: Persistent + 'static> Orders<T> {
         }
         let mut orders = self.order;
         let first_entry = orders.remove(0);
-        let scan = first_entry.scan_tx(tx);
+        let scan = first_entry.scan_reader(Reader::Tx(tx.reference()));
         if let Some(iter) = scan {
             if orders.is_empty() {
                 (None, Some(iter))
@@ -561,7 +587,7 @@ impl<T: Persistent + 'static> Orders<T> {
         }
         let mut orders = self.order;
         let first_entry = orders.remove(0);
-        let scan = first_entry.scan_snapshot(snapshot);
+        let scan = first_entry.scan_reader(Reader::Snapshot(snapshot.clone()));
         if let Some(iter) = scan {
             if orders.is_empty() {
                 (None, Some(iter))

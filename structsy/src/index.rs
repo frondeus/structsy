@@ -365,7 +365,7 @@ impl<'a, K: IndexType + PartialEq> DoubleEndedIterator for IdRangeIteratorTx<'a,
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             // if the front and the end key are the same use the front interator
-            if self.front_key == self.back_key {
+            if self.front_key == self.back_key && self.front_key.is_some() {
                 if let Some(it) = &mut self.iter {
                     return it.next_back();
                 } else {
@@ -405,18 +405,16 @@ pub struct IdRangeIterator<K: IndexType> {
     iter: Option<IntoIter<(K, PersyId)>>,
     back_key: Option<K>,
     back_iter: Option<IntoIter<(K, PersyId)>>,
-    snapshot: Option<Snapshot>,
 }
 
 impl<'a, K: IndexType> IdRangeIterator<K> {
-    fn new(snapshot: Option<Snapshot>, iter: persy::IndexIter<K, PersyId>) -> IdRangeIterator<K> {
+    fn new(iter: persy::IndexIter<K, PersyId>) -> IdRangeIterator<K> {
         IdRangeIterator {
             persy_iter: iter,
             front_key: None,
             iter: None,
             back_key: None,
             back_iter: None,
-            snapshot,
         }
     }
 }
@@ -460,7 +458,7 @@ impl<K: IndexType + PartialEq> DoubleEndedIterator for IdRangeIterator<K> {
     fn next_back(&mut self) -> Option<Self::Item> {
         loop {
             // if the front and the end key are the same use the front interator
-            if self.front_key == self.back_key {
+            if self.front_key == self.back_key && self.front_key.is_some() {
                 if let Some(it) = &mut self.iter {
                     return it.next_back();
                 } else {
@@ -493,45 +491,98 @@ impl<K: IndexType + PartialEq> DoubleEndedIterator for IdRangeIterator<K> {
         }
     }
 }
-impl<K: IndexType + PartialEq + 'static> SnapIter<K> for IdRangeIterator<K> {
-    fn snapshot(&self) -> Option<Snapshot> {
-        self.snapshot.clone()
-    }
-}
 
-pub trait MyTrait<'a, K>: Iterator<Item = (K, PersyId)> + TxIterator<'a> {}
+pub trait MyTrait<'a, K>: DoubleEndedIterator<Item = (K, PersyId)> + TxIterator<'a> {}
 impl<'a, K: IndexType + PartialEq> MyTrait<'a, K> for IdRangeIteratorTx<'a, K> {}
 
-pub trait SnapIter<K>: Iterator<Item = (K, PersyId)> {
-    fn snapshot(&self) -> Option<Snapshot>;
-}
 pub enum RangeIter<'a, K> {
-    Structsy(Box<dyn Iterator<Item = (K, PersyId)>>),
-    Snapshot(Box<dyn SnapIter<K>>),
+    Structsy((Box<dyn DoubleEndedIterator<Item = (K, PersyId)>>, Structsy)),
+    Snapshot((Box<dyn DoubleEndedIterator<Item = (K, PersyId)>>, Snapshot)),
     Tx(Box<dyn MyTrait<'a, K> + 'a>),
 }
 impl<'a, K: IndexType + PartialEq + 'static> RangeIter<'a, K> {
     fn new_tx(structsy: Arc<StructsyImpl>, p: persy::TxIndexIter<'a, K, PersyId>) -> RangeIter<'a, K> {
         RangeIter::Tx(Box::new(IdRangeIteratorTx::<'a, K>::new(structsy, p)))
     }
-}
-
-impl<'a, K: IndexType + PartialEq + 'static> RangeIter<'a, K> {
-    fn new(snapshot: Option<Snapshot>, p: persy::IndexIter<K, PersyId>) -> RangeIter<'a, K> {
-        RangeIter::Snapshot(Box::new(IdRangeIterator::new(snapshot, p)))
+    fn new_snap(snapshot: Snapshot, p: persy::IndexIter<K, PersyId>) -> RangeIter<'a, K> {
+        RangeIter::Snapshot((Box::new(IdRangeIterator::new(p)), snapshot))
     }
-    pub fn tx(&mut self) -> Option<RefSytx> {
+    fn new(structsy: Structsy, p: persy::IndexIter<K, PersyId>) -> RangeIter<'a, K> {
+        RangeIter::Structsy((Box::new(IdRangeIterator::new(p)), structsy))
+    }
+}
+impl<'a, K> RangeIter<'a, K> {
+    pub fn reader<'r>(&'r mut self) -> Reader<'r> {
         match self {
-            RangeIter::Structsy(_) => None,
-            RangeIter::Snapshot(_) => None,
-            RangeIter::Tx(v) => Some(v.tx()),
+            Self::Structsy((_it, st)) => Reader::Structsy(st.clone()),
+            Self::Snapshot((_it, snap)) => Reader::Snapshot(snap.clone()),
+            Self::Tx(tx) => Reader::Tx(tx.tx()),
         }
     }
-    pub fn snapshot(&mut self) -> Option<Snapshot> {
+}
+impl<'a, K: 'static> Iterator for RangeIter<'a, K> {
+    type Item = (K, PersyId);
+    fn next(&mut self) -> Option<Self::Item> {
         match self {
-            RangeIter::Structsy(_) => None,
-            RangeIter::Snapshot(it) => it.snapshot(),
-            RangeIter::Tx(_) => None,
+            Self::Structsy((it, _st)) => it.next(),
+            Self::Snapshot((it, _snap)) => it.next(),
+            Self::Tx(tx) => tx.next(),
+        }
+    }
+}
+
+impl<'a, K: 'static> DoubleEndedIterator for RangeIter<'a, K> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Structsy((it, _st)) => it.next_back(),
+            Self::Snapshot((it, _snap)) => it.next_back(),
+            Self::Tx(tx) => tx.next_back(),
+        }
+    }
+}
+
+pub(crate) struct RangeInstanceIter<'a, K, P> {
+    iter: RangeIter<'a, K>,
+    marker: std::marker::PhantomData<P>,
+}
+impl<'a, K, P> RangeInstanceIter<'a, K, P> {
+    pub(crate) fn new(iter: RangeIter<'a, K>) -> Self {
+        Self {
+            iter,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, K: 'static, P: Persistent + 'static> Iterator for RangeInstanceIter<'a, K, P> {
+    type Item = (Ref<P>, P);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((_, id)) = self.iter.next() {
+            let mut reader = self.iter.reader();
+            let rid = Ref::new(id);
+            if let Ok(Some(rec)) = reader.read(&rid) {
+                Some((rid, rec))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, K: 'static, P: Persistent + 'static> DoubleEndedIterator for RangeInstanceIter<'a, K, P> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some((_, id)) = self.iter.next_back() {
+            let mut reader = self.iter.reader();
+            let rid = Ref::new(id);
+            if let Ok(Some(rec)) = reader.read(&rid) {
+                Some((rid, rec))
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 }
@@ -539,12 +590,7 @@ impl<'a, K: IndexType + PartialEq + 'static> RangeIter<'a, K> {
 pub trait Finder<K> {
     fn find(&self, reader: &mut Reader, name: &str, k: &K) -> SRes<ValueIter<PersyId>>;
     fn find_range_first(&self, reader: &mut Reader, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>>;
-    fn find_range<'a>(
-        &self,
-        reader: &'a mut Reader<'a>,
-        name: &str,
-        range: (Bound<K>, Bound<K>),
-    ) -> SRes<RangeIter<'a, K>>;
+    fn find_range<'a>(&self, reader: Reader<'a>, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<RangeIter<'a, K>>;
 }
 
 pub struct IndexFinder<K> {
@@ -595,19 +641,15 @@ impl<K: IndexType + PartialEq + 'static> Finder<K> for IndexFinder<K> {
         })
     }
 
-    fn find_range<'a>(
-        &self,
-        reader: &'a mut Reader<'a>,
-        name: &str,
-        range: (Bound<K>, Bound<K>),
-    ) -> SRes<RangeIter<'a, K>> {
+    fn find_range<'a>(&self, reader: Reader<'a>, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<RangeIter<'a, K>> {
         Ok(match reader {
-            Reader::Structsy(st) => RangeIter::new(None, st.structsy_impl.persy.range::<K, PersyId, _>(name, range)?),
-            Reader::Snapshot(snap) => RangeIter::new(Some(snap.clone()), snap.ps.range::<K, PersyId, _>(name, range)?),
-            Reader::Tx(tx) => RangeIter::new_tx(
-                tx.structsy_impl.clone(),
-                tx.tx().trans.range::<K, PersyId, _>(name, range)?,
-            ),
+            Reader::Structsy(st) => {
+                RangeIter::new(st.clone(), st.structsy_impl.persy.range::<K, PersyId, _>(name, range)?)
+            }
+            Reader::Snapshot(snap) => RangeIter::new_snap(snap.clone(), snap.ps.range::<K, PersyId, _>(name, range)?),
+            Reader::Tx(RefSytx { structsy_impl, trans }) => {
+                RangeIter::new_tx(structsy_impl, trans.range::<K, PersyId, _>(name, range)?)
+            }
         })
     }
 }
@@ -631,12 +673,7 @@ impl<K> Finder<K> for NoneFinder<K> {
     fn find_range_first(&self, _reader: &mut Reader, _name: &str, _range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>> {
         unreachable!()
     }
-    fn find_range<'a>(
-        &self,
-        _reader: &'a mut Reader<'a>,
-        _name: &str,
-        _range: (Bound<K>, Bound<K>),
-    ) -> SRes<RangeIter<'a, K>> {
+    fn find_range<'a>(&self, _reader: Reader<'a>, _name: &str, _range: (Bound<K>, Bound<K>)) -> SRes<RangeIter<'a, K>> {
         unreachable!()
     }
 }
