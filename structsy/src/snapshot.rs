@@ -3,10 +3,11 @@ use crate::filter_builder::FilterBuilder;
 use crate::id::raw_parse;
 use crate::queries::SnapshotQuery;
 use crate::record::Record;
-use crate::structsy::{SnapshotRecordIter, StructsyImpl};
+use crate::structsy::StructsyImpl;
 use crate::{Fetch, Persistent, RawAccess, RawIter, RawRead, Ref, Structsy, StructsyIter};
 use persy::PersyId;
 use std::io::Cursor;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Read data from a snapshot freezed in a specific moment ignoring all
@@ -203,5 +204,45 @@ impl RawAccess for Snapshot {
 
     fn raw_define(&self, _desc: crate::Description) -> SRes<bool> {
         unimplemented!()
+    }
+}
+
+pub trait SnapshotIterator: Iterator {
+    fn snapshot(&self) -> &Snapshot;
+}
+
+/// Iterator for record instances
+pub struct SnapshotRecordIter<T> {
+    iter: persy::SnapshotSegmentIter,
+    snapshot: Snapshot,
+    marker: PhantomData<T>,
+}
+impl<T> SnapshotRecordIter<T> {
+    pub(crate) fn new(iter: persy::SnapshotSegmentIter, snapshot: Snapshot) -> Self {
+        SnapshotRecordIter {
+            iter,
+            snapshot,
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T: Persistent> Iterator for SnapshotRecordIter<T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((id, buff)) = self.iter.next() {
+            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
+                Some((Ref::new(id), x))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+impl<T: Persistent> SnapshotIterator for SnapshotRecordIter<T> {
+    fn snapshot(&self) -> &Snapshot {
+        &self.snapshot
     }
 }

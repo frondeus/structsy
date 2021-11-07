@@ -301,10 +301,7 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn scan<T: Persistent>(&mut self) -> SRes<TxRecordIter<T>> {
-        let def = self.structsy().structsy_impl.check_defined::<T>()?;
-        let implc = self.structsy().structsy_impl;
-        let iter = self.tx().trans.scan(def.segment_name())?;
-        Ok(TxRecordIter::new(iter, implc))
+        raw_tx_scan(self.structsy().structsy_impl, self.tx().trans)
     }
 
     /// Commit a transaction
@@ -343,6 +340,15 @@ pub trait StructsyTx: Sytx + Sized {
     /// # }
     /// ```
     fn prepare_commit(self) -> SRes<Prepared>;
+}
+
+pub(crate) fn raw_tx_scan<'a, T: Persistent>(
+    structsy: Arc<StructsyImpl>,
+    trans: &'a mut Transaction,
+) -> SRes<TxRecordIter<'a, T>> {
+    let def = structsy.check_defined::<T>()?;
+    let iter = trans.scan(def.segment_name())?;
+    Ok(TxRecordIter::new(iter, structsy))
 }
 
 pub trait TxIterator<'a>: Iterator {

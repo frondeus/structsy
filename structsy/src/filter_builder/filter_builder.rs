@@ -13,7 +13,7 @@ use crate::{
     },
     index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
-    structsy::SnapshotIterator,
+    snapshot::SnapshotIterator,
     transaction::TxIterator,
     Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
@@ -33,15 +33,15 @@ impl<P> Item<P> {
 pub enum Iter<'a, P> {
     TxIter(Box<dyn TxIterator<'a, Item = (Ref<P>, P)> + 'a>),
     SnapshotIter(Box<dyn SnapshotIterator<Item = (Ref<P>, P)>>),
-    Iter(Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>),
+    Iter((Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>, Structsy)),
 }
 
 pub(crate) trait Source<T> {
     fn next_item(&mut self) -> Option<Item<T>>;
 }
-impl<'a, T: Persistent + 'static> Source<T> for (&mut Iter<'a, T>, &mut Conditions<T>, &Structsy) {
+impl<'a, T: Persistent + 'static> Source<T> for (&mut Iter<'a, T>, &mut Conditions<T>) {
     fn next_item(&mut self) -> Option<Item<T>> {
-        ExecutionIterator::filtered_next(self.0, self.1, self.2)
+        ExecutionIterator::filtered_next(self.0, self.1)
     }
 }
 
@@ -204,13 +204,15 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
     fn scan_new<'a>(field: &Field<P, Self>, reader: Reader<'a>, order: &Order) -> Option<Iter<'a, P>> {
         if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
+            let stru = reader.structsy();
             if let Ok(iter) = Self::finder().find_range(reader, &index_name, (Bound::Unbounded, Bound::Unbounded)) {
                 let it: Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
                     Box::new(RangeInstanceIter::new(iter).rev())
                 } else {
                     Box::new(RangeInstanceIter::new(iter))
                 };
-                Some(Iter::Iter(it))
+                //TODO: fix this is not using the right reader
+                Some(Iter::Iter((it, stru)))
             } else {
                 None
             }

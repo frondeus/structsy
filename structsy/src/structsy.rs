@@ -3,6 +3,7 @@ use crate::{
     id::{raw_format, raw_parse},
     internal::Description,
     record::Record,
+    snapshot::SnapshotRecordIter,
     transaction::OwnedSytx,
     InternalDescription, Persistent, PersistentEmbedded, RawAccess, RawRead, Ref, SRes, Snapshot, Structsy,
     StructsyConfig, StructsyError, StructsyTx,
@@ -328,11 +329,7 @@ impl StructsyImpl {
 
     pub fn scan_snapshot<T: Persistent>(&self, snap: &Snapshot) -> SRes<SnapshotRecordIter<T>> {
         let def = self.check_defined::<T>()?;
-        Ok(SnapshotRecordIter {
-            iter: snap.ps.scan(def.segment_name())?,
-            snapshot: snap.clone(),
-            marker: PhantomData,
-        })
+        Ok(SnapshotRecordIter::new(snap.ps.scan(def.segment_name())?, snap.clone()))
     }
 
     pub fn list_defined(&self) -> SRes<impl std::iter::Iterator<Item = Description>> {
@@ -479,7 +476,7 @@ pub(crate) fn tx_read<T: Persistent>(name: &str, tx: &mut Transaction, id: &Pers
 }
 
 /// Iterator for record instances
-pub struct RecordIter<T: Persistent> {
+pub struct RecordIter<T> {
     iter: persy::SegmentIter,
     marker: PhantomData<T>,
 }
@@ -496,36 +493,5 @@ impl<T: Persistent> Iterator for RecordIter<T> {
         } else {
             None
         }
-    }
-}
-
-pub trait SnapshotIterator: Iterator {
-    fn snapshot(&self) -> &Snapshot;
-}
-
-/// Iterator for record instances
-pub struct SnapshotRecordIter<T: Persistent> {
-    iter: persy::SnapshotSegmentIter,
-    snapshot: Snapshot,
-    marker: PhantomData<T>,
-}
-
-impl<T: Persistent> Iterator for SnapshotRecordIter<T> {
-    type Item = (Ref<T>, T);
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some((id, buff)) = self.iter.next() {
-            if let Ok(x) = T::read(&mut Cursor::new(buff)) {
-                Some((Ref::new(id), x))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-impl<T: Persistent> SnapshotIterator for SnapshotRecordIter<T> {
-    fn snapshot(&self) -> &Snapshot {
-        &self.snapshot
     }
 }

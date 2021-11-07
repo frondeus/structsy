@@ -1,6 +1,8 @@
 use crate::transaction::TxIterator;
 use crate::{
-    filter_builder::Reader, structsy::tx_read, Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl, Sytx,
+    filter_builder::{Reader, ReaderIterator},
+    structsy::tx_read,
+    Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl, Sytx,
 };
 use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
 use std::ops::Bound;
@@ -429,6 +431,12 @@ impl<'a, K: 'static, P: Persistent + 'static> DoubleEndedIterator for RangeInsta
         } else {
             None
         }
+    }
+}
+
+impl<'a, K: 'static, P: Persistent + 'static> ReaderIterator for RangeInstanceIter<'a, K, P> {
+    fn reader<'b>(&'b mut self) -> Reader<'b> {
+        self.iter.reader()
     }
 }
 

@@ -1,5 +1,8 @@
 use crate::{
     index::{map_entry, map_entry_snapshot, map_entry_tx},
+    snapshot::{SnapshotIterator, SnapshotRecordIter},
+    structsy::RecordIter,
+    transaction::{raw_tx_scan, TxRecordIter},
     Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
 };
 use std::ops::{Bound, RangeBounds};
@@ -9,6 +12,34 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
         Bound::Included(x) => Bound::Included((*x).clone()),
         Bound::Excluded(x) => Bound::Excluded((*x).clone()),
         Bound::Unbounded => Bound::Unbounded,
+    }
+}
+pub(crate) trait ReaderIterator: Iterator {
+    fn reader<'a>(&'a mut self) -> Reader<'a>;
+}
+
+pub(crate) enum ScanIter<'a, T> {
+    Structsy((RecordIter<T>, Structsy)),
+    Snapshot(SnapshotRecordIter<T>),
+    Tx(TxRecordIter<'a, T>),
+}
+impl<'a, T: Persistent> Iterator for ScanIter<'a, T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Structsy((it, _)) => it.next(),
+            Self::Snapshot(sn) => sn.next(),
+            Self::Tx(tx) => tx.next(),
+        }
+    }
+}
+impl<'a, T: Persistent> ReaderIterator for ScanIter<'a, T> {
+    fn reader<'b>(&'b mut self) -> Reader<'b> {
+        match self {
+            Self::Structsy((_, s)) => Reader::Structsy(s.clone()),
+            Self::Snapshot(sn) => Reader::Snapshot(sn.snapshot().clone()),
+            Self::Tx(tx) => Reader::Tx(tx.tx()),
+        }
     }
 }
 
@@ -23,6 +54,14 @@ impl<'a> Reader<'a> {
             Reader::Structsy(st) => st.read(id),
             Reader::Snapshot(snap) => snap.read(id),
             Reader::Tx(tx) => tx.read(id),
+        }
+    }
+
+    pub(crate) fn scan<T: Persistent>(self) -> SRes<ScanIter<'a, T>> {
+        match self {
+            Reader::Structsy(st) => Ok(ScanIter::Structsy((st.scan::<T>()?, st.clone()))),
+            Reader::Snapshot(snap) => Ok(ScanIter::Snapshot(snap.scan::<T>()?)),
+            Reader::Tx(RefSytx { structsy_impl, trans }) => Ok(ScanIter::Tx(raw_tx_scan(structsy_impl, trans)?)),
         }
     }
 
@@ -72,6 +111,17 @@ impl<'a> Reader<'a> {
             Ok(Some(vec))
         } else {
             Ok(None)
+        }
+    }
+    pub(crate) fn structsy(&self) -> Structsy {
+        match self {
+            Reader::Structsy(st) => st.clone(),
+            Reader::Snapshot(st) => Structsy {
+                structsy_impl: st.structsy_impl.clone(),
+            },
+            Reader::Tx(tx) => Structsy {
+                structsy_impl: tx.structsy_impl.clone(),
+            },
         }
     }
 }
