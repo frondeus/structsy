@@ -8,7 +8,7 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
-        reader::Reader,
+        reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
     },
     index::RangeInstanceIter,
@@ -34,6 +34,7 @@ pub enum Iter<'a, P> {
     TxIter(Box<dyn TxIterator<'a, Item = (Ref<P>, P)> + 'a>),
     SnapshotIter(Box<dyn SnapshotIterator<Item = (Ref<P>, P)>>),
     Iter((Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>, Structsy)),
+    IterR(Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>),
 }
 
 pub(crate) trait Source<T> {
@@ -204,15 +205,13 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
     fn scan_new<'a>(field: &Field<P, Self>, reader: Reader<'a>, order: &Order) -> Option<Iter<'a, P>> {
         if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
-            let stru = reader.structsy();
             if let Ok(iter) = Self::finder().find_range(reader, &index_name, (Bound::Unbounded, Bound::Unbounded)) {
-                let it: Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
+                let it: Box<dyn ReaderIterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
                     Box::new(RangeInstanceIter::new(iter).reader_rev())
                 } else {
                     Box::new(RangeInstanceIter::new(iter))
                 };
-                //TODO: fix this is not using the right reader
-                Some(Iter::Iter((it, stru)))
+                Some(Iter::IterR(it))
             } else {
                 None
             }

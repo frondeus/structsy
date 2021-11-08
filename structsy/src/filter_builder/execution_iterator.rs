@@ -43,11 +43,13 @@ impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
             Iter::Iter((ref mut it, _)) => it.next(),
             Iter::SnapshotIter(ref mut it) => it.next(),
             Iter::TxIter(ref mut it) => it.next(),
+            Iter::IterR(ref mut it) => it.next(),
         } {
             let mut reader = match base {
                 Iter::Iter((_, structsy)) => Reader::Structsy(structsy.clone()),
                 Iter::SnapshotIter(it) => Reader::Snapshot(it.snapshot().clone()),
                 Iter::TxIter(ref mut it) => Reader::Tx(it.tx()),
+                Iter::IterR(ref mut it) => it.reader(),
             };
             let item = Item::new(read);
             if conditions.check(&item, &mut reader) {

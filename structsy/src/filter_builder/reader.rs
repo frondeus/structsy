@@ -14,7 +14,7 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
         Bound::Unbounded => Bound::Unbounded,
     }
 }
-pub(crate) trait ReaderIterator: Iterator {
+pub trait ReaderIterator: Iterator {
     fn reader<'a>(&'a mut self) -> Reader<'a>;
 }
 

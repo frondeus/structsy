@@ -4,8 +4,61 @@ use crate::{
         filter_builder::{Conditions, Iter, Orders},
         reader::{Reader, ReaderIterator},
     },
-    OwnedSytx, Persistent, Ref, Snapshot, Structsy, StructsyTx,
+    structsy::StructsyImpl,
+    OwnedSytx, Persistent, Ref, RefSytx, Snapshot, Structsy, StructsyTx,
 };
+use persy::Transaction;
+use std::sync::Arc;
+
+enum Holder<'a> {
+    Structsy(Structsy),
+    Snapshot(Snapshot),
+    Tx((Arc<StructsyImpl>, &'a mut Transaction)),
+}
+impl<'a> Holder<'a> {
+    fn new(reader: Reader<'a>) -> Self {
+        match reader {
+            Reader::Structsy(st) => Self::Structsy(st),
+            Reader::Snapshot(sn) => Self::Snapshot(sn),
+            Reader::Tx(RefSytx { structsy_impl, trans }) => Self::Tx((structsy_impl, trans)),
+        }
+    }
+    fn reader<'b>(&'b mut self) -> Reader<'b> {
+        match self {
+            Self::Structsy(st) => Reader::Structsy(st.clone()),
+            Self::Snapshot(st) => Reader::Snapshot(st.clone()),
+            Self::Tx((st, tx)) => Reader::Tx(RefSytx {
+                structsy_impl: st.clone(),
+                trans: tx,
+            }),
+        }
+    }
+}
+
+struct HolderIter<'a, T> {
+    iter: Box<dyn Iterator<Item = (Ref<T>, T)>>,
+    h: Holder<'a>,
+}
+impl<'a, T> HolderIter<'a, T> {
+    fn new(iter: Box<dyn Iterator<Item = (Ref<T>, T)>>, reader: Reader<'a>) -> Self {
+        HolderIter {
+            iter,
+            h: Holder::new(reader),
+        }
+    }
+}
+impl<'a, T> Iterator for HolderIter<'a, T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+}
+
+impl<'a, T> ReaderIterator for HolderIter<'a, T> {
+    fn reader<'b>(&'b mut self) -> Reader<'b> {
+        self.h.reader()
+    }
+}
 
 struct EmptyIter<T> {
     mark: std::marker::PhantomData<T>,
@@ -81,10 +134,10 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
             let (buffered, iter) = order.scan(reader);
             ExecutionIterator::new_raw(iter.unwrap(), conditions, buffered)
         } else if let Ok(found) = reader.scan::<T>() {
-            ExecutionIterator::new_raw(Iter::Iter((Box::new(found), st)), conditions, order.buffered())
+            ExecutionIterator::new_raw(Iter::IterR(Box::new(found)), conditions, order.buffered())
         } else {
             ExecutionIterator::new_raw(
-                Iter::Iter((Box::new(EmptyIter::new(st.clone())), st)),
+                Iter::IterR(Box::new(EmptyIter::new(st.clone()))),
                 conditions,
                 order.buffered(),
             )
@@ -168,7 +221,11 @@ impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
         order: Orders<T>,
         reader: Reader<'a>,
     ) -> ExecutionIterator<'a, T> {
-        ExecutionIterator::new(Box::new(self.data), conditions, reader.structsy(), order.buffered())
+        ExecutionIterator::new_raw(
+            Iter::IterR(Box::new(HolderIter::new(self.data, reader))),
+            conditions,
+            order.buffered(),
+        )
     }
     fn start(
         self: Box<Self>,
