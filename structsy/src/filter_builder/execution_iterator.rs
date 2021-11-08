@@ -1,24 +1,34 @@
 use crate::{
     filter_builder::{
-        filter_builder::{BufferedExection, Conditions, Item, Iter},
-        reader::Reader,
+        filter_builder::{BufferedExection, Conditions, Item},
+        reader::ReaderIterator,
     },
     Persistent, Ref,
 };
 
+pub(crate) type IterT<'a, P> = Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>;
+pub(crate) trait Source<T> {
+    fn next_item(&mut self) -> Option<Item<T>>;
+}
+
+impl<'a, T: Persistent + 'static> Source<T> for (&mut IterT<'a, T>, &mut Conditions<T>) {
+    fn next_item(&mut self) -> Option<Item<T>> {
+        ExecutionIterator::filtered_next(self.0, self.1)
+    }
+}
 pub(crate) struct ExecutionIterator<'a, P> {
-    base: Iter<'a, P>,
+    base: IterT<'a, P>,
     conditions: Conditions<P>,
     buffered: Option<Box<dyn BufferedExection<P> + 'a>>,
 }
 impl<'a, P: 'static> ExecutionIterator<'a, P> {
-    pub(crate) fn new_raw(
-        base: Iter<'a, P>,
+    pub(crate) fn new(
+        iter: IterT<'a, P>,
         conditions: Conditions<P>,
         buffered: Option<Box<dyn BufferedExection<P> + 'a>>,
     ) -> Self {
         ExecutionIterator {
-            base,
+            base: iter,
             conditions,
             buffered,
         }
@@ -26,19 +36,9 @@ impl<'a, P: 'static> ExecutionIterator<'a, P> {
 }
 
 impl<'a, P: Persistent + 'static> ExecutionIterator<'a, P> {
-    pub(crate) fn filtered_next(base: &mut Iter<P>, conditions: &mut Conditions<P>) -> Option<Item<P>> {
-        while let Some(read) = match base {
-            Iter::Iter((ref mut it, _)) => it.next(),
-            Iter::SnapshotIter(ref mut it) => it.next(),
-            Iter::TxIter(ref mut it) => it.next(),
-            Iter::IterR(ref mut it) => it.next(),
-        } {
-            let mut reader = match base {
-                Iter::Iter((_, structsy)) => Reader::Structsy(structsy.clone()),
-                Iter::SnapshotIter(it) => Reader::Snapshot(it.snapshot().clone()),
-                Iter::TxIter(ref mut it) => Reader::Tx(it.tx()),
-                Iter::IterR(ref mut it) => it.reader(),
-            };
+    pub(crate) fn filtered_next(base: &mut IterT<'a, P>, conditions: &mut Conditions<P>) -> Option<Item<P>> {
+        while let Some(read) = base.next() {
+            let mut reader = base.reader();
             let item = Item::new(read);
             if conditions.check(&item, &mut reader) {
                 return Some(item);

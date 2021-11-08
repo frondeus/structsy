@@ -1,7 +1,7 @@
 use crate::{
     filter_builder::{
         embedded_filter_builder::EmbeddedFilterBuilder,
-        execution_iterator::ExecutionIterator,
+        execution_iterator::{IterT, Source},
         execution_step::ExecutionStep,
         filter_builder_step::{
             AndFilter, ConditionFilter, ConditionSingleFilter, EmbeddedFieldFilter, FilterBuilderStep, IndexFilter,
@@ -13,8 +13,6 @@ use crate::{
     },
     index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
-    snapshot::SnapshotIterator,
-    transaction::TxIterator,
     Order, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
 use std::ops::{Bound, RangeBounds};
@@ -27,22 +25,6 @@ pub(crate) struct Item<P> {
 impl<P> Item<P> {
     pub(crate) fn new((id, record): (Ref<P>, P)) -> Self {
         Self { id, record }
-    }
-}
-
-pub enum Iter<'a, P> {
-    TxIter(Box<dyn TxIterator<'a, Item = (Ref<P>, P)> + 'a>),
-    SnapshotIter(Box<dyn SnapshotIterator<Item = (Ref<P>, P)>>),
-    Iter((Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>, Structsy)),
-    IterR(Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>),
-}
-
-pub(crate) trait Source<T> {
-    fn next_item(&mut self) -> Option<Item<T>>;
-}
-impl<'a, T: Persistent + 'static> Source<T> for (&mut Iter<'a, T>, &mut Conditions<T>) {
-    fn next_item(&mut self) -> Option<Item<T>> {
-        ExecutionIterator::filtered_next(self.0, self.1)
     }
 }
 
@@ -203,7 +185,7 @@ impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'sta
 }
 
 impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
-    fn scan_new<'a>(field: &Field<P, Self>, reader: Reader<'a>, order: &Order) -> Option<Iter<'a, P>> {
+    fn scan<'a>(field: &Field<P, Self>, reader: Reader<'a>, order: &Order) -> Option<IterT<'a, P>> {
         if let Some(index_name) = FilterBuilder::<P>::is_indexed(field.name) {
             if let Ok(iter) = Self::finder().find_range(reader, &index_name, (Bound::Unbounded, Bound::Unbounded)) {
                 let it: Box<dyn ReaderIterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
@@ -211,7 +193,7 @@ impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
                 } else {
                     Box::new(RangeInstanceIter::new(iter))
                 };
-                Some(Iter::IterR(it))
+                Some(it)
             } else {
                 None
             }
@@ -265,7 +247,7 @@ pub(crate) trait OrderStep<P> {
 }
 
 pub(crate) trait ScanOrderStep<P>: OrderStep<P> {
-    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>>;
+    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<IterT<'a, P>>;
     fn is_indexed(&self) -> bool;
 }
 
@@ -279,17 +261,16 @@ impl<P, V: Ord> OrderStep<P> for FieldOrder<P, V> {
         }
     }
 }
-
 impl<P, V: Ord + Scan<P>> ScanOrderStep<P> for FieldOrder<P, V> {
-    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<Iter<'a, P>> {
-        Scan::scan_new(&self.field, reader, &self.order)
+    fn scan_reader<'a>(&self, reader: Reader<'a>) -> Option<IterT<'a, P>> {
+        Scan::scan(&self.field, reader, &self.order)
     }
     fn is_indexed(&self) -> bool {
         Scan::is_indexed_impl(&self.field)
     }
 }
 pub trait Scan<P>: Sized {
-    fn scan_new<'a>(_filed: &Field<P, Self>, _reader: Reader<'a>, _order: &Order) -> Option<Iter<'a, P>> {
+    fn scan<'a>(_filed: &Field<P, Self>, _reader: Reader<'a>, _order: &Order) -> Option<IterT<'a, P>> {
         None
     }
     fn is_indexed_impl(_field: &Field<P, Self>) -> bool {
@@ -325,7 +306,7 @@ impl<P, V> OrderStep<P> for EmbeddedOrder<P, V> {
     }
 }
 impl<P, V> ScanOrderStep<P> for EmbeddedOrder<P, V> {
-    fn scan_reader<'a>(&self, _reader: Reader<'a>) -> Option<Iter<'a, P>> {
+    fn scan_reader<'a>(&self, _reader: Reader<'a>) -> Option<IterT<'a, P>> {
         None
     }
     fn is_indexed(&self) -> bool {
@@ -390,7 +371,7 @@ impl<T: 'static> Orders<T> {
     }
 }
 impl<T: Persistent + 'static> Orders<T> {
-    pub(crate) fn scan<'a>(self, reader: Reader<'a>) -> (Option<Box<dyn BufferedExection<T>>>, Option<Iter<'a, T>>) {
+    pub(crate) fn scan<'a>(self, reader: Reader<'a>) -> (Option<Box<dyn BufferedExection<T>>>, Option<IterT<'a, T>>) {
         if self.order.is_empty() {
             return (None, None);
         }

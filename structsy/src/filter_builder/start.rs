@@ -1,7 +1,7 @@
 use crate::{
     filter_builder::{
         execution_iterator::ExecutionIterator,
-        filter_builder::{Conditions, Iter, Orders},
+        filter_builder::{Conditions, Orders},
         reader::{Reader, ReaderIterator},
     },
     structsy::StructsyImpl,
@@ -114,15 +114,11 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         let st = reader.structsy();
         if order.index_order() {
             let (buffered, iter) = order.scan(reader);
-            ExecutionIterator::new_raw(iter.unwrap(), conditions, buffered)
+            ExecutionIterator::new(iter.unwrap(), conditions, buffered)
         } else if let Ok(found) = reader.scan::<T>() {
-            ExecutionIterator::new_raw(Iter::IterR(Box::new(found)), conditions, order.buffered())
+            ExecutionIterator::new(Box::new(found), conditions, order.buffered())
         } else {
-            ExecutionIterator::new_raw(
-                Iter::IterR(Box::new(EmptyIter::new(st.clone()))),
-                conditions,
-                order.buffered(),
-            )
+            ExecutionIterator::new(Box::new(EmptyIter::new(st.clone())), conditions, order.buffered())
         }
     }
 }
@@ -142,8 +138,8 @@ impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
         order: Orders<T>,
         reader: Reader<'a>,
     ) -> ExecutionIterator<'a, T> {
-        ExecutionIterator::new_raw(
-            Iter::IterR(Box::new(HolderIter::new(self.data, reader))),
+        ExecutionIterator::new(
+            Box::new(HolderIter::new(self.data, reader)),
             conditions,
             order.buffered(),
         )
