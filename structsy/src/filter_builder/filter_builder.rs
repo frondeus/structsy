@@ -473,12 +473,13 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn finish<'a>(self, structsy: &Structsy) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+        let mut reader_inst = Reader::Structsy(structsy.clone());
         if self.steps.is_empty() {
             let start = Box::new(ScanStartStep::new());
             let cond = Self::fill_conditions(Vec::new());
-            Box::new(start.start(cond, self.order, structsy.clone()))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         } else {
-            let reader = &mut Reader::Structsy(structsy.clone());
+            let reader = &mut reader_inst;
             let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
             executions.sort_by_key(|x| x.get_score());
             let (step, start) = executions.pop().unwrap().as_start();
@@ -486,41 +487,43 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            Box::new(start.start(cond, self.order, structsy.clone()))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         }
     }
 
     pub fn finish_tx<'a>(self, tx: &'a mut OwnedSytx) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+        let mut reader_inst = Reader::Tx(tx.reference());
         if self.steps.is_empty() {
             let start = Box::new(ScanStartStep::new());
             let cond = Self::fill_conditions(Vec::new());
-            Box::new(start.start_tx(cond, self.order, tx))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         } else {
-            let reader = &mut Reader::Tx(tx.reference());
+            let reader = &mut reader_inst;
             let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
             let (step, start) = executions.pop().unwrap().as_start();
             if let Some(es) = step {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            Box::new(start.start_tx(cond, self.order, tx))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         }
     }
 
     pub fn finish_snap(self, tx: &Snapshot) -> Box<dyn Iterator<Item = (Ref<T>, T)>> {
+        let mut reader_inst = Reader::Snapshot(tx.clone());
         if self.steps.is_empty() {
             let start = Box::new(ScanStartStep::new());
             let cond = Self::fill_conditions(Vec::new());
-            Box::new(start.start_snapshot(cond, self.order, tx))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         } else {
-            let reader = &mut Reader::Snapshot(tx.clone());
+            let reader = &mut reader_inst;
             let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
             let (step, start) = executions.pop().unwrap().as_start();
             if let Some(es) = step {
                 executions.insert(0, es);
             }
             let cond = Self::fill_conditions(executions);
-            Box::new(start.start_snapshot(cond, self.order, tx))
+            Box::new(start.start_reader(cond, self.order, reader_inst))
         }
     }
 
