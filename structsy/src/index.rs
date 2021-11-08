@@ -339,13 +339,13 @@ impl<K: IndexType + PartialEq> DoubleEndedIterator for IdRangeIterator<K> {
     }
 }
 
-pub trait MyTrait<'a, K>: DoubleEndedIterator<Item = (K, PersyId)> + TxIterator<'a> {}
-impl<'a, K: IndexType + PartialEq> MyTrait<'a, K> for IdRangeIteratorTx<'a, K> {}
+pub trait TxItTrait<'a, K>: DoubleEndedIterator<Item = (K, PersyId)> + TxIterator<'a> {}
+impl<'a, K: IndexType + PartialEq> TxItTrait<'a, K> for IdRangeIteratorTx<'a, K> {}
 
 pub enum RangeIter<'a, K> {
     Structsy((Box<dyn DoubleEndedIterator<Item = (K, PersyId)>>, Structsy)),
     Snapshot((Box<dyn DoubleEndedIterator<Item = (K, PersyId)>>, Snapshot)),
-    Tx(Box<dyn MyTrait<'a, K> + 'a>),
+    Tx(Box<dyn TxItTrait<'a, K> + 'a>),
 }
 impl<'a, K: IndexType + PartialEq + 'static> RangeIter<'a, K> {
     fn new_tx(structsy: Arc<StructsyImpl>, p: persy::TxIndexIter<'a, K, PersyId>) -> RangeIter<'a, K> {
