@@ -207,7 +207,7 @@ impl<P: Persistent + 'static, V: PersistentEmbedded + 'static> Scan<P> for V {
             let stru = reader.structsy();
             if let Ok(iter) = Self::finder().find_range(reader, &index_name, (Bound::Unbounded, Bound::Unbounded)) {
                 let it: Box<dyn Iterator<Item = (Ref<P>, P)>> = if order == &Order::Desc {
-                    Box::new(RangeInstanceIter::new(iter).rev())
+                    Box::new(RangeInstanceIter::new(iter).reader_rev())
                 } else {
                     Box::new(RangeInstanceIter::new(iter))
                 };

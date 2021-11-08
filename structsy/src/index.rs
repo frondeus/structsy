@@ -399,6 +399,9 @@ impl<'a, K, P> RangeInstanceIter<'a, K, P> {
             marker: std::marker::PhantomData,
         }
     }
+    pub(crate) fn reader_rev(self) -> ReaderRev<Self> {
+        ReaderRev { iter: self }
+    }
 }
 
 impl<'a, K: 'static, P: Persistent + 'static> Iterator for RangeInstanceIter<'a, K, P> {
@@ -436,6 +439,26 @@ impl<'a, K: 'static, P: Persistent + 'static> DoubleEndedIterator for RangeInsta
 
 impl<'a, K: 'static, P: Persistent + 'static> ReaderIterator for RangeInstanceIter<'a, K, P> {
     fn reader<'b>(&'b mut self) -> Reader<'b> {
+        self.iter.reader()
+    }
+}
+pub(crate) struct ReaderRev<T> {
+    iter: T,
+}
+impl<T: DoubleEndedIterator> Iterator for ReaderRev<T> {
+    type Item = <T as Iterator>::Item;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next_back()
+    }
+}
+impl<T: DoubleEndedIterator> DoubleEndedIterator for ReaderRev<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+}
+
+impl<X: ReaderIterator + DoubleEndedIterator> ReaderIterator for ReaderRev<X> {
+    fn reader<'a>(&'a mut self) -> Reader<'a> {
         self.iter.reader()
     }
 }
