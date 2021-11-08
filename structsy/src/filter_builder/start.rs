@@ -2,10 +2,39 @@ use crate::{
     filter_builder::{
         execution_iterator::ExecutionIterator,
         filter_builder::{Conditions, Iter, Orders},
-        reader::Reader,
+        reader::{Reader, ReaderIterator},
     },
     OwnedSytx, Persistent, Ref, Snapshot, Structsy, StructsyTx,
 };
+
+struct EmptyIter<T> {
+    mark: std::marker::PhantomData<T>,
+    structsy: Structsy,
+}
+impl<T> EmptyIter<T> {
+    fn new(structsy: Structsy) -> Self {
+        Self {
+            mark: std::marker::PhantomData,
+            structsy,
+        }
+    }
+}
+impl<T> Iterator for EmptyIter<T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+impl<T> DoubleEndedIterator for EmptyIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+impl<T> ReaderIterator for EmptyIter<T> {
+    fn reader<'b>(&'b mut self) -> Reader<'b> {
+        Reader::Structsy(self.structsy.clone())
+    }
+}
 
 pub(crate) trait StartStep<'a, T> {
     fn start_reader(
@@ -54,7 +83,11 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         } else if let Ok(found) = reader.scan::<T>() {
             ExecutionIterator::new_raw(Iter::Iter((Box::new(found), st)), conditions, order.buffered())
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, st, order.buffered())
+            ExecutionIterator::new_raw(
+                Iter::Iter((Box::new(EmptyIter::new(st.clone())), st)),
+                conditions,
+                order.buffered(),
+            )
         }
     }
     fn start(
@@ -69,7 +102,11 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         } else if let Ok(found) = structsy.scan::<T>() {
             ExecutionIterator::new(Box::new(found), conditions, structsy, buffered)
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, buffered)
+            ExecutionIterator::new_raw(
+                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
+                conditions,
+                buffered,
+            )
         }
     }
     fn start_tx(
@@ -87,7 +124,11 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         } else if let Ok(found) = tx.scan::<T>() {
             ExecutionIterator::new_raw(Iter::TxIter(Box::new(found)), conditions, order.buffered())
         } else {
-            ExecutionIterator::new(Box::new(Vec::new().into_iter()), conditions, structsy, order.buffered())
+            ExecutionIterator::new_raw(
+                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
+                conditions,
+                order.buffered(),
+            )
         }
     }
     fn start_snapshot(
@@ -96,16 +137,16 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
         order: Orders<T>,
         snapshot: &Snapshot,
     ) -> ExecutionIterator<'static, T> {
+        let structsy = snapshot.structsy();
         let (buffered, iter) = order.scan(Reader::Snapshot(snapshot.clone()));
         if let Some(it) = iter {
             ExecutionIterator::new_raw(it, conditions, buffered)
         } else if let Ok(found) = snapshot.scan::<T>() {
             ExecutionIterator::new_raw(Iter::SnapshotIter(Box::new(found)), conditions, buffered)
         } else {
-            ExecutionIterator::new(
-                Box::new(Vec::new().into_iter()),
+            ExecutionIterator::new_raw(
+                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
                 conditions,
-                snapshot.structsy(),
                 buffered,
             )
         }
