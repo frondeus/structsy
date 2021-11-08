@@ -3,7 +3,7 @@ use crate::{
         filter_builder::{BufferedExection, Conditions, Item, Iter},
         reader::Reader,
     },
-    Persistent, Ref, Structsy,
+    Persistent, Ref,
 };
 
 pub(crate) struct ExecutionIterator<'a, P> {
@@ -19,18 +19,6 @@ impl<'a, P: 'static> ExecutionIterator<'a, P> {
     ) -> Self {
         ExecutionIterator {
             base,
-            conditions,
-            buffered,
-        }
-    }
-    pub(crate) fn new(
-        base: Box<dyn Iterator<Item = (Ref<P>, P)>>,
-        conditions: Conditions<P>,
-        structsy: Structsy,
-        buffered: Option<Box<dyn BufferedExection<P> + 'a>>,
-    ) -> Self {
-        ExecutionIterator {
-            base: Iter::Iter((base, structsy)),
             conditions,
             buffered,
         }

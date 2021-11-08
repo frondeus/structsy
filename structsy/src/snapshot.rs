@@ -4,7 +4,7 @@ use crate::id::raw_parse;
 use crate::queries::SnapshotQuery;
 use crate::record::Record;
 use crate::structsy::StructsyImpl;
-use crate::{Fetch, Persistent, RawAccess, RawIter, RawRead, Ref, Structsy, StructsyIter};
+use crate::{Fetch, Persistent, RawAccess, RawIter, RawRead, Ref, StructsyIter};
 use persy::PersyId;
 use std::io::Cursor;
 use std::marker::PhantomData;
@@ -71,11 +71,6 @@ impl Snapshot {
     /// ```
     pub fn scan<T: Persistent>(&self) -> SRes<SnapshotRecordIter<T>> {
         self.structsy_impl.scan_snapshot::<T>(self)
-    }
-    pub(crate) fn structsy(&self) -> Structsy {
-        Structsy {
-            structsy_impl: self.structsy_impl.clone(),
-        }
     }
 
     /// Execute a filter query and return an iterator of results for the current snapshot

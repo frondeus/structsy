@@ -5,7 +5,7 @@ use crate::{
         reader::{Reader, ReaderIterator},
     },
     structsy::StructsyImpl,
-    OwnedSytx, Persistent, Ref, RefSytx, Snapshot, Structsy, StructsyTx,
+    Persistent, Ref, RefSytx, Snapshot, Structsy,
 };
 use persy::Transaction;
 use std::sync::Arc;
@@ -96,24 +96,6 @@ pub(crate) trait StartStep<'a, T> {
         order: Orders<T>,
         reader: Reader<'a>,
     ) -> ExecutionIterator<'a, T>;
-    fn start(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        structsy: Structsy,
-    ) -> ExecutionIterator<'static, T>;
-    fn start_tx(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        tx: &'a mut OwnedSytx,
-    ) -> ExecutionIterator<T>;
-    fn start_snapshot(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        snapshot: &Snapshot,
-    ) -> ExecutionIterator<'static, T>;
 }
 
 pub(crate) struct ScanStartStep {}
@@ -143,67 +125,6 @@ impl<'a, T: Persistent + 'static> StartStep<'a, T> for ScanStartStep {
             )
         }
     }
-    fn start(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        structsy: Structsy,
-    ) -> ExecutionIterator<'static, T> {
-        let (buffered, iter) = order.scan(Reader::Structsy(structsy.clone()));
-        if let Some(it) = iter {
-            ExecutionIterator::new_raw(it, conditions, buffered)
-        } else if let Ok(found) = structsy.scan::<T>() {
-            ExecutionIterator::new(Box::new(found), conditions, structsy, buffered)
-        } else {
-            ExecutionIterator::new_raw(
-                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
-                conditions,
-                buffered,
-            )
-        }
-    }
-    fn start_tx(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        tx: &'a mut OwnedSytx,
-    ) -> ExecutionIterator<'a, T> {
-        let structsy = Structsy {
-            structsy_impl: tx.structsy_impl.clone(),
-        };
-        if order.index_order() {
-            let (buffered, iter) = order.scan(Reader::Tx(tx.reference()));
-            ExecutionIterator::new_raw(iter.unwrap(), conditions, buffered)
-        } else if let Ok(found) = tx.scan::<T>() {
-            ExecutionIterator::new_raw(Iter::TxIter(Box::new(found)), conditions, order.buffered())
-        } else {
-            ExecutionIterator::new_raw(
-                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
-                conditions,
-                order.buffered(),
-            )
-        }
-    }
-    fn start_snapshot(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        snapshot: &Snapshot,
-    ) -> ExecutionIterator<'static, T> {
-        let structsy = snapshot.structsy();
-        let (buffered, iter) = order.scan(Reader::Snapshot(snapshot.clone()));
-        if let Some(it) = iter {
-            ExecutionIterator::new_raw(it, conditions, buffered)
-        } else if let Ok(found) = snapshot.scan::<T>() {
-            ExecutionIterator::new_raw(Iter::SnapshotIter(Box::new(found)), conditions, buffered)
-        } else {
-            ExecutionIterator::new_raw(
-                Iter::Iter((Box::new(EmptyIter::new(structsy.clone())), structsy)),
-                conditions,
-                buffered,
-            )
-        }
-    }
 }
 
 pub(crate) struct DataStartStep<T> {
@@ -226,32 +147,5 @@ impl<'a, T: 'static> StartStep<'a, T> for DataStartStep<T> {
             conditions,
             order.buffered(),
         )
-    }
-    fn start(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        structsy: Structsy,
-    ) -> ExecutionIterator<'static, T> {
-        ExecutionIterator::new(Box::new(self.data), conditions, structsy, order.buffered())
-    }
-    fn start_tx(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        tx: &'a mut OwnedSytx,
-    ) -> ExecutionIterator<T> {
-        let structsy = Structsy {
-            structsy_impl: tx.structsy_impl.clone(),
-        };
-        ExecutionIterator::new(Box::new(self.data), conditions, structsy, order.buffered())
-    }
-    fn start_snapshot(
-        self: Box<Self>,
-        conditions: Conditions<T>,
-        order: Orders<T>,
-        snapshot: &Snapshot,
-    ) -> ExecutionIterator<'static, T> {
-        ExecutionIterator::new(Box::new(self.data), conditions, snapshot.structsy(), order.buffered())
     }
 }
