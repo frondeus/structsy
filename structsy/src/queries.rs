@@ -1,7 +1,7 @@
 #[allow(deprecated)]
 use crate::{
     filter::Filter,
-    filter_builder::EmbeddedFilterBuilder,
+    filter_builder::{EmbeddedFilterBuilder, Reader},
     internal::{EmbeddedDescription, FilterDefinition, Projection},
     Fetch, FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
@@ -122,17 +122,17 @@ impl<P: Projection<T>, T: Persistent + 'static> Fetch<P> for ProjectionResult<P,
     }
 
     fn fetch(self, structsy: &Structsy) -> StructsyIter<P> {
-        let data = self.filter.finish(structsy);
+        let data = self.filter.finish(Reader::Structsy(structsy.clone()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<P> {
-        let data = self.filter.finish_tx(tx);
+        let data = self.filter.finish(Reader::Tx(tx.reference()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 
     fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<P> {
-        let data = self.filter.finish_snap(snapshot);
+        let data = self.filter.finish(Reader::Snapshot(snapshot.clone()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -159,7 +159,7 @@ impl<T: Persistent + 'static> IntoIterator for SnapshotQuery<T> {
     type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<'static, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
-        StructsyIter::new(self.builder.finish_snap(&self.snapshot))
+        StructsyIter::new(self.builder.finish(Reader::Snapshot(self.snapshot)))
     }
 }
 
@@ -185,7 +185,7 @@ impl<T: Persistent + 'static> SnapshotQuery<T> {
     }
 
     pub fn fetch(self) -> StructsyIter<'static, (Ref<T>, T)> {
-        StructsyIter::new(self.builder.finish_snap(&self.snapshot))
+        StructsyIter::new(self.builder.finish(Reader::Snapshot(self.snapshot)))
     }
 }
 
@@ -197,7 +197,7 @@ pub struct ProjectionSnapshotQuery<P, T> {
 
 impl<P: Projection<T>, T: Persistent + 'static> ProjectionSnapshotQuery<P, T> {
     pub fn fetch(self) -> StructsyIter<'static, P> {
-        let data = self.builder.finish_snap(&self.snapshot);
+        let data = self.builder.finish(Reader::Snapshot(self.snapshot));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -206,7 +206,7 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionSnaps
     type Item = P;
     type IntoIter = StructsyIter<'static, P>;
     fn into_iter(self) -> Self::IntoIter {
-        let data = self.builder.finish_snap(&self.snapshot);
+        let data = self.builder.finish(Reader::Snapshot(self.snapshot));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -271,7 +271,7 @@ impl<T: Persistent + 'static> StructsyQuery<T> {
     }
 
     pub fn fetch(self) -> StructsyIter<'static, (Ref<T>, T)> {
-        StructsyIter::new(self.builder.finish(&self.structsy))
+        StructsyIter::new(self.builder.finish(Reader::Structsy(self.structsy.clone())))
     }
 }
 
@@ -279,7 +279,7 @@ impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<'static, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
-        StructsyIter::new(self.builder.finish(&self.structsy))
+        StructsyIter::new(self.builder.finish(Reader::Structsy(self.structsy.clone())))
     }
 }
 
@@ -291,7 +291,7 @@ pub struct ProjectionQuery<P: Projection<T>, T: FilterDefinition> {
 
 impl<P: Projection<T>, T: Persistent + 'static> ProjectionQuery<P, T> {
     pub fn fetch(self) -> StructsyIter<'static, P> {
-        let data = self.builder.finish(&self.structsy);
+        let data = self.builder.finish(Reader::Structsy(self.structsy.clone()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -300,7 +300,7 @@ impl<P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQuery
     type Item = P;
     type IntoIter = StructsyIter<'static, P>;
     fn into_iter(self) -> Self::IntoIter {
-        let data = self.builder.finish(&self.structsy);
+        let data = self.builder.finish(Reader::Structsy(self.structsy.clone()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -409,7 +409,7 @@ impl<'a, T: Persistent> StructsyQueryTx<'a, T> {
     }
 
     pub fn fetch(self) -> StructsyIter<'a, (Ref<T>, T)> {
-        StructsyIter::new(self.builder.finish_tx(self.tx))
+        StructsyIter::new(self.builder.finish(Reader::Tx(self.tx.reference())))
     }
 }
 pub struct ProjectionQueryTx<'a, P, T> {
@@ -420,7 +420,7 @@ pub struct ProjectionQueryTx<'a, P, T> {
 
 impl<'a, P: Projection<T>, T: Persistent + 'static> ProjectionQueryTx<'a, P, T> {
     pub fn fetch(self) -> StructsyIter<'a, P> {
-        let data = self.builder.finish_tx(self.tx);
+        let data = self.builder.finish(Reader::Tx(self.tx.reference()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -429,7 +429,7 @@ impl<'a, P: Projection<T>, T: Persistent + 'static> IntoIterator for ProjectionQ
     type Item = P;
     type IntoIter = StructsyIter<'a, P>;
     fn into_iter(self) -> Self::IntoIter {
-        let data = self.builder.finish_tx(self.tx);
+        let data = self.builder.finish(Reader::Tx(self.tx.reference()));
         StructsyIter::new(Box::new(data.map(|(_, r)| Projection::projection(&r))))
     }
 }
@@ -438,7 +438,7 @@ impl<'a, T: Persistent> IntoIterator for StructsyQueryTx<'a, T> {
     type Item = (Ref<T>, T);
     type IntoIter = StructsyIter<'a, (Ref<T>, T)>;
     fn into_iter(self) -> Self::IntoIter {
-        StructsyIter::new(self.builder.finish_tx(self.tx))
+        StructsyIter::new(self.builder.finish(Reader::Tx(self.tx.reference())))
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::internal::{EmbeddedDescription, FilterDefinition};
 use crate::{
-    filter_builder::{EmbeddedFilterBuilder, FilterBuilder},
+    filter_builder::{EmbeddedFilterBuilder, FilterBuilder, Reader},
     projection::Projection,
     queries::ProjectionResult,
     queries::{EmbeddedQuery, Query},
@@ -139,17 +139,17 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
     }
 
     fn fetch(self, structsy: &Structsy) -> StructsyIter<(Ref<T>, T)> {
-        let data = self.extract_filter().finish(structsy);
+        let data = self.extract_filter().finish(Reader::Structsy(structsy.clone()));
         StructsyIter::new(data)
     }
 
     fn fetch_tx(self, tx: &mut OwnedSytx) -> StructsyIter<(Ref<T>, T)> {
-        let data = self.extract_filter().finish_tx(tx);
+        let data = self.extract_filter().finish(Reader::Tx(tx.reference()));
         StructsyIter::new(data)
     }
 
     fn fetch_snapshot(self, snapshot: &Snapshot) -> StructsyIter<(Ref<T>, T)> {
-        let data = self.extract_filter().finish_snap(snapshot);
+        let data = self.extract_filter().finish(Reader::Snapshot(snapshot.clone()));
         StructsyIter::new(data)
     }
 }
