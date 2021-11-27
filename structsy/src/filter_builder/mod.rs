@@ -3,6 +3,7 @@ mod execution_iterator;
 mod execution_step;
 mod filter_builder;
 mod filter_builder_step;
+mod query_value;
 mod reader;
 mod start;
 
