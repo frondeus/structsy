@@ -1,5 +1,7 @@
 use persy::PersyId;
 use std::ops::Bound;
+use crate::Order;
+
 struct RawRef {
     id: PersyId,
     ty: String,
@@ -32,8 +34,12 @@ enum QueryValue {
     Filter(FilterHolder),
 }
 
+struct FieldPath {
+    path:Vec<String>,
+}
+
 struct FilterItem {
-    field: String,
+    field: FieldPath,
     filter_type: FilterType,
 }
 struct FilterHolder {
@@ -53,4 +59,17 @@ enum FilterType {
     Range((Bound<QueryValue>, Bound<QueryValue>)),
     RangeContains((Bound<QueryValue>, Bound<QueryValue>)),
     RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
+}
+
+struct Query {
+    projections:Vec<Projection>,
+    orders:Vec<FieldOrder>,
+    filter:FilterHolder,
+}
+struct Projection {
+    field:FieldPath,
+}
+struct FieldOrder {
+    field:FieldPath,
+    mode : Order,
 }
