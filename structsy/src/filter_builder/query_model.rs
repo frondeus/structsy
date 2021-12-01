@@ -1,6 +1,6 @@
+use crate::Order;
 use persy::PersyId;
 use std::ops::Bound;
-use crate::Order;
 
 struct RawRef {
     id: PersyId,
@@ -23,7 +23,7 @@ enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(FilterHolder),
+    Embedded(Query),
 }
 
 enum QueryValue {
@@ -31,15 +31,11 @@ enum QueryValue {
     Option(Option<SimpleQueryValue>),
     OptionVec(Option<Vec<SimpleQueryValue>>),
     Vec(Vec<SimpleQueryValue>),
-    Filter(FilterHolder),
-}
-
-struct FieldPath {
-    path:Vec<String>,
+    Query(Query),
 }
 
 struct FilterItem {
-    field: FieldPath,
+    field: String,
     filter_type: FilterType,
 }
 struct FilterHolder {
@@ -62,14 +58,22 @@ enum FilterType {
 }
 
 struct Query {
-    projections:Vec<Projection>,
-    orders:Vec<FieldOrder>,
-    filter:FilterHolder,
+    projections: Vec<Projection>,
+    orders: Vec<Orders>,
+    filter: FilterHolder,
 }
 struct Projection {
-    field:FieldPath,
+    field: String,
+}
+enum Orders {
+    Field(FieldOrder),
+    Embeeded(FieldOrderEmbedded),
 }
 struct FieldOrder {
-    field:FieldPath,
-    mode : Order,
+    field: String,
+    mode: Order,
+}
+struct FieldOrderEmbedded {
+    field: String,
+    orders: Vec<Orders>,
 }
