@@ -2,12 +2,12 @@ use crate::Order;
 use persy::PersyId;
 use std::ops::Bound;
 
-struct RawRef {
+pub(crate) struct RawRef {
     id: PersyId,
     ty: String,
 }
 
-enum SimpleQueryValue {
+pub(crate) enum SimpleQueryValue {
     U8(u8),
     U16(u16),
     U32(u32),
@@ -26,7 +26,7 @@ enum SimpleQueryValue {
     Embedded(Query),
 }
 
-enum QueryValue {
+pub(crate) enum QueryValue {
     Single(SimpleQueryValue),
     Option(Option<SimpleQueryValue>),
     OptionVec(Option<Vec<SimpleQueryValue>>),
@@ -34,21 +34,21 @@ enum QueryValue {
     Query(Query),
 }
 
-struct FilterItem {
+pub(crate) struct FilterItem {
     field: String,
     filter_type: FilterType,
 }
-struct FilterHolder {
-    filters: Vec<FilterType>,
+pub(crate) struct FilterHolder {
+    filters: Vec<FilterItem>,
     mode: FilterMode,
 }
-enum FilterMode {
+pub(crate) enum FilterMode {
     And,
     Or,
     Not,
 }
 
-enum FilterType {
+pub(crate) enum FilterType {
     Equal(QueryValue),
     Contains(QueryValue),
     Is(QueryValue),
@@ -57,23 +57,23 @@ enum FilterType {
     RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
 }
 
-struct Query {
+pub(crate) struct Query {
     projections: Vec<Projection>,
     orders: Vec<Orders>,
     filter: FilterHolder,
 }
-struct Projection {
+pub(crate) struct Projection {
     field: String,
 }
-enum Orders {
+pub(crate) enum Orders {
     Field(FieldOrder),
     Embeeded(FieldOrderEmbedded),
 }
-struct FieldOrder {
+pub(crate) struct FieldOrder {
     field: String,
     mode: Order,
 }
-struct FieldOrderEmbedded {
+pub(crate) struct FieldOrderEmbedded {
     field: String,
     orders: Vec<Orders>,
 }
