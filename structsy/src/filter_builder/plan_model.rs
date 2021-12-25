@@ -1,7 +1,10 @@
 use crate::{
     error::SRes,
     filter_builder::{
-        query_model::{BuilderQuery, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, Query, QueryValue},
+        query_model::{
+            BuilderQuery, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, Query, QueryValue,
+            SimpleQueryValue,
+        },
         FilterBuilder,
     },
     Order,
@@ -41,13 +44,50 @@ pub(crate) enum FilterPlanMode {
     Not,
 }
 
+pub(crate) enum QueryValuePlan {
+    Single(SimpleQueryValue),
+    Option(Option<SimpleQueryValue>),
+    OptionVec(Option<Vec<SimpleQueryValue>>),
+    Vec(Vec<SimpleQueryValue>),
+    Query(QueryPlan),
+}
+
+impl QueryValuePlan {
+    fn translate(qv: QueryValue) -> Self {
+        match qv {
+            QueryValue::Single(s) => QueryValuePlan::Single(s),
+            QueryValue::Option(s) => QueryValuePlan::Option(s),
+            QueryValue::Vec(v) => QueryValuePlan::Vec(v),
+            QueryValue::OptionVec(s) => QueryValuePlan::OptionVec(s),
+            QueryValue::Query(_) => todo!(),
+            QueryValue::Embedded(_) => todo!(),
+            QueryValue::VecEmbedded(_) => todo!(),
+            QueryValue::OptionEmbedded(_) => todo!(),
+        }
+    }
+    fn translate_bounds((first, second): (Bound<QueryValue>, Bound<QueryValue>)) -> (Bound<Self>, Bound<Self>) {
+        (
+            match first {
+                Bound::Included(v) => Bound::Included(Self::translate(v)),
+                Bound::Excluded(v) => Bound::Excluded(Self::translate(v)),
+                Bound::Unbounded => Bound::Unbounded,
+            },
+            match second {
+                Bound::Included(v) => Bound::Included(Self::translate(v)),
+                Bound::Excluded(v) => Bound::Excluded(Self::translate(v)),
+                Bound::Unbounded => Bound::Unbounded,
+            },
+        )
+    }
+}
+
 pub(crate) enum FilterByPlan {
-    Equal(QueryValue),
-    Contains(QueryValue),
-    Is(QueryValue),
-    Range((Bound<QueryValue>, Bound<QueryValue>)),
-    RangeContains((Bound<QueryValue>, Bound<QueryValue>)),
-    RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
+    Equal(QueryValuePlan),
+    Contains(QueryValuePlan),
+    Is(QueryValuePlan),
+    Range((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
+    RangeContains((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
+    RangeIs((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
 }
 
 pub(crate) struct FieldOrderPlan {
@@ -91,12 +131,14 @@ fn rationalize_filters_deep(filters: Vec<FilterItem>, parent_mode: &FilterMode, 
             FilterItem::Field(field) => {
                 let FilterFieldItem { field, filter_type } = field;
                 let type_plan = match filter_type {
-                    FilterType::Equal(val) => FilterByPlan::Equal(val),
-                    FilterType::Contains(val) => FilterByPlan::Contains(val),
-                    FilterType::Is(val) => FilterByPlan::Is(val),
-                    FilterType::Range(bound) => FilterByPlan::Range(bound),
-                    FilterType::RangeContains(bound) => FilterByPlan::RangeContains(bound),
-                    FilterType::RangeIs(bound) => FilterByPlan::RangeIs(bound),
+                    FilterType::Equal(val) => FilterByPlan::Equal(QueryValuePlan::translate(val)),
+                    FilterType::Contains(val) => FilterByPlan::Contains(QueryValuePlan::translate(val)),
+                    FilterType::Is(val) => FilterByPlan::Is(QueryValuePlan::translate(val)),
+                    FilterType::Range(bound) => FilterByPlan::Range(QueryValuePlan::translate_bounds(bound)),
+                    FilterType::RangeContains(bound) => {
+                        FilterByPlan::RangeContains(QueryValuePlan::translate_bounds(bound))
+                    }
+                    FilterType::RangeIs(bound) => FilterByPlan::RangeIs(QueryValuePlan::translate_bounds(bound)),
                 };
                 let item = FilterPlanItem::Field(FilterFieldPlanItem {
                     field,

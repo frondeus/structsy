@@ -1,6 +1,12 @@
-use crate::Order;
+use crate::{internal::EmbeddedDescription, Order, PersistentEmbedded};
 use persy::PersyId;
 use std::ops::Bound;
+
+pub(crate) trait MyOrd {}
+struct Value<T> {
+    value: T,
+}
+impl<T: Ord> MyOrd for Value<T> {}
 
 pub(crate) struct RawRef {
     id: PersyId,
@@ -23,7 +29,7 @@ pub(crate) enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(Query),
+    Embedded(Box<dyn MyOrd>),
 }
 
 pub(crate) enum QueryValue {
@@ -32,6 +38,9 @@ pub(crate) enum QueryValue {
     OptionVec(Option<Vec<SimpleQueryValue>>),
     Vec(Vec<SimpleQueryValue>),
     Query(Query),
+    Embedded(BuilderQuery),
+    OptionEmbedded(BuilderQuery),
+    VecEmbedded(BuilderQuery),
 }
 
 pub(crate) struct FilterFieldItem {
