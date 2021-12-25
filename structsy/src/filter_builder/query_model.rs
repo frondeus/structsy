@@ -34,14 +34,22 @@ pub(crate) enum QueryValue {
     Query(Query),
 }
 
-pub(crate) struct FilterItem {
-    field: String,
-    filter_type: FilterType,
+pub(crate) struct FilterFieldItem {
+    pub(crate) field: String,
+    pub(crate) filter_type: FilterType,
 }
+
+pub(crate) enum FilterItem {
+    Field(FilterFieldItem),
+    Group(FilterHolder),
+}
+
 pub(crate) struct FilterHolder {
-    filters: Vec<FilterItem>,
-    mode: FilterMode,
+    pub(crate) filters: Vec<FilterItem>,
+    pub(crate) mode: FilterMode,
 }
+
+#[derive(Ord, Eq, PartialEq, PartialOrd)]
 pub(crate) enum FilterMode {
     And,
     Or,
@@ -57,10 +65,14 @@ pub(crate) enum FilterType {
     RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
 }
 
+pub(crate) struct BuilderQuery {
+    pub(crate) orders: Vec<Orders>,
+    pub(crate) filter: FilterHolder,
+}
+
 pub(crate) struct Query {
-    projections: Vec<Projection>,
-    orders: Vec<Orders>,
-    filter: FilterHolder,
+    pub(crate) projections: Vec<Projection>,
+    pub(crate) builder: BuilderQuery,
 }
 pub(crate) struct Projection {
     field: String,
