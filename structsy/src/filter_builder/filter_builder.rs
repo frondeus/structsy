@@ -8,6 +8,7 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
+        query_model::{FilterHolder, FilterMode, FilterType, QueryValue, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
     },
@@ -36,10 +37,26 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     }
 }
 
-pub trait RangeCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialOrd + 'static> {
+fn bound_value<X: Clone + SolveQueryValue>(bound: &Bound<&X>) -> Bound<QueryValue> {
+    match bound {
+        Bound::Included(x) => Bound::Included(SolveQueryValue::new((*x).clone()).unwrap()),
+        Bound::Excluded(x) => Bound::Excluded(SolveQueryValue::new((*x).clone()).unwrap()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
+
+pub trait RangeCondition<
+    T: Persistent + 'static,
+    V: PersistentEmbedded + Clone + PartialOrd + 'static + SolveQueryValue,
+>
+{
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        filter.add_field_filter(
+            &field.name,
+            FilterType::Range((bound_value(&range.start_bound()), bound_value(&range.end_bound()))),
+        );
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
@@ -166,21 +183,24 @@ macro_rules! index_conditions {
 index_conditions!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, String);
 
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, V> for V {}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static> RangeCondition<T, V> for V {}
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveQueryValue>
+    RangeCondition<T, V> for V
+{
+}
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, Vec<V>>
     for Vec<V>
 {
 }
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static> RangeCondition<T, Vec<V>>
-    for Vec<V>
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
+    RangeCondition<T, Vec<V>> for Vec<V>
 {
 }
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, Option<V>>
     for Option<V>
 {
 }
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static> RangeCondition<T, Option<V>>
-    for Option<V>
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
+    RangeCondition<T, Option<V>> for Option<V>
 {
 }
 
@@ -401,6 +421,7 @@ impl<T: Persistent + 'static> Orders<T> {
 pub struct FilterBuilder<T> {
     pub(crate) steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Orders<T>,
+    filter: FilterHolder,
 }
 impl<T: 'static> Default for FilterBuilder<T> {
     fn default() -> Self {
@@ -413,11 +434,15 @@ impl<T: 'static> FilterBuilder<T> {
         FilterBuilder {
             steps: Vec::new(),
             order: Orders { order: Vec::new() },
+            filter: FilterHolder::new(FilterMode::And),
         }
     }
 
     fn add<F: FilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
         self.steps.push(Box::new(filter));
+    }
+    fn add_field_filter(&mut self, name: &str, ft: FilterType) {
+        self.filter.add_field(name, ft);
     }
 
     fn add_order<O: ScanOrderStep<T> + 'static>(&mut self, order: O) {

@@ -10,4 +10,5 @@ mod start;
 
 pub use embedded_filter_builder::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition};
 pub use filter_builder::{FilterBuilder, RangeCondition, Scan, SimpleCondition};
+pub(crate) use query_model::SolveQueryValue;
 pub(crate) use reader::{Reader, ReaderIterator};

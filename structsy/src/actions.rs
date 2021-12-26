@@ -2,7 +2,7 @@ use crate::{
     filter::Filter,
     filter_builder::{
         EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, RangeCondition, SimpleCondition,
-        SimpleEmbeddedCondition,
+        SimpleEmbeddedCondition, SolveQueryValue,
     },
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
@@ -113,7 +113,7 @@ where
 pub trait RangeAction<X> {
     fn range(self, value: impl RangeBounds<X>);
 }
-impl<T, V: PersistentEmbedded> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
@@ -123,7 +123,7 @@ where
         V::range(self.1, self.0, value);
     }
 }
-impl<T, V: PersistentEmbedded> RangeAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
@@ -134,7 +134,7 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded> RangeAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,

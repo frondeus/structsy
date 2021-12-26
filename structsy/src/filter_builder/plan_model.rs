@@ -2,7 +2,7 @@ use crate::{
     error::SRes,
     filter_builder::{
         query_model::{
-            BuilderQuery, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, Query, QueryValue,
+            FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue,
             SimpleQueryValue,
         },
         FilterBuilder,
@@ -59,10 +59,12 @@ impl QueryValuePlan {
             QueryValue::Option(s) => QueryValuePlan::Option(s),
             QueryValue::Vec(v) => QueryValuePlan::Vec(v),
             QueryValue::OptionVec(s) => QueryValuePlan::OptionVec(s),
+            /*
             QueryValue::Query(_) => todo!(),
             QueryValue::Embedded(_) => todo!(),
             QueryValue::VecEmbedded(_) => todo!(),
             QueryValue::OptionEmbedded(_) => todo!(),
+            */
         }
     }
     fn translate_bounds((first, second): (Bound<QueryValue>, Bound<QueryValue>)) -> (Bound<Self>, Bound<Self>) {
@@ -191,7 +193,7 @@ fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
 fn plan_from_query(query: Query) -> SRes<QueryPlan> {
     let Query {
         projections,
-        builder: BuilderQuery { filter, orders },
+        builder: OrdersFilters { filter, orders },
     } = query;
 
     let (filter, nested_orders) = rationalize_filters(filter);
