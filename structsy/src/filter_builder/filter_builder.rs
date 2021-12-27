@@ -8,7 +8,7 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
-        query_model::{FilterHolder, FilterMode, SolveQueryValue, SolveSimpleQueryValue},
+        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
     },
@@ -437,6 +437,7 @@ pub struct FilterBuilder<T> {
     pub(crate) steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Orders<T>,
     filter: FilterHolder,
+    orders: Vec<OrdersModel>,
 }
 impl<T: 'static> Default for FilterBuilder<T> {
     fn default() -> Self {
@@ -450,6 +451,7 @@ impl<T: 'static> FilterBuilder<T> {
             steps: Vec::new(),
             order: Orders { order: Vec::new() },
             filter: FilterHolder::new(FilterMode::And),
+            orders: Vec::new(),
         }
     }
 
@@ -533,7 +535,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: PersistentEmbedded + 'static,
     {
-        let (conditions, order) = filter.components();
+        let (conditions, order, filter, ordersModel) = filter.components();
+
+        self.filter.add_field_embedded(field.name, filter);
+        self.orders.push(OrdersModel::new_embedded(field.name, ordersModel));
         self.add_order(EmbeddedOrder::new(field.clone(), order));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
@@ -560,25 +565,72 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn or(&mut self, builder: FilterBuilder<T>) {
-        self.add(OrFilter::new(builder))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders,
+        } = builder;
+        self.filter.add_group(filter);
+        self.add(OrFilter::new(FilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::Or),
+            orders,
+        }));
     }
 
     pub fn and(&mut self, builder: FilterBuilder<T>) {
-        self.add(AndFilter::new(builder))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders,
+        } = builder;
+        self.filter.add_group(filter);
+        self.add(AndFilter::new(FilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::And),
+            orders,
+        }))
     }
 
-    pub fn and_filter(&mut self, mut filters: FilterBuilder<T>) {
-        for order in filters.order.order.drain(..) {
-            self.order.order.push(order);
-        }
-        self.add(AndFilter::new(filters));
+    pub fn and_filter(&mut self, filters: FilterBuilder<T>) {
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders,
+        } = filters;
+        self.order.order.extend(order.order);
+        self.filter.add_group(filter);
+        self.add(AndFilter::new(FilterBuilder {
+            steps,
+            order: Orders { order: vec![] },
+            filter: FilterHolder::new(FilterMode::And),
+            orders,
+        }));
     }
 
     pub fn not(&mut self, builder: FilterBuilder<T>) {
-        self.add(NotFilter::new(builder))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders,
+        } = builder;
+        self.filter.add_group(filter);
+        self.add(NotFilter::new(FilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::Not),
+            orders,
+        }))
     }
 
     pub fn order<V: Ord + 'static + Scan<T>>(&mut self, field: Field<T, V>, order: Order) {
+        self.orders.push(OrdersModel::new_field(field.name, order.clone()));
         self.add_order(FieldOrder::new(field, order))
     }
 }

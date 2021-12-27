@@ -1,5 +1,6 @@
 use crate::filter_builder::{
     filter_builder::{EmbeddedOrder, FieldOrder, FilterBuilder, Item, OrderStep},
+    query_model::{FilterHolder, FilterMode, Orders as OrdersModel},
     reader::Reader,
 };
 use crate::internal::Field;
@@ -215,7 +216,7 @@ impl<T: 'static> AndFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>, reader: &mut Reader) -> Box<dyn Fn(&Self::Target, &mut Reader) -> bool> {
-        let (steps, _) = self.filters.components();
+        let (steps, _, _, _) = self.filters.components();
         let condition = build_condition(steps, reader);
         Box::new(move |r, reader| condition(r, reader))
     }
@@ -234,7 +235,7 @@ impl<T: 'static> NotFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>, reader: &mut Reader) -> Box<dyn Fn(&Self::Target, &mut Reader) -> bool> {
-        let (steps, _) = self.filters.components();
+        let (steps, _, _, _) = self.filters.components();
         let condition = build_condition(steps, reader);
         Box::new(move |r, reader| !condition(r, reader))
     }
@@ -289,6 +290,8 @@ impl<T: 'static, V: Clone + PartialEq + 'static> SimpleEmbeddedCondition<T, V> f
 pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
     order: Vec<Box<dyn OrderStep<T>>>,
+    filter: FilterHolder,
+    orders: Vec<OrdersModel>,
 }
 impl<T> Default for EmbeddedFilterBuilder<T> {
     fn default() -> Self {
@@ -308,6 +311,8 @@ impl<T> EmbeddedFilterBuilder<T> {
         EmbeddedFilterBuilder {
             steps: Vec::new(),
             order: Vec::new(),
+            filter: FilterHolder::new(FilterMode::And),
+            orders: Vec::new(),
         }
     }
 }
@@ -336,8 +341,10 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     ) -> (
         Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
         Vec<Box<dyn OrderStep<T>>>,
+        FilterHolder,
+        Vec<OrdersModel>,
     ) {
-        (self.steps, self.order)
+        (self.steps, self.order, self.filter, self.orders)
     }
 
     fn add<F: EmbeddedFilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
@@ -365,7 +372,10 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     where
         V: 'static,
     {
-        let (conditions, orders) = filter.components();
+        let (conditions, orders, filter, ordersModel) = filter.components();
+
+        self.filter.add_field_embedded(field.name, filter);
+        self.orders.push(OrdersModel::new_embedded(field.name, ordersModel));
         self.order.push(Box::new(EmbeddedOrder::new_emb(field.clone(), orders)));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }

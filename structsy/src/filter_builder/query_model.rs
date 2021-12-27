@@ -221,6 +221,17 @@ impl FilterHolder {
             filter_type: FilterType::RangeContains((bound_value(first), bound_value(second))),
         }))
     }
+
+    pub(crate) fn add_field_embedded(&mut self, name: &str, filter: FilterHolder) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::Embedded(filter),
+        }))
+    }
+
+    pub(crate) fn add_group(&mut self, filter: FilterHolder) {
+        self.filters.push(FilterItem::Group(filter))
+    }
 }
 
 #[derive(Ord, Eq, PartialEq, PartialOrd, Debug)]
@@ -238,6 +249,7 @@ pub(crate) enum FilterType {
     Range((Bound<QueryValue>, Bound<QueryValue>)),
     RangeContains((Bound<QueryValue>, Bound<QueryValue>)),
     RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
+    Embedded(FilterHolder),
 }
 
 #[derive(Debug)]
@@ -268,6 +280,22 @@ pub(crate) enum Orders {
     Field(FieldOrder),
     Embeeded(FieldOrderEmbedded),
 }
+impl Orders {
+    pub(crate) fn new_field(name: &str, order: Order) -> Orders {
+        Orders::Field(FieldOrder {
+            field: name.to_owned(),
+            mode: order,
+        })
+    }
+
+    pub(crate) fn new_embedded(name: &str, orders: Vec<Orders>) -> Orders {
+        Orders::Embeeded(FieldOrderEmbedded {
+            field: name.to_owned(),
+            orders,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct FieldOrder {
     field: String,

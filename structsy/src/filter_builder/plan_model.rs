@@ -1,11 +1,7 @@
 use crate::{
     error::SRes,
-    filter_builder::{
-        query_model::{
-            FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue,
-            SimpleQueryValue,
-        },
-        FilterBuilder,
+    filter_builder::query_model::{
+        FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue, SimpleQueryValue,
     },
     Order,
 };
@@ -27,7 +23,7 @@ enum Source {
 }
 
 pub(crate) struct FilterFieldPlanItem {
-    field: String,
+    field: Vec<String>,
     filter_by: FilterByPlan,
 }
 pub(crate) enum FilterPlanItem {
@@ -127,34 +123,62 @@ pub(crate) struct ProjectionPlan {
     field: String,
 }
 
-fn rationalize_filters_deep(filters: Vec<FilterItem>, parent_mode: &FilterMode, elements: &mut Vec<FilterPlanItem>) {
+fn rationalize_filters_deep(
+    field_path: Vec<String>,
+    filters: Vec<FilterItem>,
+    parent_mode: &FilterMode,
+    elements: &mut Vec<FilterPlanItem>,
+) {
     for filter in filters {
         match filter {
             FilterItem::Field(field) => {
                 let FilterFieldItem { field, filter_type } = field;
+                let mut f_path = field_path.clone();
+                f_path.push(field);
                 let type_plan = match filter_type {
-                    FilterType::Equal(val) => FilterByPlan::Equal(QueryValuePlan::translate(val)),
-                    FilterType::Contains(val) => FilterByPlan::Contains(QueryValuePlan::translate(val)),
-                    FilterType::Is(val) => FilterByPlan::Is(QueryValuePlan::translate(val)),
-                    FilterType::Range(bound) => FilterByPlan::Range(QueryValuePlan::translate_bounds(bound)),
+                    FilterType::Equal(val) => Some(FilterByPlan::Equal(QueryValuePlan::translate(val))),
+                    FilterType::Contains(val) => Some(FilterByPlan::Contains(QueryValuePlan::translate(val))),
+                    FilterType::Is(val) => Some(FilterByPlan::Is(QueryValuePlan::translate(val))),
+                    FilterType::Range(bound) => Some(FilterByPlan::Range(QueryValuePlan::translate_bounds(bound))),
                     FilterType::RangeContains(bound) => {
-                        FilterByPlan::RangeContains(QueryValuePlan::translate_bounds(bound))
+                        Some(FilterByPlan::RangeContains(QueryValuePlan::translate_bounds(bound)))
                     }
-                    FilterType::RangeIs(bound) => FilterByPlan::RangeIs(QueryValuePlan::translate_bounds(bound)),
+                    FilterType::RangeIs(bound) => Some(FilterByPlan::RangeIs(QueryValuePlan::translate_bounds(bound))),
+                    FilterType::Embedded(x) => {
+                        let FilterHolder { filters, mode } = x;
+                        if mode == *parent_mode {
+                            rationalize_filters_deep(f_path.clone(), filters, &mode, elements)
+                        } else {
+                            let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
+                            rationalize_filters_deep(f_path.clone(), filters, &mode, &mut child_elements);
+                            let item = FilterPlanItem::Group(FilterPlan {
+                                filters: child_elements,
+                                mode: match mode {
+                                    FilterMode::Or => FilterPlanMode::Or,
+                                    FilterMode::And => FilterPlanMode::And,
+                                    FilterMode::Not => FilterPlanMode::Not,
+                                },
+                            });
+                            elements.push(item);
+                        }
+                        None
+                    }
                 };
-                let item = FilterPlanItem::Field(FilterFieldPlanItem {
-                    field,
-                    filter_by: type_plan,
-                });
-                elements.push(item);
+                if let Some(type_plan) = type_plan {
+                    let item = FilterPlanItem::Field(FilterFieldPlanItem {
+                        field: f_path,
+                        filter_by: type_plan,
+                    });
+                    elements.push(item);
+                }
             }
             FilterItem::Group(group) => {
                 let FilterHolder { filters, mode } = group;
                 if mode == *parent_mode {
-                    rationalize_filters_deep(filters, &mode, elements)
+                    rationalize_filters_deep(field_path.clone(), filters, &mode, elements)
                 } else {
                     let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-                    rationalize_filters_deep(filters, &mode, &mut child_elements);
+                    rationalize_filters_deep(field_path.clone(), filters, &mode, &mut child_elements);
                     let item = FilterPlanItem::Group(FilterPlan {
                         filters: child_elements,
                         mode: match mode {
@@ -173,7 +197,7 @@ fn rationalize_filters_deep(filters: Vec<FilterItem>, parent_mode: &FilterMode, 
 fn rationalize_filters(filter: FilterHolder) -> (FilterPlan, Vec<Orders>) {
     let FilterHolder { filters, mode } = filter;
     let mut elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-    rationalize_filters_deep(filters, &mode, &mut elements);
+    rationalize_filters_deep(vec![], filters, &mode, &mut elements);
     (
         FilterPlan {
             filters: elements,

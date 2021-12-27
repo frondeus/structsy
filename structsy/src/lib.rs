@@ -533,7 +533,7 @@ impl Structsy {
 }
 
 /// Query ordering
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Order {
     Asc,
     Desc,
