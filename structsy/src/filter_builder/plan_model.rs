@@ -163,6 +163,9 @@ fn rationalize_filters_deep(
                         }
                         None
                     }
+                    FilterType::QueryEqual(_) => todo!(),
+                    FilterType::QueryContains(_) => todo!(),
+                    FilterType::QueryIs(_) => todo!(),
                 };
                 if let Some(type_plan) = type_plan {
                     let item = FilterPlanItem::Field(FilterFieldPlanItem {

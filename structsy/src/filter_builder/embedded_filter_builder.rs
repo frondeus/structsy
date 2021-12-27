@@ -372,10 +372,10 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     where
         V: 'static,
     {
-        let (conditions, orders, filter, ordersModel) = filter.components();
+        let (conditions, orders, filter, orders_model) = filter.components();
 
         self.filter.add_field_embedded(field.name, filter);
-        self.orders.push(OrdersModel::new_embedded(field.name, ordersModel));
+        self.orders.push(OrdersModel::new_embedded(field.name, orders_model));
         self.order.push(Box::new(EmbeddedOrder::new_emb(field.clone(), orders)));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }

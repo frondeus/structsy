@@ -228,6 +228,24 @@ impl FilterHolder {
             filter_type: FilterType::Embedded(filter),
         }))
     }
+    pub(crate) fn add_field_ref_query_equal(&mut self, name: &str, filter: FilterHolder) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::QueryEqual(filter),
+        }))
+    }
+    pub(crate) fn add_field_ref_query_contains(&mut self, name: &str, filter: FilterHolder) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::QueryContains(filter),
+        }))
+    }
+    pub(crate) fn add_field_ref_query_is(&mut self, name: &str, filter: FilterHolder) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::QueryIs(filter),
+        }))
+    }
 
     pub(crate) fn add_group(&mut self, filter: FilterHolder) {
         self.filters.push(FilterItem::Group(filter))
@@ -250,6 +268,9 @@ pub(crate) enum FilterType {
     RangeContains((Bound<QueryValue>, Bound<QueryValue>)),
     RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
     Embedded(FilterHolder),
+    QueryEqual(FilterHolder),
+    QueryContains(FilterHolder),
+    QueryIs(FilterHolder),
 }
 
 #[derive(Debug)]

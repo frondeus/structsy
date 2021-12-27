@@ -535,10 +535,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: PersistentEmbedded + 'static,
     {
-        let (conditions, order, filter, ordersModel) = filter.components();
+        let (conditions, order, filter, orders_model) = filter.components();
 
         self.filter.add_field_embedded(field.name, filter);
-        self.orders.push(OrdersModel::new_embedded(field.name, ordersModel));
+        self.orders.push(OrdersModel::new_embedded(field.name, orders_model));
         self.add_order(EmbeddedOrder::new(field.clone(), order));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
@@ -547,36 +547,86 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: Persistent + 'static,
     {
-        self.add(QueryFilter::new(query, field))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders: _orders,
+        } = query;
+        //TODO: handle orders
+        self.filter.add_field_ref_query_equal(field.name, filter);
+        self.add(QueryFilter::new(
+            FilterBuilder {
+                steps,
+                order,
+                filter: FilterHolder::new(FilterMode::And),
+                orders: vec![],
+            },
+            field,
+        ))
     }
 
     pub fn ref_vec_query<V>(&mut self, field: Field<T, Vec<Ref<V>>>, query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(VecQueryFilter::new(query, field))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders: _orders,
+        } = query;
+        //TODO: handle orders
+        self.filter.add_field_ref_query_contains(field.name, filter);
+        self.add(VecQueryFilter::new(
+            FilterBuilder {
+                steps,
+                order,
+                filter: FilterHolder::new(FilterMode::And),
+                orders: vec![],
+            },
+            field,
+        ))
     }
 
     pub fn ref_option_query<V>(&mut self, field: Field<T, Option<Ref<V>>>, query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {
-        self.add(OptionQueryFilter::new(query, field))
+        let FilterBuilder {
+            steps,
+            order,
+            filter,
+            orders: _orders,
+        } = query;
+        //TODO: handle orders
+        self.filter.add_field_ref_query_is(field.name, filter);
+        self.add(OptionQueryFilter::new(
+            FilterBuilder {
+                steps,
+                order,
+                filter: FilterHolder::new(FilterMode::And),
+                orders: vec![],
+            },
+            field,
+        ))
     }
 
     pub fn or(&mut self, builder: FilterBuilder<T>) {
         let FilterBuilder {
             steps,
             order,
-            filter,
+            mut filter,
             orders,
         } = builder;
+        filter.mode = FilterMode::Or;
         self.filter.add_group(filter);
+        self.orders.extend(orders);
         self.add(OrFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Or),
-            orders,
+            orders: vec![],
         }));
     }
 
@@ -584,15 +634,17 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let FilterBuilder {
             steps,
             order,
-            filter,
+            mut filter,
             orders,
         } = builder;
+        filter.mode = FilterMode::And;
         self.filter.add_group(filter);
+        self.orders.extend(orders);
         self.add(AndFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
-            orders,
+            orders: vec![],
         }))
     }
 
@@ -600,16 +652,18 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let FilterBuilder {
             steps,
             order,
-            filter,
+            mut filter,
             orders,
         } = filters;
+        filter.mode = FilterMode::And;
         self.order.order.extend(order.order);
         self.filter.add_group(filter);
+        self.orders.extend(orders);
         self.add(AndFilter::new(FilterBuilder {
             steps,
             order: Orders { order: vec![] },
             filter: FilterHolder::new(FilterMode::And),
-            orders,
+            orders: vec![],
         }));
     }
 
@@ -617,15 +671,17 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         let FilterBuilder {
             steps,
             order,
-            filter,
+            mut filter,
             orders,
         } = builder;
+        filter.mode = FilterMode::Not;
         self.filter.add_group(filter);
+        self.orders.extend(orders);
         self.add(NotFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Not),
-            orders,
+            orders: vec![],
         }))
     }
 
