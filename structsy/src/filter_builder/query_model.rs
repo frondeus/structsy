@@ -2,11 +2,13 @@ use crate::{error::SRes, internal::EmbeddedDescription, Order, Persistent, Persi
 use persy::PersyId;
 use std::{fmt::Debug, ops::Bound};
 
-pub trait MyOrd: std::fmt::Debug {}
+pub trait MyOrd {}
+pub trait MyEq: Debug {}
 struct Value<T> {
     value: T,
 }
 impl<T: Ord> MyOrd for Value<T> {}
+impl<T: PartialEq> MyEq for Value<T> {}
 
 impl<T> std::fmt::Debug for Value<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,7 +39,7 @@ pub enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(Box<dyn MyOrd>),
+    Embedded(Box<dyn MyEq>),
 }
 
 pub trait SolveSimpleQueryValue {
@@ -78,9 +80,9 @@ impl<T: Persistent> SolveSimpleQueryValue for Ref<T> {
     }
 }
 
-impl<T: MyOrd + PersistentEmbedded + 'static> SolveSimpleQueryValue for T {
+impl<T: PartialEq + EmbeddedDescription + 'static> SolveSimpleQueryValue for T {
     fn new(self) -> SRes<SimpleQueryValue> {
-        Ok(SimpleQueryValue::Embedded(Box::new(self)))
+        Ok(SimpleQueryValue::Embedded(Box::new(Value { value: self })))
     }
 }
 
@@ -154,6 +156,13 @@ pub(crate) struct FilterHolder {
     pub(crate) filters: Vec<FilterItem>,
     pub(crate) mode: FilterMode,
 }
+fn bound_value<X: Clone + SolveQueryValue>(bound: &Bound<&X>) -> Bound<QueryValue> {
+    match bound {
+        Bound::Included(x) => Bound::Included(SolveQueryValue::new((*x).clone()).unwrap()),
+        Bound::Excluded(x) => Bound::Excluded(SolveQueryValue::new((*x).clone()).unwrap()),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
 impl FilterHolder {
     pub(crate) fn new(mode: FilterMode) -> Self {
         Self {
@@ -161,10 +170,55 @@ impl FilterHolder {
             mode,
         }
     }
-    pub(crate) fn add_field(&mut self, name: &str, filter: FilterType) {
+    pub(crate) fn add_field_equal<T: SolveQueryValue>(&mut self, name: &str, value: T) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
             field: name.to_owned(),
-            filter_type: filter,
+            filter_type: FilterType::Equal(value.new().unwrap()),
+        }))
+    }
+    pub(crate) fn add_field_is<T: SolveQueryValue>(&mut self, name: &str, value: T) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::Is(value.new().unwrap()),
+        }))
+    }
+    pub(crate) fn add_field_contains<T: SolveQueryValue>(&mut self, name: &str, value: T) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::Contains(value.new().unwrap()),
+        }))
+    }
+
+    pub(crate) fn add_field_range<T: SolveQueryValue + Clone>(
+        &mut self,
+        name: &str,
+        (first, second): (&Bound<&T>, &Bound<&T>),
+    ) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::Range((bound_value(first), bound_value(second))),
+        }))
+    }
+
+    pub(crate) fn add_field_range_is<T: SolveQueryValue + Clone>(
+        &mut self,
+        name: &str,
+        (first, second): (&Bound<&T>, &Bound<&T>),
+    ) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::RangeIs((bound_value(first), bound_value(second))),
+        }))
+    }
+
+    pub(crate) fn add_field_range_contains<T: SolveQueryValue + Clone>(
+        &mut self,
+        name: &str,
+        (first, second): (&Bound<&T>, &Bound<&T>),
+    ) {
+        self.filters.push(FilterItem::Field(FilterFieldItem {
+            field: name.to_owned(),
+            filter_type: FilterType::RangeContains((bound_value(first), bound_value(second))),
         }))
     }
 }

@@ -8,7 +8,7 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
-        query_model::{FilterHolder, FilterMode, FilterType, QueryValue, SolveQueryValue, SolveSimpleQueryValue},
+        query_model::{FilterHolder, FilterMode, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
     },
@@ -37,14 +37,6 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
     }
 }
 
-fn bound_value<X: Clone + SolveQueryValue>(bound: &Bound<&X>) -> Bound<QueryValue> {
-    match bound {
-        Bound::Included(x) => Bound::Included(SolveQueryValue::new((*x).clone()).unwrap()),
-        Bound::Excluded(x) => Bound::Excluded(SolveQueryValue::new((*x).clone()).unwrap()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
-
 pub trait RangeCondition<
     T: Persistent + 'static,
     V: PersistentEmbedded + Clone + PartialOrd + 'static + SolveQueryValue,
@@ -53,10 +45,9 @@ pub trait RangeCondition<
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
-        filter.add_field_filter(
-            &field.name,
-            FilterType::Range((bound_value(&range.start_bound()), bound_value(&range.end_bound()))),
-        );
+        filter
+            .get_filter()
+            .add_field_range(&field.name, (&range.start_bound(), &range.end_bound()));
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
@@ -71,6 +62,9 @@ pub trait RangeCondition<
     fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        filter
+            .get_filter()
+            .add_field_range_contains(&field.name, (&range.start_bound(), &range.end_bound()));
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
@@ -83,6 +77,9 @@ pub trait RangeCondition<
     }
 
     fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
+        filter
+            .get_filter()
+            .add_field_range_is(&field.name, (&range.start_bound(), &range.end_bound()));
         let start = match range.start_bound() {
             Bound::Included(x) => Bound::Included(Some(x.clone())),
             Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
@@ -97,8 +94,13 @@ pub trait RangeCondition<
         filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
 }
-pub trait SimpleCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone + PartialEq + 'static> {
+pub trait SimpleCondition<
+    T: Persistent + 'static,
+    V: PersistentEmbedded + Clone + PartialEq + 'static + SolveQueryValue,
+>
+{
     fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
+        filter.get_filter().add_field_equal(&field.name, value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -111,6 +113,7 @@ pub trait SimpleCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone
     }
 
     fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+        filter.get_filter().add_field_contains(&field.name, value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -123,6 +126,7 @@ pub trait SimpleCondition<T: Persistent + 'static, V: PersistentEmbedded + Clone
     }
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
+        filter.get_filter().add_field_is(&field.name, value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -157,6 +161,10 @@ macro_rules! index_conditions {
 
         impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t> {
             fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: Option<$t>) {
+        filter.get_filter().add_field_equal(
+            &field.name,
+            value.clone()
+        );
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
                     filter.add(IndexFilter::new(index_name, v));
                 } else {
@@ -169,6 +177,10 @@ macro_rules! index_conditions {
 
         impl< T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
             fn range<R: RangeBounds<Option<$t>>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, range: R) {
+        filter.get_filter().add_field_range(
+            &field.name,
+            (&range.start_bound(),&range.end_bound())
+        );
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 // This may support index in future, but it does not now
@@ -182,21 +194,24 @@ macro_rules! index_conditions {
 
 index_conditions!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, String);
 
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, V> for V {}
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveQueryValue>
+    SimpleCondition<T, V> for V
+{
+}
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveQueryValue>
     RangeCondition<T, V> for V
 {
 }
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, Vec<V>>
-    for Vec<V>
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveSimpleQueryValue>
+    SimpleCondition<T, Vec<V>> for Vec<V>
 {
 }
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
     RangeCondition<T, Vec<V>> for Vec<V>
 {
 }
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static> SimpleCondition<T, Option<V>>
-    for Option<V>
+impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveSimpleQueryValue>
+    SimpleCondition<T, Option<V>> for Option<V>
 {
 }
 impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
@@ -441,12 +456,13 @@ impl<T: 'static> FilterBuilder<T> {
     fn add<F: FilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
         self.steps.push(Box::new(filter));
     }
-    fn add_field_filter(&mut self, name: &str, ft: FilterType) {
-        self.filter.add_field(name, ft);
-    }
 
     fn add_order<O: ScanOrderStep<T> + 'static>(&mut self, order: O) {
         self.order.order.push(Box::new(order))
+    }
+
+    fn get_filter(&mut self) -> &mut FilterHolder {
+        &mut self.filter
     }
 }
 

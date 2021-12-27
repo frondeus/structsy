@@ -13,7 +13,7 @@ use std::ops::RangeBounds;
 pub trait EqualAction<X> {
     fn equal(self, value: X);
 }
-impl<T, V: PersistentEmbedded> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
@@ -34,7 +34,7 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded> EqualAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded> EqualAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
