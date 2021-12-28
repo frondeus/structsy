@@ -131,12 +131,6 @@ pub enum QueryValue {
     Option(Option<SimpleQueryValue>),
     OptionVec(Option<Vec<SimpleQueryValue>>),
     Vec(Vec<SimpleQueryValue>),
-    /*
-    Query(Query),
-    Embedded(OrdersFilters),
-    OptionEmbedded(OrdersFilters),
-    VecEmbedded(OrdersFilters),
-    */
 }
 
 #[derive(Debug)]
@@ -300,6 +294,9 @@ pub(crate) struct Projection {
 pub(crate) enum Orders {
     Field(FieldOrder),
     Embeeded(FieldOrderEmbedded),
+    QueryEqual(FieldOrderQuery),
+    QueryIs(FieldOrderQuery),
+    QueryContains(FieldOrderQuery),
 }
 impl Orders {
     pub(crate) fn new_field(name: &str, order: Order) -> Orders {
@@ -315,6 +312,25 @@ impl Orders {
             orders,
         })
     }
+    pub(crate) fn new_query_equal(name: &str, orders: Vec<Orders>) -> Orders {
+        Orders::QueryEqual(FieldOrderQuery {
+            field: name.to_owned(),
+            orders,
+        })
+    }
+
+    pub(crate) fn new_query_is(name: &str, orders: Vec<Orders>) -> Orders {
+        Orders::QueryIs(FieldOrderQuery {
+            field: name.to_owned(),
+            orders,
+        })
+    }
+    pub(crate) fn new_query_contains(name: &str, orders: Vec<Orders>) -> Orders {
+        Orders::QueryContains(FieldOrderQuery {
+            field: name.to_owned(),
+            orders,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -324,6 +340,12 @@ pub(crate) struct FieldOrder {
 }
 #[derive(Debug)]
 pub(crate) struct FieldOrderEmbedded {
+    field: String,
+    orders: Vec<Orders>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FieldOrderQuery {
     field: String,
     orders: Vec<Orders>,
 }

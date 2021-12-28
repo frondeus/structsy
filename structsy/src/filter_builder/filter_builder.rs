@@ -551,10 +551,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
-            orders: _orders,
+            orders,
         } = query;
-        //TODO: handle orders
         self.filter.add_field_ref_query_equal(field.name, filter);
+        self.orders.push(OrdersModel::new_query_equal(field.name, orders));
         self.add(QueryFilter::new(
             FilterBuilder {
                 steps,
@@ -574,10 +574,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
-            orders: _orders,
+            orders,
         } = query;
-        //TODO: handle orders
         self.filter.add_field_ref_query_contains(field.name, filter);
+        self.orders.push(OrdersModel::new_query_contains(field.name, orders));
         self.add(VecQueryFilter::new(
             FilterBuilder {
                 steps,
@@ -597,9 +597,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
-            orders: _orders,
+            orders,
         } = query;
-        //TODO: handle orders
+        self.orders.push(OrdersModel::new_query_is(field.name, orders));
         self.filter.add_field_ref_query_is(field.name, filter);
         self.add(OptionQueryFilter::new(
             FilterBuilder {
