@@ -1,6 +1,6 @@
 use crate::filter_builder::{
     filter_builder::{EmbeddedOrder, FieldOrder, FilterBuilder, Item, OrderStep},
-    query_model::{FilterHolder, FilterMode, Orders as OrdersModel},
+    query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue},
     reader::Reader,
 };
 use crate::internal::Field;
@@ -241,30 +241,39 @@ impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     }
 }
 
-pub trait SimpleEmbeddedCondition<T: 'static, V: Clone + PartialEq + 'static> {
+pub trait SimpleEmbeddedCondition<T: 'static, V: Clone + PartialEq + SolveQueryValue + 'static> {
     fn equal(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, value: V) {
+        filter.get_filter().add_field_equal(&field.name, value.clone());
         filter.add(ConditionFilter::new(field, value))
     }
 
     fn contains(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
+        filter.get_filter().add_field_contains(&field.name, value.clone());
         filter.add(ConditionSingleFilter::new(field, value))
     }
 
     fn is(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
+        filter.get_filter().add_field_is(&field.name, value.clone());
         filter.add(ConditionFilter::new(field, Some(value)))
     }
 }
 
-pub trait EmbeddedRangeCondition<T: 'static, V: Clone + PartialOrd + 'static> {
+pub trait EmbeddedRangeCondition<T: 'static, V: Clone + SolveQueryValue + PartialOrd + 'static> {
     fn range<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        filter
+            .get_filter()
+            .add_field_range(&field.name, (&range.start_bound(), &range.end_bound()));
         filter.add(RangeConditionFilter::new(field, (start, end)))
     }
 
     fn range_contains<R: RangeBounds<V>>(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
         let start = clone_bound_ref(&range.start_bound());
         let end = clone_bound_ref(&range.end_bound());
+        filter
+            .get_filter()
+            .add_field_range_contains(&field.name, (&range.start_bound(), &range.end_bound()));
         filter.add(RangeSingleConditionFilter::new(field, (start, end)))
     }
 
@@ -279,13 +288,16 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + PartialOrd + 'static> {
             Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
             Bound::Unbounded => Bound::Unbounded,
         };
+        filter
+            .get_filter()
+            .add_field_range_is(&field.name, (&range.start_bound(), &range.end_bound()));
         // This may support index in future, but it does not now
         filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
 }
-impl<T: 'static, V: Clone + PartialOrd + 'static> EmbeddedRangeCondition<T, V> for V {}
+impl<T: 'static, V: Clone + PartialOrd + 'static + SolveQueryValue> EmbeddedRangeCondition<T, V> for V {}
 
-impl<T: 'static, V: Clone + PartialEq + 'static> SimpleEmbeddedCondition<T, V> for V {}
+impl<T: 'static, V: Clone + PartialEq + 'static + SolveQueryValue> SimpleEmbeddedCondition<T, V> for V {}
 
 pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
@@ -314,6 +326,9 @@ impl<T> EmbeddedFilterBuilder<T> {
             filter: FilterHolder::new(FilterMode::And),
             orders: Vec::new(),
         }
+    }
+    fn get_filter(&mut self) -> &mut FilterHolder {
+        &mut self.filter
     }
 }
 pub(crate) fn build_condition<T: 'static>(
@@ -388,17 +403,60 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     }
 
     pub fn or(&mut self, filters: EmbeddedFilterBuilder<T>) {
-        self.add(OrFilter::new(filters))
+        let EmbeddedFilterBuilder {
+            steps,
+            order,
+            mut filter,
+            orders,
+        } = filters;
+        filter.mode = FilterMode::Or;
+        self.filter.add_group(filter);
+        self.orders.extend(orders);
+        self.add(OrFilter::new(EmbeddedFilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::Or),
+            orders: vec![],
+        }))
     }
 
     pub fn and(&mut self, filters: EmbeddedFilterBuilder<T>) {
-        self.add(AndFilter::new(filters))
+        let EmbeddedFilterBuilder {
+            steps,
+            order,
+            mut filter,
+            orders,
+        } = filters;
+        filter.mode = FilterMode::And;
+        self.filter.add_group(filter);
+        self.orders.extend(orders);
+        self.add(AndFilter::new(EmbeddedFilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::And),
+            orders: vec![],
+        }))
     }
 
     pub fn not(&mut self, filters: EmbeddedFilterBuilder<T>) {
-        self.add(NotFilter::new(filters))
+        let EmbeddedFilterBuilder {
+            steps,
+            order,
+            mut filter,
+            orders,
+        } = filters;
+        filter.mode = FilterMode::Not;
+        self.filter.add_group(filter);
+        self.orders.extend(orders);
+        self.add(NotFilter::new(EmbeddedFilterBuilder {
+            steps,
+            order,
+            filter: FilterHolder::new(FilterMode::And),
+            orders: vec![],
+        }))
     }
     pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
+        self.orders.push(OrdersModel::new_field(field.name, order.clone()));
         self.order.push(Box::new(FieldOrder::new_emb(field, order)))
     }
 }
