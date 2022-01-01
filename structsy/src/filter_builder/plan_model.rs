@@ -44,6 +44,8 @@ pub(crate) struct FilterPlan {
     filters: Vec<FilterPlanItem>,
     mode: FilterPlanMode,
 }
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum FilterPlanMode {
     And,
     Or,
@@ -222,4 +224,56 @@ fn plan_from_query(query: Query) -> SRes<QueryPlan> {
     todo!("not yet here")
 }
 
-mod tests {}
+#[cfg(test)]
+mod tests {
+
+    use super::rationalize_filters;
+    use crate::filter_builder::{
+        plan_model::{FilterPlanItem, FilterPlanMode},
+        query_model::{FilterHolder, FilterMode},
+    };
+
+    #[test]
+    fn test_filter_rationalize_collapse() {
+        let mut fh = FilterHolder::new(FilterMode::And);
+        fh.add_field_equal("test", 10);
+        let mut fhe = FilterHolder::new(FilterMode::And);
+        fhe.add_field_equal("test1", 20);
+        fhe.add_field_equal("test2", 30);
+        fh.add_group(fhe);
+        let mut fhe = FilterHolder::new(FilterMode::Or);
+        fhe.add_field_equal("test3", 20);
+        fhe.add_field_equal("test4", 30);
+        fh.add_group(fhe);
+
+        let fp = rationalize_filters(fh);
+        assert_eq!(fp.mode, FilterPlanMode::And);
+        assert_eq!(fp.filters.len(), 4);
+        match &fp.filters[0] {
+            FilterPlanItem::Field(f) => assert_eq!(f.field, vec!["test"]),
+            _ => panic!("expected field"),
+        }
+        match &fp.filters[1] {
+            FilterPlanItem::Field(f) => assert_eq!(f.field, vec!["test1"]),
+            _ => panic!("expected field"),
+        }
+        match &fp.filters[2] {
+            FilterPlanItem::Field(f) => assert_eq!(f.field, vec!["test2"]),
+            _ => panic!("expected field"),
+        }
+        match &fp.filters[3] {
+            FilterPlanItem::Group(g) => {
+                assert_eq!(g.mode, FilterPlanMode::Or);
+                match &g.filters[0] {
+                    FilterPlanItem::Field(f) => assert_eq!(f.field, vec!["test3"]),
+                    _ => panic!("expected field"),
+                }
+                match &g.filters[1] {
+                    FilterPlanItem::Field(f) => assert_eq!(f.field, vec!["test4"]),
+                    _ => panic!("expected field"),
+                }
+            }
+            _ => panic!("expected field"),
+        }
+    }
+}
