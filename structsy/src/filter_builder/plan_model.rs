@@ -30,6 +30,19 @@ pub(crate) enum FilterPlanItem {
     Field(FilterFieldPlanItem),
     Group(FilterPlan),
 }
+
+impl FilterPlanItem {
+    fn group(filters:Vec<FilterPlanItem>, mode:FilterPlanMode) -> Self {
+        FilterPlanItem::Group(FilterPlan {
+            filters, mode
+        })
+    }
+    fn field(path:Vec<String>, filter_by:FilterByPlan) -> Self {
+        FilterPlanItem::Field(FilterFieldPlanItem{field:path, filter_by})
+    }
+}
+
+
 pub(crate) struct FilterPlan {
     filters: Vec<FilterPlanItem>,
     mode: FilterPlanMode,
@@ -38,6 +51,15 @@ pub(crate) enum FilterPlanMode {
     And,
     Or,
     Not,
+}
+impl From<FilterMode> for FilterPlanMode {
+    fn from(mode: FilterMode) -> Self {
+       match mode {
+           FilterMode::Or => FilterPlanMode::Or,
+           FilterMode::And => FilterPlanMode::And,
+           FilterMode::Not => FilterPlanMode::Not,
+       }
+    }
 }
 
 pub(crate) enum QueryValuePlan {
@@ -55,12 +77,6 @@ impl QueryValuePlan {
             QueryValue::Option(s) => QueryValuePlan::Option(s),
             QueryValue::Vec(v) => QueryValuePlan::Vec(v),
             QueryValue::OptionVec(s) => QueryValuePlan::OptionVec(s),
-            /*
-            QueryValue::Query(_) => todo!(),
-            QueryValue::Embedded(_) => todo!(),
-            QueryValue::VecEmbedded(_) => todo!(),
-            QueryValue::OptionEmbedded(_) => todo!(),
-            */
         }
     }
     fn translate_bounds((first, second): (Bound<QueryValue>, Bound<QueryValue>)) -> (Bound<Self>, Bound<Self>) {
@@ -86,6 +102,9 @@ pub(crate) enum FilterByPlan {
     Range((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
     RangeContains((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
     RangeIs((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
+    QueryEqual(FilterPlan),
+    QueryContains(FilterPlan),
+    QueryIs(FilterPlan),
 }
 
 pub(crate) struct FieldOrderPlan {
@@ -151,14 +170,7 @@ fn rationalize_filters_deep(
                         } else {
                             let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
                             rationalize_filters_deep(f_path.clone(), filters, &mode, &mut child_elements);
-                            let item = FilterPlanItem::Group(FilterPlan {
-                                filters: child_elements,
-                                mode: match mode {
-                                    FilterMode::Or => FilterPlanMode::Or,
-                                    FilterMode::And => FilterPlanMode::And,
-                                    FilterMode::Not => FilterPlanMode::Not,
-                                },
-                            });
+                            let item = FilterPlanItem::group(child_elements,mode.into());
                             elements.push(item);
                         }
                         None
@@ -168,10 +180,7 @@ fn rationalize_filters_deep(
                     FilterType::QueryIs(_) => todo!(),
                 };
                 if let Some(type_plan) = type_plan {
-                    let item = FilterPlanItem::Field(FilterFieldPlanItem {
-                        field: f_path,
-                        filter_by: type_plan,
-                    });
+                    let item = FilterPlanItem::field( f_path, type_plan);
                     elements.push(item);
                 }
             }
@@ -182,14 +191,7 @@ fn rationalize_filters_deep(
                 } else {
                     let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
                     rationalize_filters_deep(field_path.clone(), filters, &mode, &mut child_elements);
-                    let item = FilterPlanItem::Group(FilterPlan {
-                        filters: child_elements,
-                        mode: match mode {
-                            FilterMode::Or => FilterPlanMode::Or,
-                            FilterMode::And => FilterPlanMode::And,
-                            FilterMode::Not => FilterPlanMode::Not,
-                        },
-                    });
+                    let item = FilterPlanItem::group(child_elements, mode.into());
                     elements.push(item);
                 }
             }
@@ -204,11 +206,7 @@ fn rationalize_filters(filter: FilterHolder) -> (FilterPlan, Vec<Orders>) {
     (
         FilterPlan {
             filters: elements,
-            mode: match mode {
-                FilterMode::Or => FilterPlanMode::Or,
-                FilterMode::And => FilterPlanMode::And,
-                FilterMode::Not => FilterPlanMode::Not,
-            },
+            mode: mode.into(),
         },
         Vec::new(),
     )
