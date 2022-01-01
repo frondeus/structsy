@@ -32,16 +32,13 @@ pub(crate) enum FilterPlanItem {
 }
 
 impl FilterPlanItem {
-    fn group(filters:Vec<FilterPlanItem>, mode:FilterPlanMode) -> Self {
-        FilterPlanItem::Group(FilterPlan {
-            filters, mode
-        })
+    fn group(filters: Vec<FilterPlanItem>, mode: FilterPlanMode) -> Self {
+        FilterPlanItem::Group(FilterPlan { filters, mode })
     }
-    fn field(path:Vec<String>, filter_by:FilterByPlan) -> Self {
-        FilterPlanItem::Field(FilterFieldPlanItem{field:path, filter_by})
+    fn field(path: Vec<String>, filter_by: FilterByPlan) -> Self {
+        FilterPlanItem::Field(FilterFieldPlanItem { field: path, filter_by })
     }
 }
-
 
 pub(crate) struct FilterPlan {
     filters: Vec<FilterPlanItem>,
@@ -54,20 +51,19 @@ pub(crate) enum FilterPlanMode {
 }
 impl From<FilterMode> for FilterPlanMode {
     fn from(mode: FilterMode) -> Self {
-       match mode {
-           FilterMode::Or => FilterPlanMode::Or,
-           FilterMode::And => FilterPlanMode::And,
-           FilterMode::Not => FilterPlanMode::Not,
-       }
+        match mode {
+            FilterMode::Or => FilterPlanMode::Or,
+            FilterMode::And => FilterPlanMode::And,
+            FilterMode::Not => FilterPlanMode::Not,
+        }
     }
 }
 
 pub(crate) enum QueryValuePlan {
     Single(SimpleQueryValue),
     Option(Option<SimpleQueryValue>),
-    OptionVec(Option<Vec<SimpleQueryValue>>),
     Vec(Vec<SimpleQueryValue>),
-    Query(QueryPlan),
+    OptionVec(Option<Vec<SimpleQueryValue>>),
 }
 
 impl QueryValuePlan {
@@ -102,9 +98,9 @@ pub(crate) enum FilterByPlan {
     Range((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
     RangeContains((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
     RangeIs((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
-    QueryEqual(FilterPlan),
-    QueryContains(FilterPlan),
-    QueryIs(FilterPlan),
+    LoadAndEqual(FilterPlan),
+    LoadAndContains(FilterPlan),
+    LoadAndIs(FilterPlan),
 }
 
 pub(crate) struct FieldOrderPlan {
@@ -142,6 +138,23 @@ pub(crate) struct ProjectionPlan {
     field: String,
 }
 
+fn flat_or_deep_filter(
+    x: FilterHolder,
+    parent_mode: &FilterMode,
+    field_path: Vec<String>,
+    elements: &mut Vec<FilterPlanItem>,
+) {
+    let FilterHolder { filters, mode } = x;
+    if mode == *parent_mode {
+        rationalize_filters_deep(field_path, filters, &mode, elements)
+    } else {
+        let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
+        rationalize_filters_deep(field_path, filters, &mode, &mut child_elements);
+        let item = FilterPlanItem::group(child_elements, mode.into());
+        elements.push(item);
+    }
+}
+
 fn rationalize_filters_deep(
     field_path: Vec<String>,
     filters: Vec<FilterItem>,
@@ -164,52 +177,34 @@ fn rationalize_filters_deep(
                     }
                     FilterType::RangeIs(bound) => Some(FilterByPlan::RangeIs(QueryValuePlan::translate_bounds(bound))),
                     FilterType::Embedded(x) => {
-                        let FilterHolder { filters, mode } = x;
-                        if mode == *parent_mode {
-                            rationalize_filters_deep(f_path.clone(), filters, &mode, elements)
-                        } else {
-                            let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-                            rationalize_filters_deep(f_path.clone(), filters, &mode, &mut child_elements);
-                            let item = FilterPlanItem::group(child_elements,mode.into());
-                            elements.push(item);
-                        }
+                        flat_or_deep_filter(x, parent_mode, f_path.clone(), elements);
                         None
                     }
-                    FilterType::QueryEqual(_) => todo!(),
-                    FilterType::QueryContains(_) => todo!(),
-                    FilterType::QueryIs(_) => todo!(),
+                    FilterType::QueryEqual(filter) => Some(FilterByPlan::LoadAndEqual(rationalize_filters(filter))),
+                    FilterType::QueryContains(filter) => {
+                        Some(FilterByPlan::LoadAndContains(rationalize_filters(filter)))
+                    }
+                    FilterType::QueryIs(filter) => Some(FilterByPlan::LoadAndIs(rationalize_filters(filter))),
                 };
                 if let Some(type_plan) = type_plan {
-                    let item = FilterPlanItem::field( f_path, type_plan);
-                    elements.push(item);
+                    elements.push(FilterPlanItem::field(f_path, type_plan));
                 }
             }
             FilterItem::Group(group) => {
-                let FilterHolder { filters, mode } = group;
-                if mode == *parent_mode {
-                    rationalize_filters_deep(field_path.clone(), filters, &mode, elements)
-                } else {
-                    let mut child_elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-                    rationalize_filters_deep(field_path.clone(), filters, &mode, &mut child_elements);
-                    let item = FilterPlanItem::group(child_elements, mode.into());
-                    elements.push(item);
-                }
+                flat_or_deep_filter(group, parent_mode, field_path.clone(), elements);
             }
         };
     }
 }
 
-fn rationalize_filters(filter: FilterHolder) -> (FilterPlan, Vec<Orders>) {
+fn rationalize_filters(filter: FilterHolder) -> FilterPlan {
     let FilterHolder { filters, mode } = filter;
     let mut elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
     rationalize_filters_deep(vec![], filters, &mode, &mut elements);
-    (
-        FilterPlan {
-            filters: elements,
-            mode: mode.into(),
-        },
-        Vec::new(),
-    )
+    FilterPlan {
+        filters: elements,
+        mode: mode.into(),
+    }
 }
 fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
     todo!()
@@ -221,8 +216,10 @@ fn plan_from_query(query: Query) -> SRes<QueryPlan> {
         builder: OrdersFilters { filter, orders },
     } = query;
 
-    let (filter, nested_orders) = rationalize_filters(filter);
+    let filter = rationalize_filters(filter);
     let orders = rationalize_orders(orders);
 
     todo!("not yet here")
 }
+
+mod tests {}
