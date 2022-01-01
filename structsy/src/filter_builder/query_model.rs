@@ -293,10 +293,10 @@ pub(crate) struct Projection {
 #[derive(Debug)]
 pub(crate) enum Orders {
     Field(FieldOrder),
-    Embeeded(FieldOrderEmbedded),
-    QueryEqual(FieldOrderQuery),
-    QueryIs(FieldOrderQuery),
-    QueryContains(FieldOrderQuery),
+    Embeeded(FieldNestedOrders),
+    QueryEqual(FieldNestedOrders),
+    QueryIs(FieldNestedOrders),
+    QueryContains(FieldNestedOrders),
 }
 impl Orders {
     pub(crate) fn new_field(name: &str, order: Order) -> Orders {
@@ -307,26 +307,26 @@ impl Orders {
     }
 
     pub(crate) fn new_embedded(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::Embeeded(FieldOrderEmbedded {
+        Orders::Embeeded(FieldNestedOrders {
             field: name.to_owned(),
             orders,
         })
     }
     pub(crate) fn new_query_equal(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryEqual(FieldOrderQuery {
+        Orders::QueryEqual(FieldNestedOrders {
             field: name.to_owned(),
             orders,
         })
     }
 
     pub(crate) fn new_query_is(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryIs(FieldOrderQuery {
+        Orders::QueryIs(FieldNestedOrders {
             field: name.to_owned(),
             orders,
         })
     }
     pub(crate) fn new_query_contains(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryContains(FieldOrderQuery {
+        Orders::QueryContains(FieldNestedOrders {
             field: name.to_owned(),
             orders,
         })
@@ -335,17 +335,11 @@ impl Orders {
 
 #[derive(Debug)]
 pub(crate) struct FieldOrder {
-    field: String,
-    mode: Order,
+    pub(crate) field: String,
+    pub(crate) mode: Order,
 }
 #[derive(Debug)]
-pub(crate) struct FieldOrderEmbedded {
-    field: String,
-    orders: Vec<Orders>,
-}
-
-#[derive(Debug)]
-pub(crate) struct FieldOrderQuery {
-    field: String,
-    orders: Vec<Orders>,
+pub(crate) struct FieldNestedOrders {
+    pub(crate) field: String,
+    pub(crate) orders: Vec<Orders>,
 }

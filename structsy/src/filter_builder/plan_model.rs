@@ -1,13 +1,14 @@
 use crate::{
     error::SRes,
     filter_builder::query_model::{
-        FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue, SimpleQueryValue,
+        FieldOrder, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue,
+        SimpleQueryValue,
     },
     Order,
 };
 use std::ops::Bound;
 
-use super::query_model::FilterHolder;
+use super::query_model::{FieldNestedOrders, FilterHolder};
 
 struct IndexSource {
     name: String,
@@ -119,7 +120,38 @@ pub(crate) struct IndexOrderPlan {
 }
 pub(crate) enum OrderPlanItem {
     Field(FieldOrderPlan),
-    Index(IndexOrderPlan),
+    LoadEqual(FieldNestedOrdersPlan),
+    LoadIs(FieldNestedOrdersPlan),
+    LoadContains(FieldNestedOrdersPlan),
+}
+pub(crate) struct FieldNestedOrdersPlan {
+    field_path: Vec<String>,
+    orders: OrdersPlan,
+}
+
+impl OrderPlanItem {
+    fn field(mut path: Vec<String>, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
+        path.push(field);
+        OrderPlanItem::Field(FieldOrderPlan { field_path: path, mode })
+    }
+    fn load_equal(path: Vec<String>, orders: OrdersPlan) -> OrderPlanItem {
+        OrderPlanItem::LoadEqual(FieldNestedOrdersPlan {
+            field_path: path,
+            orders,
+        })
+    }
+    fn load_contains(path: Vec<String>, orders: OrdersPlan) -> OrderPlanItem {
+        OrderPlanItem::LoadContains(FieldNestedOrdersPlan {
+            field_path: path,
+            orders,
+        })
+    }
+    fn load_is(path: Vec<String>, orders: OrdersPlan) -> OrderPlanItem {
+        OrderPlanItem::LoadIs(FieldNestedOrdersPlan {
+            field_path: path,
+            orders,
+        })
+    }
 }
 
 pub(crate) struct OrdersPlan {
@@ -208,8 +240,40 @@ fn rationalize_filters(filter: FilterHolder) -> FilterPlan {
         mode: mode.into(),
     }
 }
+fn recursive_rationalize_orders(path: Vec<String>, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
+    for order in orders {
+        match order {
+            Orders::Field(f) => elements.push(OrderPlanItem::field(path.clone(), f)),
+            Orders::Embeeded(FieldNestedOrders { field, orders: to_flat }) => {
+                let mut new_path = path.clone();
+                new_path.push(field);
+                recursive_rationalize_orders(new_path, to_flat, elements);
+            }
+            Orders::QueryIs(FieldNestedOrders { field, orders: nested }) => {
+                let mut new_path = path.clone();
+                new_path.push(field);
+                let o = rationalize_orders(nested);
+                elements.push(OrderPlanItem::load_is(new_path, o));
+            }
+            Orders::QueryEqual(FieldNestedOrders { field, orders: nested }) => {
+                let mut new_path = path.clone();
+                new_path.push(field);
+                let o = rationalize_orders(nested);
+                elements.push(OrderPlanItem::load_is(new_path, o));
+            }
+            Orders::QueryContains(FieldNestedOrders { field, orders: nested }) => {
+                let mut new_path = path.clone();
+                new_path.push(field);
+                let o = rationalize_orders(nested);
+                elements.push(OrderPlanItem::load_is(new_path, o));
+            }
+        }
+    }
+}
 fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
-    todo!()
+    let mut elements = Vec::new();
+    recursive_rationalize_orders(vec![], orders, &mut elements);
+    OrdersPlan { orders: elements }
 }
 
 fn plan_from_query(query: Query) -> SRes<QueryPlan> {
