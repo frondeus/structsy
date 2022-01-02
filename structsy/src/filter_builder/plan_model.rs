@@ -259,13 +259,13 @@ fn recursive_rationalize_orders(path: Vec<String>, orders: Vec<Orders>, elements
                 let mut new_path = path.clone();
                 new_path.push(field);
                 let o = rationalize_orders(nested);
-                elements.push(OrderPlanItem::load_is(new_path, o));
+                elements.push(OrderPlanItem::load_equal(new_path, o));
             }
             Orders::QueryContains(FieldNestedOrders { field, orders: nested }) => {
                 let mut new_path = path.clone();
                 new_path.push(field);
                 let o = rationalize_orders(nested);
-                elements.push(OrderPlanItem::load_is(new_path, o));
+                elements.push(OrderPlanItem::load_contains(new_path, o));
             }
         }
     }
@@ -291,10 +291,13 @@ fn plan_from_query(query: Query) -> SRes<QueryPlan> {
 #[cfg(test)]
 mod tests {
 
-    use super::rationalize_filters;
-    use crate::filter_builder::{
-        plan_model::{FilterPlanItem, FilterPlanMode},
-        query_model::{FilterHolder, FilterMode},
+    use super::{rationalize_filters, rationalize_orders};
+    use crate::{
+        filter_builder::{
+            plan_model::{FilterPlanItem, FilterPlanMode, OrderPlanItem},
+            query_model::{FilterHolder, FilterMode, Orders},
+        },
+        Order,
     };
 
     #[test]
@@ -337,7 +340,39 @@ mod tests {
                     _ => panic!("expected field"),
                 }
             }
+            _ => panic!("expected group"),
+        }
+    }
+
+    #[test]
+    fn rationalize_orders_test() {
+        let mut orders = Vec::new();
+        orders.push(Orders::new_field("field", Order::Asc));
+        let mut nested_orders = Vec::new();
+        nested_orders.push(Orders::new_field("field1", Order::Asc));
+        orders.push(Orders::new_embedded("field2", nested_orders));
+        let mut nested_orders = Vec::new();
+        nested_orders.push(Orders::new_field("field3", Order::Asc));
+        orders.push(Orders::new_query_equal("field4", nested_orders));
+
+        let translated_orders = rationalize_orders(orders);
+        match &translated_orders.orders[0] {
+            OrderPlanItem::Field(field) => assert_eq!(field.field_path, vec!["field"]),
             _ => panic!("expected field"),
+        }
+        match &translated_orders.orders[1] {
+            OrderPlanItem::Field(field) => assert_eq!(field.field_path, vec!["field2", "field1"]),
+            _ => panic!("expected field"),
+        }
+        match &translated_orders.orders[2] {
+            OrderPlanItem::LoadEqual(load) => {
+                assert_eq!(load.field_path, vec!["field4"]);
+                match &load.orders.orders[0] {
+                    OrderPlanItem::Field(field) => assert_eq!(field.field_path, vec!["field3"]),
+                    _ => panic!("expected field"),
+                }
+            }
+            _ => panic!("expected load equal"),
         }
     }
 }
