@@ -46,6 +46,26 @@ pub(crate) struct FilterPlan {
     mode: FilterPlanMode,
 }
 
+impl FilterPlan {
+    fn find_possible_indexes(&self, type_name: &str, index_finder: &dyn IndexFinder) -> Vec<IndexInfo> {
+        let mut vec = Vec::new();
+        match self.mode {
+            FilterPlanMode::And => {
+                for filter in &self.filters {
+                    if let FilterPlanItem::Field(f) = filter {
+                        if let Some(info) = index_finder.find_index(&type_name, &f.field) {
+                            vec.push(info);
+                        }
+                    }
+                }
+            }
+            FilterPlanMode::Or => {}
+            FilterPlanMode::Not => {}
+        }
+        vec
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum FilterPlanMode {
     And,
@@ -156,6 +176,22 @@ impl OrderPlanItem {
 
 pub(crate) struct OrdersPlan {
     orders: Vec<OrderPlanItem>,
+}
+impl OrdersPlan {
+    fn find_possible_indexes(&self, type_name: &str, index_finder: &dyn IndexFinder) -> Vec<IndexInfo> {
+        let mut vec = Vec::new();
+        for order in &self.orders {
+            match order {
+                OrderPlanItem::Field(field) => {
+                    if let Some(info) = index_finder.find_index(&type_name, &field.field_path) {
+                        vec.push(info);
+                    }
+                }
+                _ => {}
+            }
+        }
+        vec
+    }
 }
 
 pub(crate) struct QueryPlan {
@@ -276,14 +312,27 @@ fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
     OrdersPlan { orders: elements }
 }
 
-fn plan_from_query(query: Query) -> SRes<QueryPlan> {
+struct IndexInfo {
+    field_path: Vec<String>,
+    index_name: String,
+}
+
+trait IndexFinder {
+    fn find_index(&self, type_name: &str, field_path: &[String]) -> Option<IndexInfo>;
+}
+
+fn plan_from_query(query: Query, index_finder: &dyn IndexFinder) -> SRes<QueryPlan> {
     let Query {
+        type_name,
         projections,
         builder: OrdersFilters { filter, orders },
     } = query;
 
     let filter = rationalize_filters(filter);
     let orders = rationalize_orders(orders);
+
+    let filter_indexes = filter.find_possible_indexes(&type_name, index_finder);
+    let orders_indexes = orders.find_possible_indexes(&type_name, index_finder);
 
     todo!("not yet here")
 }

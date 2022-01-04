@@ -283,6 +283,7 @@ impl OrdersFilters {
 
 #[derive(Debug)]
 pub(crate) struct Query {
+    pub(crate) type_name: String,
     pub(crate) projections: Vec<Projection>,
     pub(crate) builder: OrdersFilters,
 }
