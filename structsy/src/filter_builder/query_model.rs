@@ -289,7 +289,7 @@ pub(crate) struct Query {
 }
 #[derive(Debug)]
 pub(crate) struct Projection {
-    field: String,
+    pub(crate) field: String,
 }
 #[derive(Debug)]
 pub(crate) enum Orders {

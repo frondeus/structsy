@@ -1,8 +1,8 @@
 use crate::{
     error::SRes,
     filter_builder::query_model::{
-        FieldOrder, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Query, QueryValue,
-        SimpleQueryValue,
+        FieldOrder, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Projection, Query,
+        QueryValue, SimpleQueryValue,
     },
     Order,
 };
@@ -10,17 +10,13 @@ use std::ops::Bound;
 
 use super::query_model::{FieldNestedOrders, FilterHolder};
 
-struct IndexSource {
-    name: String,
-    bounds: (Bound<QueryValue>, Bound<QueryValue>),
-}
-struct SegmentSource {
+struct TypeSource {
     name: String,
 }
 
 enum Source {
-    Index(IndexSource),
-    Segment(SegmentSource),
+    Index(IndexInfo),
+    Scan(TypeSource),
 }
 
 pub(crate) struct FilterFieldPlanItem {
@@ -129,6 +125,7 @@ pub(crate) enum FilterByPlan {
 pub(crate) struct FieldOrderPlan {
     field_path: Vec<String>,
     mode: Order,
+    pre_ordered: bool,
 }
 pub(crate) struct BufferedOrder {
     orders: Vec<FieldOrderPlan>,
@@ -152,7 +149,11 @@ pub(crate) struct FieldNestedOrdersPlan {
 impl OrderPlanItem {
     fn field(mut path: Vec<String>, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
         path.push(field);
-        OrderPlanItem::Field(FieldOrderPlan { field_path: path, mode })
+        OrderPlanItem::Field(FieldOrderPlan {
+            field_path: path,
+            mode,
+            pre_ordered: false,
+        })
     }
     fn load_equal(path: Vec<String>, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadEqual(FieldNestedOrdersPlan {
@@ -191,6 +192,32 @@ impl OrdersPlan {
             }
         }
         vec
+    }
+    fn consider_index(&mut self, index: &IndexInfo) {
+        if self.orders.len() == 1 {
+            self.orders.retain(|o|{
+                match o {
+                    OrderPlanItem::Field(f) => {
+                        if f.field_path == index.field_path {
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    _ => {true}
+                }
+            });
+        } else 
+        if let Some(o) = self.orders.first_mut() {
+            match o {
+                OrderPlanItem::Field(f) => {
+                    if f.field_path == index.field_path {
+                        f.pre_ordered = true;
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -315,10 +342,40 @@ fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
 struct IndexInfo {
     field_path: Vec<String>,
     index_name: String,
+    index_range: Option<(Bound<QueryValue>, Bound<QueryValue>)>,
+    //TODO: add mode, strait or reverse
+}
+impl IndexInfo {
+    fn score(&self) -> usize {
+        todo!()
+    }
 }
 
 trait IndexFinder {
     fn find_index(&self, type_name: &str, field_path: &[String]) -> Option<IndexInfo>;
+}
+
+fn choose_index(mut filter_indexes: Vec<IndexInfo>, mut orders_indexes: Vec<IndexInfo>) -> Option<IndexInfo> {
+    if let Some(index_info) = orders_indexes.pop() {
+        for filter in filter_indexes {
+            if index_info.field_path == filter.field_path {
+                return Some(filter);
+            }
+        }
+        Some(index_info)
+    } else {
+        filter_indexes.sort_by_key(|x| x.score());
+        filter_indexes.pop()
+    }
+}
+
+fn rationalize_projections(projections: Vec<Projection>) -> ProjectionsPlan {
+    ProjectionsPlan {
+        projections: projections
+            .into_iter()
+            .map(|prj| ProjectionPlan { field: prj.field })
+            .collect(),
+    }
 }
 
 fn plan_from_query(query: Query, index_finder: &dyn IndexFinder) -> SRes<QueryPlan> {
@@ -329,12 +386,32 @@ fn plan_from_query(query: Query, index_finder: &dyn IndexFinder) -> SRes<QueryPl
     } = query;
 
     let filter = rationalize_filters(filter);
-    let orders = rationalize_orders(orders);
+    let mut orders = rationalize_orders(orders);
+    let projections = rationalize_projections(projections);
 
+    // The found index need to have inside the criteria for iterate trough them
     let filter_indexes = filter.find_possible_indexes(&type_name, index_finder);
     let orders_indexes = orders.find_possible_indexes(&type_name, index_finder);
 
-    todo!("not yet here")
+    //TODO: select a way to choose an index
+    let index = choose_index(filter_indexes, orders_indexes);
+    if let Some(idx) = index {
+        orders.consider_index(&idx);
+
+        Ok(QueryPlan {
+            source: Source::Index(idx),
+            filter,
+            orders,
+            projections,
+        })
+    } else {
+        Ok(QueryPlan {
+            source: Source::Scan(TypeSource { name: type_name }),
+            filter,
+            orders,
+            projections,
+        })
+    }
 }
 
 #[cfg(test)]
