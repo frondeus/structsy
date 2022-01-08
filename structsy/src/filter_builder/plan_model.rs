@@ -43,13 +43,13 @@ pub(crate) struct FilterPlan {
 }
 
 impl FilterPlan {
-    fn find_possible_indexes(&self, type_name: &str, index_finder: &dyn IndexFinder) -> Vec<IndexInfo> {
+    fn find_possible_indexes(&self, type_name: &str, info_finder: &dyn InfoFinder) -> Vec<IndexInfo> {
         let mut vec = Vec::new();
         match self.mode {
             FilterPlanMode::And => {
                 for filter in &self.filters {
                     if let FilterPlanItem::Field(f) = filter {
-                        if let Some(info) = index_finder.find_index(&type_name, &f.field) {
+                        if let Some(info) = info_finder.find_index(&type_name, &f.field, Order::Asc) {
                             vec.push(info);
                         }
                     }
@@ -179,12 +179,12 @@ pub(crate) struct OrdersPlan {
     orders: Vec<OrderPlanItem>,
 }
 impl OrdersPlan {
-    fn find_possible_indexes(&self, type_name: &str, index_finder: &dyn IndexFinder) -> Vec<IndexInfo> {
+    fn find_possible_indexes(&self, type_name: &str, info_finder: &dyn InfoFinder) -> Vec<IndexInfo> {
         let mut vec = Vec::new();
         for order in &self.orders {
             match order {
                 OrderPlanItem::Field(field) => {
-                    if let Some(info) = index_finder.find_index(&type_name, &field.field_path) {
+                    if let Some(info) = info_finder.find_index(&type_name, &field.field_path, field.mode.clone()) {
                         vec.push(info);
                     }
                 }
@@ -195,20 +195,17 @@ impl OrdersPlan {
     }
     fn consider_index(&mut self, index: &IndexInfo) {
         if self.orders.len() == 1 {
-            self.orders.retain(|o|{
-                match o {
-                    OrderPlanItem::Field(f) => {
-                        if f.field_path == index.field_path {
-                            false
-                        } else {
-                            true
-                        }
+            self.orders.retain(|o| match o {
+                OrderPlanItem::Field(f) => {
+                    if f.field_path == index.field_path {
+                        false
+                    } else {
+                        true
                     }
-                    _ => {true}
                 }
+                _ => true,
             });
-        } else 
-        if let Some(o) = self.orders.first_mut() {
+        } else if let Some(o) = self.orders.first_mut() {
             match o {
                 OrderPlanItem::Field(f) => {
                     if f.field_path == index.field_path {
@@ -343,19 +340,19 @@ struct IndexInfo {
     field_path: Vec<String>,
     index_name: String,
     index_range: Option<(Bound<QueryValue>, Bound<QueryValue>)>,
-    //TODO: add mode, strait or reverse
-}
-impl IndexInfo {
-    fn score(&self) -> usize {
-        todo!()
-    }
+    ordering_mode: Order,
 }
 
-trait IndexFinder {
-    fn find_index(&self, type_name: &str, field_path: &[String]) -> Option<IndexInfo>;
+trait InfoFinder {
+    fn find_index(&self, type_name: &str, field_path: &[String], mode: Order) -> Option<IndexInfo>;
+    fn score_index(&self, index: &IndexInfo) -> usize;
 }
 
-fn choose_index(mut filter_indexes: Vec<IndexInfo>, mut orders_indexes: Vec<IndexInfo>) -> Option<IndexInfo> {
+fn choose_index(
+    mut filter_indexes: Vec<IndexInfo>,
+    mut orders_indexes: Vec<IndexInfo>,
+    finder: &dyn InfoFinder,
+) -> Option<IndexInfo> {
     if let Some(index_info) = orders_indexes.pop() {
         for filter in filter_indexes {
             if index_info.field_path == filter.field_path {
@@ -364,7 +361,7 @@ fn choose_index(mut filter_indexes: Vec<IndexInfo>, mut orders_indexes: Vec<Inde
         }
         Some(index_info)
     } else {
-        filter_indexes.sort_by_key(|x| x.score());
+        filter_indexes.sort_by_key(|x| finder.score_index(x));
         filter_indexes.pop()
     }
 }
@@ -378,7 +375,7 @@ fn rationalize_projections(projections: Vec<Projection>) -> ProjectionsPlan {
     }
 }
 
-fn plan_from_query(query: Query, index_finder: &dyn IndexFinder) -> SRes<QueryPlan> {
+fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan> {
     let Query {
         type_name,
         projections,
@@ -390,11 +387,11 @@ fn plan_from_query(query: Query, index_finder: &dyn IndexFinder) -> SRes<QueryPl
     let projections = rationalize_projections(projections);
 
     // The found index need to have inside the criteria for iterate trough them
-    let filter_indexes = filter.find_possible_indexes(&type_name, index_finder);
-    let orders_indexes = orders.find_possible_indexes(&type_name, index_finder);
+    let filter_indexes = filter.find_possible_indexes(&type_name, info_finder);
+    let orders_indexes = orders.find_possible_indexes(&type_name, info_finder);
 
     //TODO: select a way to choose an index
-    let index = choose_index(filter_indexes, orders_indexes);
+    let index = choose_index(filter_indexes, orders_indexes, info_finder);
     if let Some(idx) = index {
         orders.consider_index(&idx);
 
