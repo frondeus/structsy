@@ -220,9 +220,9 @@ impl OrdersPlan {
 
 pub(crate) struct QueryPlan {
     source: Source,
-    filter: FilterPlan,
-    orders: OrdersPlan,
-    projections: ProjectionsPlan,
+    filter: Option<FilterPlan>,
+    orders: Option<OrdersPlan>,
+    projections: Option<ProjectionsPlan>,
 }
 
 pub(crate) struct ProjectionsPlan {
@@ -274,11 +274,13 @@ fn rationalize_filters_deep(
                         flat_or_deep_filter(x, parent_mode, f_path.clone(), elements);
                         None
                     }
-                    FilterType::QueryEqual(filter) => Some(FilterByPlan::LoadAndEqual(rationalize_filters(filter))),
-                    FilterType::QueryContains(filter) => {
-                        Some(FilterByPlan::LoadAndContains(rationalize_filters(filter)))
+                    FilterType::QueryEqual(filter) => {
+                        rationalize_filters(filter).map(|v| FilterByPlan::LoadAndEqual(v))
                     }
-                    FilterType::QueryIs(filter) => Some(FilterByPlan::LoadAndIs(rationalize_filters(filter))),
+                    FilterType::QueryContains(filter) => {
+                        rationalize_filters(filter).map(|v| FilterByPlan::LoadAndContains(v))
+                    }
+                    FilterType::QueryIs(filter) => rationalize_filters(filter).map(|v| FilterByPlan::LoadAndIs(v)),
                 };
                 if let Some(type_plan) = type_plan {
                     elements.push(FilterPlanItem::field(f_path, type_plan));
@@ -291,13 +293,17 @@ fn rationalize_filters_deep(
     }
 }
 
-fn rationalize_filters(filter: FilterHolder) -> FilterPlan {
+fn rationalize_filters(filter: FilterHolder) -> Option<FilterPlan> {
     let FilterHolder { filters, mode } = filter;
     let mut elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
     rationalize_filters_deep(vec![], filters, &mode, &mut elements);
-    FilterPlan {
-        filters: elements,
-        mode: mode.into(),
+    if elements.is_empty() {
+        None
+    } else {
+        Some(FilterPlan {
+            filters: elements,
+            mode: mode.into(),
+        })
     }
 }
 fn recursive_rationalize_orders(path: Vec<String>, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
@@ -312,28 +318,35 @@ fn recursive_rationalize_orders(path: Vec<String>, orders: Vec<Orders>, elements
             Orders::QueryIs(FieldNestedOrders { field, orders: nested }) => {
                 let mut new_path = path.clone();
                 new_path.push(field);
-                let o = rationalize_orders(nested);
-                elements.push(OrderPlanItem::load_is(new_path, o));
+                if let Some(o) = rationalize_orders(nested) {
+                    elements.push(OrderPlanItem::load_is(new_path, o));
+                }
             }
             Orders::QueryEqual(FieldNestedOrders { field, orders: nested }) => {
                 let mut new_path = path.clone();
                 new_path.push(field);
-                let o = rationalize_orders(nested);
-                elements.push(OrderPlanItem::load_equal(new_path, o));
+                if let Some(o) = rationalize_orders(nested) {
+                    elements.push(OrderPlanItem::load_equal(new_path, o));
+                }
             }
             Orders::QueryContains(FieldNestedOrders { field, orders: nested }) => {
                 let mut new_path = path.clone();
                 new_path.push(field);
-                let o = rationalize_orders(nested);
-                elements.push(OrderPlanItem::load_contains(new_path, o));
+                if let Some(o) = rationalize_orders(nested) {
+                    elements.push(OrderPlanItem::load_contains(new_path, o));
+                }
             }
         }
     }
 }
-fn rationalize_orders(orders: Vec<Orders>) -> OrdersPlan {
+fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
     let mut elements = Vec::new();
     recursive_rationalize_orders(vec![], orders, &mut elements);
-    OrdersPlan { orders: elements }
+    if elements.is_empty() {
+        None
+    } else {
+        Some(OrdersPlan { orders: elements })
+    }
 }
 
 struct IndexInfo {
@@ -349,29 +362,37 @@ trait InfoFinder {
 }
 
 fn choose_index(
-    mut filter_indexes: Vec<IndexInfo>,
-    mut orders_indexes: Vec<IndexInfo>,
+    mut filter_indexes: Option<Vec<IndexInfo>>,
+    mut orders_indexes: Option<Vec<IndexInfo>>,
     finder: &dyn InfoFinder,
 ) -> Option<IndexInfo> {
-    if let Some(index_info) = orders_indexes.pop() {
-        for filter in filter_indexes {
-            if index_info.field_path == filter.field_path {
-                return Some(filter);
+    if let Some(index_info) = orders_indexes.as_mut().map(|v| v.pop()).flatten() {
+        if let Some(fi) = filter_indexes {
+            for filter in fi {
+                if index_info.field_path == filter.field_path {
+                    return Some(filter);
+                }
             }
         }
         Some(index_info)
+    } else if let Some(fi) = &mut filter_indexes {
+        fi.sort_by_key(|x| finder.score_index(x));
+        fi.pop()
     } else {
-        filter_indexes.sort_by_key(|x| finder.score_index(x));
-        filter_indexes.pop()
+        None
     }
 }
 
-fn rationalize_projections(projections: Vec<Projection>) -> ProjectionsPlan {
-    ProjectionsPlan {
-        projections: projections
-            .into_iter()
-            .map(|prj| ProjectionPlan { field: prj.field })
-            .collect(),
+fn rationalize_projections(projections: Vec<Projection>) -> Option<ProjectionsPlan> {
+    if projections.is_empty() {
+        None
+    } else {
+        Some(ProjectionsPlan {
+            projections: projections
+                .into_iter()
+                .map(|prj| ProjectionPlan { field: prj.field })
+                .collect(),
+        })
     }
 }
 
@@ -387,14 +408,24 @@ fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan
     let projections = rationalize_projections(projections);
 
     // The found index need to have inside the criteria for iterate trough them
-    let filter_indexes = filter.find_possible_indexes(&type_name, info_finder);
-    let orders_indexes = orders.find_possible_indexes(&type_name, info_finder);
+    let filter_indexes = if let Some(f) = &filter {
+        Some(f.find_possible_indexes(&type_name, info_finder))
+    } else {
+        None
+    };
+
+    let orders_indexes = if let Some(or) = &orders {
+        Some(or.find_possible_indexes(&type_name, info_finder))
+    } else {
+        None
+    };
 
     //TODO: select a way to choose an index
     let index = choose_index(filter_indexes, orders_indexes, info_finder);
     if let Some(idx) = index {
-        orders.consider_index(&idx);
-
+        if let Some(orders) = &mut orders {
+            orders.consider_index(&idx);
+        }
         Ok(QueryPlan {
             source: Source::Index(idx),
             filter,
@@ -436,7 +467,7 @@ mod tests {
         fhe.add_field_equal("test4", 30);
         fh.add_group(fhe);
 
-        let fp = rationalize_filters(fh);
+        let fp = rationalize_filters(fh).unwrap();
         assert_eq!(fp.mode, FilterPlanMode::And);
         assert_eq!(fp.filters.len(), 4);
         match &fp.filters[0] {
@@ -478,7 +509,7 @@ mod tests {
         nested_orders.push(Orders::new_field("field3", Order::Asc));
         orders.push(Orders::new_query_equal("field4", nested_orders));
 
-        let translated_orders = rationalize_orders(orders);
+        let translated_orders = rationalize_orders(orders).unwrap();
         match &translated_orders.orders[0] {
             OrderPlanItem::Field(field) => assert_eq!(field.field_path, vec!["field"]),
             _ => panic!("expected field"),
