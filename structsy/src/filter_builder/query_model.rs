@@ -1,13 +1,15 @@
 use crate::{error::SRes, internal::EmbeddedDescription, Order, Persistent, PersistentEmbedded, Ref};
 use persy::PersyId;
-use std::{fmt::Debug, ops::Bound};
+use std::{fmt::Debug, ops::Bound, rc::Rc};
 
 pub trait MyOrd {}
 pub trait MyEq: Debug {}
+
+#[derive(Clone)]
 struct Value<T> {
     value: T,
 }
-impl<T: Ord> MyOrd for Value<T> {}
+impl<T: Ord + Clone> MyOrd for Value<T> {}
 impl<T: PartialEq> MyEq for Value<T> {}
 
 impl<T> std::fmt::Debug for Value<T> {
@@ -16,13 +18,13 @@ impl<T> std::fmt::Debug for Value<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawRef {
     id: PersyId,
     ty: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SimpleQueryValue {
     U8(u8),
     U16(u16),
@@ -39,7 +41,7 @@ pub enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(Box<dyn MyEq>),
+    Embedded(Rc<dyn MyEq>),
 }
 
 pub trait SolveSimpleQueryValue {
@@ -82,7 +84,7 @@ impl<T: Persistent> SolveSimpleQueryValue for Ref<T> {
 
 impl<T: PartialEq + EmbeddedDescription + 'static> SolveSimpleQueryValue for T {
     fn new(self) -> SRes<SimpleQueryValue> {
-        Ok(SimpleQueryValue::Embedded(Box::new(Value { value: self })))
+        Ok(SimpleQueryValue::Embedded(Rc::new(Value { value: self })))
     }
 }
 

@@ -614,13 +614,13 @@ mod test {
         }
         fn put_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()> {
             use super::internal::IndexableValue;
-            self.name.puts(tx, "ToTest.name", id)?;
+            self.name.puts(tx, "ToTest", &["name"], id)?;
             Ok(())
         }
 
         fn remove_indexes(&self, tx: &mut dyn Sytx, id: &Ref<Self>) -> SRes<()> {
             use super::internal::IndexableValue;
-            self.name.removes(tx, "ToTest.name", id)?;
+            self.name.removes(tx, "ToTest", &["name"], id)?;
             Ok(())
         }
     }

@@ -1,3 +1,4 @@
+use crate::desc::index_name;
 use crate::transaction::TxIterator;
 use crate::{
     filter_builder::{Reader, ReaderIterator},
@@ -11,19 +12,19 @@ use std::vec::IntoIter;
 
 /// Trait implemented by all the values that can be directly indexed.
 pub trait IndexableValue {
-    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
-    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()>;
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()>;
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()>;
 }
 
 macro_rules! impl_indexable_value {
     ($($t:ty),+) => {
         $(
         impl IndexableValue for $t {
-            fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-                put_index(tx, name, self, id)
+            fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
+                put_index(tx, name, field_path, self, id)
             }
-            fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-                remove_index(tx, name, self, id)
+            fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
+                remove_index(tx, name, field_path, self, id)
             }
         }
         )+
@@ -32,53 +33,67 @@ macro_rules! impl_indexable_value {
 impl_indexable_value!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, String);
 
 impl<T: IndexableValue> IndexableValue for Option<T> {
-    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
         if let Some(x) = self {
-            x.puts(tx, name, id)?;
+            x.puts(tx, name, field_path, id)?;
         }
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
         if let Some(x) = self {
-            x.removes(tx, name, id)?;
+            x.removes(tx, name, field_path, id)?;
         }
         Ok(())
     }
 }
 impl<T: IndexableValue> IndexableValue for Vec<T> {
-    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
         for x in self {
-            x.puts(tx, name, id)?;
+            x.puts(tx, name, field_path, id)?;
         }
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
         for x in self {
-            x.removes(tx, name, id)?;
+            x.removes(tx, name, field_path, id)?;
         }
         Ok(())
     }
 }
 impl<T: Persistent> IndexableValue for Ref<T> {
-    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        put_index(tx, name, &self.raw_id, id)?;
+    fn puts<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
+        put_index(tx, name, field_path, &self.raw_id, id)?;
         Ok(())
     }
-    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, id: &Ref<P>) -> SRes<()> {
-        remove_index(tx, name, &self.raw_id, id)?;
+    fn removes<P: Persistent>(&self, tx: &mut dyn Sytx, name: &str, field_path: &[&str], id: &Ref<P>) -> SRes<()> {
+        remove_index(tx, name, field_path, &self.raw_id, id)?;
         Ok(())
     }
 }
 
-fn put_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
-    tx.tx().trans.put::<T, PersyId>(name, k.clone(), id.raw_id.clone())?;
+fn put_index<T: IndexType, P: Persistent>(
+    tx: &mut dyn Sytx,
+    name: &str,
+    field_path: &[&str],
+    k: &T,
+    id: &Ref<P>,
+) -> SRes<()> {
+    let idx = index_name(name, field_path);
+    tx.tx().trans.put::<T, PersyId>(&idx, k.clone(), id.raw_id.clone())?;
     Ok(())
 }
 
-fn remove_index<T: IndexType, P: Persistent>(tx: &mut dyn Sytx, name: &str, k: &T, id: &Ref<P>) -> SRes<()> {
+fn remove_index<T: IndexType, P: Persistent>(
+    tx: &mut dyn Sytx,
+    name: &str,
+    field_path: &[&str],
+    k: &T,
+    id: &Ref<P>,
+) -> SRes<()> {
+    let idx = index_name(name, field_path);
     tx.tx()
         .trans
-        .remove::<T, PersyId>(name, k.clone(), Some(id.raw_id.clone()))?;
+        .remove::<T, PersyId>(&idx, k.clone(), Some(id.raw_id.clone()))?;
     Ok(())
 }
 

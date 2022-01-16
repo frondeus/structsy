@@ -439,6 +439,8 @@ fn indexes_tokens(name: &Ident, fields: &[FieldInfo]) -> TokenStream {
     let snippets = only_indexed.iter().map(|f| {
         let index_name = format!("{}.{}", name, f.name);
         let field = f.name.clone();
+        let field_name = field.to_string();
+        let t_name = name.to_string();
         let mode = translate_mode(f.index_mode.as_ref().unwrap());
         let index_type = match (f.template_ty.clone(), f.sub_template_ty.clone()) {
             (Some(_), Some(s1)) => s1,
@@ -449,10 +451,10 @@ fn indexes_tokens(name: &Ident, fields: &[FieldInfo]) -> TokenStream {
             structsy::internal::declare_index::<#index_type>(db,#index_name,#mode)?;
         };
         let put = quote! {
-            self.#field.puts(tx,#index_name,id)?;
+            self.#field.puts(tx, #t_name, &[#field_name], id)?;
         };
         let remove = quote! {
-            self.#field.removes(tx,#index_name,id)?;
+            self.#field.removes(tx, #t_name, &[#field_name], id)?;
         };
         (declare, (put, remove))
     });

@@ -277,8 +277,12 @@ impl SimpleValueType {
     }
 }
 
+pub(crate) fn index_name(type_name: &str, field_path: &[&str]) -> String {
+    format!("{}.{}", type_name, field_path.join("."))
+}
+
 fn create_index<T: IndexType>(tx: &mut Transaction, type_name: &str, name: &str, value_mode: ValueMode) -> SRes<()> {
-    tx.create_index::<T, PersyId>(&format!("{}.{}", type_name, name), value_mode)?;
+    tx.create_index::<T, PersyId>(&index_name(type_name, &[name]), value_mode)?;
     Ok(())
 }
 impl std::fmt::Display for ValueType {
@@ -580,6 +584,19 @@ impl FieldDescription {
 
     pub fn field_type(&self) -> &ValueType {
         &self.field_type
+    }
+
+    pub fn get_field_type_description(&self) -> Option<&Description> {
+        if let SimpleValueType::Embedded(d) = match &self.field_type {
+            ValueType::Value(v) => v,
+            ValueType::Array(v) => v,
+            ValueType::Option(v) => v,
+            ValueType::OptionArray(v) => v,
+        } {
+            Some(d)
+        } else {
+            None
+        }
     }
 
     pub fn indexed(&self) -> &Option<ValueMode> {

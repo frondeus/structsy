@@ -49,8 +49,10 @@ impl FilterPlan {
             FilterPlanMode::And => {
                 for filter in &self.filters {
                     if let FilterPlanItem::Field(f) = filter {
-                        if let Some(info) = info_finder.find_index(&type_name, &f.field, Order::Asc) {
-                            vec.push(info);
+                        if let Some(range) = f.filter_by.solve_range() {
+                            if let Some(info) = info_finder.find_index(&type_name, &f.field, Some(range), Order::Asc) {
+                                vec.push(info);
+                            }
                         }
                     }
                 }
@@ -78,6 +80,7 @@ impl From<FilterMode> for FilterPlanMode {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum QueryValuePlan {
     Single(SimpleQueryValue),
     Option(Option<SimpleQueryValue>),
@@ -120,6 +123,21 @@ pub(crate) enum FilterByPlan {
     LoadAndEqual(FilterPlan),
     LoadAndContains(FilterPlan),
     LoadAndIs(FilterPlan),
+}
+impl FilterByPlan {
+    fn solve_range(&self) -> Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)> {
+        match self {
+            Self::Equal(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
+            Self::Contains(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
+            Self::Is(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
+            Self::Range(e) => Some(e.clone()),
+            Self::RangeContains(e) => Some(e.clone()),
+            Self::RangeIs(e) => Some(e.clone()),
+            Self::LoadAndEqual(_) => None,
+            Self::LoadAndContains(_) => None,
+            Self::LoadAndIs(_) => None,
+        }
+    }
 }
 
 pub(crate) struct FieldOrderPlan {
@@ -184,7 +202,8 @@ impl OrdersPlan {
         for order in &self.orders {
             match order {
                 OrderPlanItem::Field(field) => {
-                    if let Some(info) = info_finder.find_index(&type_name, &field.field_path, field.mode.clone()) {
+                    if let Some(info) = info_finder.find_index(&type_name, &field.field_path, None, field.mode.clone())
+                    {
                         vec.push(info);
                     }
                 }
@@ -349,15 +368,36 @@ fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
     }
 }
 
-struct IndexInfo {
+pub(crate) struct IndexInfo {
     field_path: Vec<String>,
     index_name: String,
-    index_range: Option<(Bound<QueryValue>, Bound<QueryValue>)>,
+    index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
     ordering_mode: Order,
 }
+impl IndexInfo {
+    pub(crate) fn new(
+        field_path: Vec<String>,
+        index_name: String,
+        index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+        ordering_mode: Order,
+    ) -> IndexInfo {
+        IndexInfo {
+            field_path,
+            index_name,
+            index_range,
+            ordering_mode,
+        }
+    }
+}
 
-trait InfoFinder {
-    fn find_index(&self, type_name: &str, field_path: &[String], mode: Order) -> Option<IndexInfo>;
+pub(crate) trait InfoFinder {
+    fn find_index(
+        &self,
+        type_name: &str,
+        field_path: &[String],
+        range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+        mode: Order,
+    ) -> Option<IndexInfo>;
     fn score_index(&self, index: &IndexInfo) -> usize;
 }
 
