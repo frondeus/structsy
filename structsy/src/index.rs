@@ -482,6 +482,7 @@ pub trait Finder<K> {
     fn find(&self, reader: &mut Reader, name: &str, k: &K) -> SRes<ValueIter<PersyId>>;
     fn find_range_first(&self, reader: &mut Reader, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<Vec<PersyId>>;
     fn find_range<'a>(&self, reader: Reader<'a>, name: &str, range: (Bound<K>, Bound<K>)) -> SRes<RangeIter<'a, K>>;
+    fn score(&self, reader: Reader, name: &str, range: Option<(Bound<K>, Bound<K>)>) -> SRes<usize>;
 }
 
 pub struct IndexFinder<K> {
@@ -497,6 +498,11 @@ impl<K> Default for IndexFinder<K> {
 }
 
 impl<K: IndexType + PartialEq + 'static> Finder<K> for IndexFinder<K> {
+    fn score(&self, reader: Reader, name: &str, range: Option<(Bound<K>, Bound<K>)>) -> SRes<usize> {
+        Ok(self
+            .find_range(reader, name, range.unwrap_or((Bound::Unbounded, Bound::Unbounded)))?
+            .count())
+    }
     fn find(&self, reader: &mut Reader, name: &str, k: &K) -> SRes<ValueIter<PersyId>> {
         Ok(match reader {
             Reader::Structsy(st) => st.structsy_impl.persy.get::<K, PersyId>(name, k)?,
@@ -557,6 +563,9 @@ impl<K> Default for NoneFinder<K> {
 }
 
 impl<K> Finder<K> for NoneFinder<K> {
+    fn score(&self, _reader: Reader, _name: &str, _range: Option<(Bound<K>, Bound<K>)>) -> SRes<usize> {
+        unreachable!();
+    }
     fn find(&self, _reader: &mut Reader, _name: &str, _k: &K) -> SRes<ValueIter<PersyId>> {
         unreachable!();
     }

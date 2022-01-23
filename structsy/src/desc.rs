@@ -1,4 +1,5 @@
 use crate::{
+    filter_builder::Reader,
     format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
     record::{Record, SimpleValue, Value},
@@ -174,6 +175,17 @@ pub enum ValueType {
     OptionArray(SimpleValueType),
 }
 
+impl ValueType {
+    pub(crate) fn index_score(&self, reader: Reader, index_name: &str) -> SRes<usize> {
+        match self {
+            ValueType::Value(v) => v.index_score(reader, index_name),
+            ValueType::Array(v) => v.index_score(reader, index_name),
+            ValueType::Option(v) => v.index_score(reader, index_name),
+            ValueType::OptionArray(v) => v.index_score(reader, index_name),
+        }
+    }
+}
+
 impl SimpleValueType {
     fn read(read: &mut dyn Read) -> SRes<SimpleValueType> {
         let sv = u8::read(read)?;
@@ -259,6 +271,27 @@ impl SimpleValueType {
             SimpleValueType::Embedded(_v) => (),
         }
         Ok(())
+    }
+
+    pub(crate) fn index_score(&self, reader: Reader, index_name: &str) -> SRes<usize> {
+        match self {
+            SimpleValueType::U8 => u8::finder().score(reader, index_name, None),
+            SimpleValueType::U16 => u16::finder().score(reader, index_name, None),
+            SimpleValueType::U32 => u32::finder().score(reader, index_name, None),
+            SimpleValueType::U64 => u64::finder().score(reader, index_name, None),
+            SimpleValueType::U128 => u128::finder().score(reader, index_name, None),
+            SimpleValueType::I8 => i8::finder().score(reader, index_name, None),
+            SimpleValueType::I16 => i16::finder().score(reader, index_name, None),
+            SimpleValueType::I32 => i32::finder().score(reader, index_name, None),
+            SimpleValueType::I64 => i64::finder().score(reader, index_name, None),
+            SimpleValueType::I128 => i128::finder().score(reader, index_name, None),
+            SimpleValueType::F32 => f32::finder().score(reader, index_name, None),
+            SimpleValueType::F64 => f64::finder().score(reader, index_name, None),
+            SimpleValueType::Bool => Ok(usize::MAX),
+            SimpleValueType::String => String::finder().score(reader, index_name, None),
+            SimpleValueType::Ref(_) => Ok(usize::MAX),
+            SimpleValueType::Embedded(_v) => Ok(usize::MAX),
+        }
     }
 
     fn remap_refer(&mut self, old: &str, new: &str) -> bool {

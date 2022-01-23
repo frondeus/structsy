@@ -1,4 +1,5 @@
 use crate::{
+    desc::ValueType,
     error::SRes,
     filter_builder::query_model::{
         FieldOrder, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Projection, Query,
@@ -84,8 +85,8 @@ impl From<FilterMode> for FilterPlanMode {
 pub(crate) enum QueryValuePlan {
     Single(SimpleQueryValue),
     Option(Option<SimpleQueryValue>),
-    Vec(Vec<SimpleQueryValue>),
-    OptionVec(Option<Vec<SimpleQueryValue>>),
+    Array(Vec<SimpleQueryValue>),
+    OptionArray(Option<Vec<SimpleQueryValue>>),
 }
 
 impl QueryValuePlan {
@@ -93,8 +94,8 @@ impl QueryValuePlan {
         match qv {
             QueryValue::Single(s) => QueryValuePlan::Single(s),
             QueryValue::Option(s) => QueryValuePlan::Option(s),
-            QueryValue::Vec(v) => QueryValuePlan::Vec(v),
-            QueryValue::OptionVec(s) => QueryValuePlan::OptionVec(s),
+            QueryValue::Vec(v) => QueryValuePlan::Array(v),
+            QueryValue::OptionVec(s) => QueryValuePlan::OptionArray(s),
         }
     }
     fn translate_bounds((first, second): (Bound<QueryValue>, Bound<QueryValue>)) -> (Bound<Self>, Bound<Self>) {
@@ -110,6 +111,32 @@ impl QueryValuePlan {
                 Bound::Unbounded => Bound::Unbounded,
             },
         )
+    }
+    fn extract_bound(bound: Bound<Self>) -> Option<Bound<SimpleQueryValue>> {
+        match bound {
+            Bound::Included(Self::Single(v)) => Some(Bound::Included(v)),
+            Bound::Included(Self::Option(Some(v))) => Some(Bound::Included(v)),
+            Bound::Included(Self::Option(None)) => Some(Bound::Unbounded),
+            Bound::Included(Self::Array(v)) => None,
+            Bound::Included(Self::OptionArray(v)) => None,
+            Bound::Excluded(Self::Single(v)) => Some(Bound::Excluded(v)),
+            Bound::Excluded(Self::Option(Some(v))) => Some(Bound::Excluded(v)),
+            Bound::Excluded(Self::Option(None)) => Some(Bound::Unbounded),
+            Bound::Excluded(Self::Array(v)) => None,
+            Bound::Excluded(Self::OptionArray(v)) => None,
+            Bound::Unbounded => Some(Bound::Unbounded),
+        }
+    }
+    pub(crate) fn extract_bounds(
+        (first, second): (Bound<Self>, Bound<Self>),
+    ) -> Option<(Bound<SimpleQueryValue>, Bound<SimpleQueryValue>)> {
+        let f = Self::extract_bound(first);
+        let v = Self::extract_bound(second);
+        if let (Some(ff), Some(ss)) = (f, v) {
+            Some((ff, ss))
+        } else {
+            None
+        }
     }
 }
 
@@ -369,10 +396,11 @@ fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
 }
 
 pub(crate) struct IndexInfo {
-    field_path: Vec<String>,
-    index_name: String,
-    index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
-    ordering_mode: Order,
+    pub(crate) field_path: Vec<String>,
+    pub(crate) index_name: String,
+    pub(crate) index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+    pub(crate) ordering_mode: Order,
+    pub(crate) value_type: ValueType,
 }
 impl IndexInfo {
     pub(crate) fn new(
@@ -380,12 +408,14 @@ impl IndexInfo {
         index_name: String,
         index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         ordering_mode: Order,
+        value_type: ValueType,
     ) -> IndexInfo {
         IndexInfo {
             field_path,
             index_name,
             index_range,
             ordering_mode,
+            value_type,
         }
     }
 }
@@ -398,7 +428,7 @@ pub(crate) trait InfoFinder {
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo>;
-    fn score_index(&self, index: &IndexInfo) -> usize;
+    fn score_index(&self, index: &IndexInfo) -> SRes<usize>;
 }
 
 fn choose_index(
@@ -416,7 +446,7 @@ fn choose_index(
         }
         Some(index_info)
     } else if let Some(fi) = &mut filter_indexes {
-        fi.sort_by_key(|x| finder.score_index(x));
+        fi.sort_by_key(|x| finder.score_index(x).unwrap_or(usize::MAX));
         fi.pop()
     } else {
         None
