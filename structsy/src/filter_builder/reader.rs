@@ -1,5 +1,5 @@
 use crate::{
-    index::{map_entry, map_entry_snapshot, map_entry_tx},
+    index::{map_entry, map_entry_snapshot, map_entry_tx, RangeInstanceIter},
     snapshot::{SnapshotIterator, SnapshotRecordIter},
     structsy::RecordIter,
     transaction::{raw_tx_scan, TxRecordIter},
@@ -112,6 +112,26 @@ impl<'a> Reader<'a> {
         } else {
             Ok(None)
         }
+    }
+
+    pub(crate) fn find_range<
+        K: PersistentEmbedded + Clone + 'static,
+        P: Persistent + 'static,
+        R: RangeBounds<K> + 'static,
+    >(
+        self,
+        name: &str,
+        range: R,
+    ) -> SRes<RangeInstanceIter<'a, K, P>> {
+        let iter = K::finder().find_range(
+            self,
+            name,
+            (
+                clone_bound_ref(&range.start_bound()),
+                clone_bound_ref(&range.end_bound()),
+            ),
+        )?;
+        Ok(RangeInstanceIter::new(iter))
     }
     pub(crate) fn structsy(&self) -> Structsy {
         match self {

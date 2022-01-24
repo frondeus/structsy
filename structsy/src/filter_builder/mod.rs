@@ -1,6 +1,7 @@
 mod desc_info_finder;
 mod embedded_filter_builder;
 mod execution_iterator;
+mod execution_model;
 mod execution_step;
 mod filter_builder;
 mod filter_builder_step;

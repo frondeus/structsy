@@ -11,11 +11,11 @@ use std::ops::Bound;
 
 use super::query_model::{FieldNestedOrders, FilterHolder};
 
-struct TypeSource {
+pub(crate) struct TypeSource {
     name: String,
 }
 
-enum Source {
+pub(crate) enum Source {
     Index(IndexInfo),
     Scan(TypeSource),
 }
@@ -265,10 +265,10 @@ impl OrdersPlan {
 }
 
 pub(crate) struct QueryPlan {
-    source: Source,
-    filter: Option<FilterPlan>,
-    orders: Option<OrdersPlan>,
-    projections: Option<ProjectionsPlan>,
+    pub(crate) source: Source,
+    pub(crate) filter: Option<FilterPlan>,
+    pub(crate) orders: Option<OrdersPlan>,
+    pub(crate) projections: Option<ProjectionsPlan>,
 }
 
 pub(crate) struct ProjectionsPlan {
