@@ -1,6 +1,6 @@
 use crate::{
     filter_builder::{
-        plan_model::{QueryPlan, Source},
+        plan_model::{FilterPlan, QueryPlan, Source},
         reader::Reader,
     },
     Order, Persistent, Ref, SRes,
@@ -26,7 +26,7 @@ fn start<'a, T: Persistent + 'static>(
 fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
     reader: Reader<'a>,
-) -> SRes<Box<dyn Iterator<Item = (Ref<T>, T)>>> {
+) -> SRes<Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>> {
     let QueryPlan {
         source,
         filter,
@@ -34,22 +34,39 @@ fn execute<'a, T: Persistent + 'static>(
         projections,
     } = plan;
 
-    let start = start::<T>(source, reader)?;
-    if let Some(f) = filter {}
+    let iter = start::<T>(source, reader)?;
+    let iter = if let Some(f) = filter {
+        Box::new(FilterExecution {
+            source: iter,
+            filter: f,
+        })
+    } else {
+        iter
+    };
 
-    todo!()
+    Ok(iter)
 }
 
-struct IterExecution<T> {
-    iter: Box<dyn Iterator<Item = T>>,
+struct FilterExecution<'a, T> {
+    source: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
+    filter: FilterPlan,
 }
 
-trait Filter<T> {
-    fn check(&self, value: T) -> bool;
+trait FilterCheck<T> {
+    fn check(&self, value: &T) -> bool;
 }
 
-struct FilterExecution<T> {
-    filter: Box<dyn Filter<T>>,
+impl<T> FilterCheck<T> for FilterPlan {
+    fn check(&self, value: &T) -> bool {
+        false
+    }
+}
+
+impl<'a, T> Iterator for FilterExecution<'a, T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        self.source.next().filter(|v| self.filter.check(&v))
+    }
 }
 
 struct Accumulator {}
