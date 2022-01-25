@@ -5,7 +5,10 @@ use crate::filter_builder::{
 };
 use crate::internal::Field;
 use crate::{Order, Persistent, Ref};
-use std::ops::{Bound, RangeBounds};
+use std::{
+    ops::{Bound, RangeBounds},
+    rc::Rc,
+};
 
 pub(crate) trait EmbeddedFilterBuilderStep {
     type Target;
@@ -243,17 +246,21 @@ impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
 
 pub trait SimpleEmbeddedCondition<T: 'static, V: Clone + PartialEq + SolveQueryValue + 'static> {
     fn equal(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter.get_filter().add_field_equal(&field.name, value.clone());
+        filter
+            .get_filter()
+            .add_field_equal(Rc::new(field.clone()), value.clone());
         filter.add(ConditionFilter::new(field, value))
     }
 
     fn contains(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter.get_filter().add_field_contains(&field.name, value.clone());
+        filter
+            .get_filter()
+            .add_field_contains(Rc::new(field.clone()), value.clone());
         filter.add(ConditionSingleFilter::new(field, value))
     }
 
     fn is(filter: &mut EmbeddedFilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.get_filter().add_field_is(&field.name, value.clone());
+        filter.get_filter().add_field_is(Rc::new(field.clone()), value.clone());
         filter.add(ConditionFilter::new(field, Some(value)))
     }
 }
@@ -264,7 +271,7 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + SolveQueryValue + Partia
         let end = clone_bound_ref(&range.end_bound());
         filter
             .get_filter()
-            .add_field_range(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         filter.add(RangeConditionFilter::new(field, (start, end)))
     }
 
@@ -273,7 +280,7 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + SolveQueryValue + Partia
         let end = clone_bound_ref(&range.end_bound());
         filter
             .get_filter()
-            .add_field_range_contains(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         filter.add(RangeSingleConditionFilter::new(field, (start, end)))
     }
 
@@ -290,7 +297,7 @@ pub trait EmbeddedRangeCondition<T: 'static, V: Clone + SolveQueryValue + Partia
         };
         filter
             .get_filter()
-            .add_field_range_is(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         // This may support index in future, but it does not now
         filter.add(RangeOptionConditionFilter::new(field, (start, end)))
     }
@@ -389,8 +396,9 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     {
         let (conditions, orders, filter, orders_model) = filter.components();
 
-        self.filter.add_field_embedded(field.name, filter);
-        self.orders.push(OrdersModel::new_embedded(field.name, orders_model));
+        self.filter.add_field_embedded(Rc::new(field.clone()), filter);
+        self.orders
+            .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders_model));
         self.order.push(Box::new(EmbeddedOrder::new_emb(field.clone(), orders)));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
@@ -456,7 +464,8 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         }))
     }
     pub fn order<V: Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
-        self.orders.push(OrdersModel::new_field(field.name, order.clone()));
+        self.orders
+            .push(OrdersModel::new_field(Rc::new(field.clone()), order.clone()));
         self.order.push(Box::new(FieldOrder::new_emb(field, order)))
     }
 }

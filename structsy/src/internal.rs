@@ -19,7 +19,12 @@ pub use crate::projection::Projection;
 pub use crate::queries::EmbeddedQuery;
 pub use crate::queries::Query;
 use crate::{Ref, SRes, Sytx};
+use std::fmt::Debug;
 use std::io::{Read, Write};
+
+pub(crate) trait FieldInfo: std::fmt::Debug {
+    fn name(&self) -> &'static str;
+}
 
 pub struct Field<T, V> {
     pub(crate) name: &'static str,
@@ -33,10 +38,22 @@ impl<T, V> Clone for Field<T, V> {
         }
     }
 }
+impl<T, V> Debug for Field<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Filed:{}", self.name)
+    }
+}
+
 impl<T, V> Field<T, V> {
     #[inline]
     pub fn new(name: &'static str, access: fn(&T) -> &V) -> Self {
         Field { name, access }
+    }
+}
+
+impl<T, V> FieldInfo for Field<T, V> {
+    fn name(&self) -> &'static str {
+        self.name
     }
 }
 

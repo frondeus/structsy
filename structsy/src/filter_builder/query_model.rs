@@ -1,4 +1,8 @@
-use crate::{error::SRes, internal::EmbeddedDescription, Order, Persistent, PersistentEmbedded, Ref};
+use crate::{
+    error::SRes,
+    internal::{EmbeddedDescription, FieldInfo},
+    Order, Persistent, Ref,
+};
 use persy::PersyId;
 use std::{fmt::Debug, ops::Bound, rc::Rc};
 
@@ -137,7 +141,7 @@ pub enum QueryValue {
 
 #[derive(Debug)]
 pub(crate) struct FilterFieldItem {
-    pub(crate) field: String,
+    pub(crate) field: Rc<dyn FieldInfo>,
     pub(crate) filter_type: FilterType,
 }
 
@@ -166,79 +170,79 @@ impl FilterHolder {
             mode,
         }
     }
-    pub(crate) fn add_field_equal<T: SolveQueryValue>(&mut self, name: &str, value: T) {
+    pub(crate) fn add_field_equal<T: SolveQueryValue>(&mut self, field: Rc<dyn FieldInfo>, value: T) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::Equal(value.new().unwrap()),
         }))
     }
-    pub(crate) fn add_field_is<T: SolveQueryValue>(&mut self, name: &str, value: T) {
+    pub(crate) fn add_field_is<T: SolveQueryValue>(&mut self, field: Rc<dyn FieldInfo>, value: T) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::Is(value.new().unwrap()),
         }))
     }
-    pub(crate) fn add_field_contains<T: SolveQueryValue>(&mut self, name: &str, value: T) {
+    pub(crate) fn add_field_contains<T: SolveQueryValue>(&mut self, field: Rc<dyn FieldInfo>, value: T) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::Contains(value.new().unwrap()),
         }))
     }
 
     pub(crate) fn add_field_range<T: SolveQueryValue + Clone>(
         &mut self,
-        name: &str,
+        field: Rc<dyn FieldInfo>,
         (first, second): (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::Range((bound_value(first), bound_value(second))),
         }))
     }
 
     pub(crate) fn add_field_range_is<T: SolveQueryValue + Clone>(
         &mut self,
-        name: &str,
+        field: Rc<dyn FieldInfo>,
         (first, second): (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::RangeIs((bound_value(first), bound_value(second))),
         }))
     }
 
     pub(crate) fn add_field_range_contains<T: SolveQueryValue + Clone>(
         &mut self,
-        name: &str,
+        field: Rc<dyn FieldInfo>,
         (first, second): (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::RangeContains((bound_value(first), bound_value(second))),
         }))
     }
 
-    pub(crate) fn add_field_embedded(&mut self, name: &str, filter: FilterHolder) {
+    pub(crate) fn add_field_embedded(&mut self, field: Rc<dyn FieldInfo>, filter: FilterHolder) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::Embedded(filter),
         }))
     }
-    pub(crate) fn add_field_ref_query_equal(&mut self, name: &str, filter: FilterHolder) {
+    pub(crate) fn add_field_ref_query_equal(&mut self, field: Rc<dyn FieldInfo>, filter: FilterHolder) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::QueryEqual(filter),
         }))
     }
-    pub(crate) fn add_field_ref_query_contains(&mut self, name: &str, filter: FilterHolder) {
+    pub(crate) fn add_field_ref_query_contains(&mut self, field: Rc<dyn FieldInfo>, filter: FilterHolder) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::QueryContains(filter),
         }))
     }
-    pub(crate) fn add_field_ref_query_is(&mut self, name: &str, filter: FilterHolder) {
+    pub(crate) fn add_field_ref_query_is(&mut self, field: Rc<dyn FieldInfo>, filter: FilterHolder) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
-            field: name.to_owned(),
+            field,
             filter_type: FilterType::QueryIs(filter),
         }))
     }
@@ -302,47 +306,35 @@ pub(crate) enum Orders {
     QueryContains(FieldNestedOrders),
 }
 impl Orders {
-    pub(crate) fn new_field(name: &str, order: Order) -> Orders {
+    pub(crate) fn new_field(name: Rc<dyn FieldInfo>, order: Order) -> Orders {
         Orders::Field(FieldOrder {
-            field: name.to_owned(),
+            field: name,
             mode: order,
         })
     }
 
-    pub(crate) fn new_embedded(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::Embeeded(FieldNestedOrders {
-            field: name.to_owned(),
-            orders,
-        })
+    pub(crate) fn new_embedded(name: Rc<dyn FieldInfo>, orders: Vec<Orders>) -> Orders {
+        Orders::Embeeded(FieldNestedOrders { field: name, orders })
     }
-    pub(crate) fn new_query_equal(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryEqual(FieldNestedOrders {
-            field: name.to_owned(),
-            orders,
-        })
+    pub(crate) fn new_query_equal(name: Rc<dyn FieldInfo>, orders: Vec<Orders>) -> Orders {
+        Orders::QueryEqual(FieldNestedOrders { field: name, orders })
     }
 
-    pub(crate) fn new_query_is(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryIs(FieldNestedOrders {
-            field: name.to_owned(),
-            orders,
-        })
+    pub(crate) fn new_query_is(name: Rc<dyn FieldInfo>, orders: Vec<Orders>) -> Orders {
+        Orders::QueryIs(FieldNestedOrders { field: name, orders })
     }
-    pub(crate) fn new_query_contains(name: &str, orders: Vec<Orders>) -> Orders {
-        Orders::QueryContains(FieldNestedOrders {
-            field: name.to_owned(),
-            orders,
-        })
+    pub(crate) fn new_query_contains(name: Rc<dyn FieldInfo>, orders: Vec<Orders>) -> Orders {
+        Orders::QueryContains(FieldNestedOrders { field: name, orders })
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct FieldOrder {
-    pub(crate) field: String,
+    pub(crate) field: Rc<dyn FieldInfo>,
     pub(crate) mode: Order,
 }
 #[derive(Debug)]
 pub(crate) struct FieldNestedOrders {
-    pub(crate) field: String,
+    pub(crate) field: Rc<dyn FieldInfo>,
     pub(crate) orders: Vec<Orders>,
 }

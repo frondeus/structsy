@@ -6,9 +6,10 @@ use super::{
 use crate::{
     desc::{index_name, Description},
     format::PersistentEmbedded,
+    internal::FieldInfo,
     Order, SRes, Structsy,
 };
-use std::ops::Bound;
+use std::{ops::Bound, rc::Rc};
 
 fn index_score(
     reader: Reader,
@@ -383,7 +384,7 @@ impl InfoFinder for Structsy {
     fn find_index(
         &self,
         type_name: &str,
-        field_path: &[String],
+        field_path: &[Rc<dyn FieldInfo>],
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo> {
@@ -392,7 +393,7 @@ impl InfoFinder for Structsy {
             let mut last_field = None;
             for field in field_path {
                 if let Some(Description::Struct(s)) = desc {
-                    if let Some(field) = s.get_field(&field) {
+                    if let Some(field) = s.get_field(&field.name()) {
                         if let Some(val) = field.get_field_type_description() {
                             desc = Some(val);
                         }
@@ -406,7 +407,7 @@ impl InfoFinder for Structsy {
             }
             if let Some(field) = last_field {
                 if let Some(_) = field.indexed() {
-                    let index_name = index_name(type_name, &field_path.iter().map(|x| x.as_str()).collect::<Vec<_>>());
+                    let index_name = index_name(type_name, &field_path.iter().map(|x| x.name()).collect::<Vec<_>>());
                     Some(IndexInfo::new(
                         field_path.to_owned(),
                         index_name,

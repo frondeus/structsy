@@ -16,7 +16,10 @@ use crate::{
     internal::{Description, EmbeddedDescription, Field},
     Order, Persistent, PersistentEmbedded, Ref,
 };
-use std::ops::{Bound, RangeBounds};
+use std::{
+    ops::{Bound, RangeBounds},
+    rc::Rc,
+};
 
 pub(crate) struct Item<P> {
     pub(crate) id: Ref<P>,
@@ -47,7 +50,7 @@ pub trait RangeCondition<
         let end = clone_bound_ref(&range.end_bound());
         filter
             .get_filter()
-            .add_field_range(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
@@ -64,7 +67,7 @@ pub trait RangeCondition<
         let end = clone_bound_ref(&range.end_bound());
         filter
             .get_filter()
-            .add_field_range_contains(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
@@ -79,7 +82,7 @@ pub trait RangeCondition<
     fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
         filter
             .get_filter()
-            .add_field_range_is(&field.name, (&range.start_bound(), &range.end_bound()));
+            .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
         let start = match range.start_bound() {
             Bound::Included(x) => Bound::Included(Some(x.clone())),
             Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
@@ -100,7 +103,9 @@ pub trait SimpleCondition<
 >
 {
     fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter.get_filter().add_field_equal(&field.name, value.clone());
+        filter
+            .get_filter()
+            .add_field_equal(Rc::new(field.clone()), value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -113,7 +118,9 @@ pub trait SimpleCondition<
     }
 
     fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter.get_filter().add_field_contains(&field.name, value.clone());
+        filter
+            .get_filter()
+            .add_field_contains(Rc::new(field.clone()), value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -126,7 +133,7 @@ pub trait SimpleCondition<
     }
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.get_filter().add_field_is(&field.name, value.clone());
+        filter.get_filter().add_field_is(Rc::new(field.clone()), value.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -162,7 +169,7 @@ macro_rules! index_conditions {
         impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t> {
             fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: Option<$t>) {
         filter.get_filter().add_field_equal(
-            &field.name,
+            Rc::new(field.clone()),
             value.clone()
         );
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
@@ -178,7 +185,7 @@ macro_rules! index_conditions {
         impl< T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
             fn range<R: RangeBounds<Option<$t>>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, range: R) {
         filter.get_filter().add_field_range(
-            &field.name,
+            Rc::new(field.clone()),
             (&range.start_bound(),&range.end_bound())
         );
                 let start = clone_bound_ref(&range.start_bound());
@@ -537,8 +544,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     {
         let (conditions, order, filter, orders_model) = filter.components();
 
-        self.filter.add_field_embedded(field.name, filter);
-        self.orders.push(OrdersModel::new_embedded(field.name, orders_model));
+        self.filter.add_field_embedded(Rc::new(field.clone()), filter);
+        self.orders
+            .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders_model));
         self.add_order(EmbeddedOrder::new(field.clone(), order));
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
@@ -553,8 +561,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             filter,
             orders,
         } = query;
-        self.filter.add_field_ref_query_equal(field.name, filter);
-        self.orders.push(OrdersModel::new_query_equal(field.name, orders));
+        self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
+        self.orders
+            .push(OrdersModel::new_query_equal(Rc::new(field.clone()), orders));
         self.add(QueryFilter::new(
             FilterBuilder {
                 steps,
@@ -576,8 +585,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             filter,
             orders,
         } = query;
-        self.filter.add_field_ref_query_contains(field.name, filter);
-        self.orders.push(OrdersModel::new_query_contains(field.name, orders));
+        self.filter.add_field_ref_query_contains(Rc::new(field.clone()), filter);
+        self.orders
+            .push(OrdersModel::new_query_contains(Rc::new(field.clone()), orders));
         self.add(VecQueryFilter::new(
             FilterBuilder {
                 steps,
@@ -599,8 +609,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             filter,
             orders,
         } = query;
-        self.orders.push(OrdersModel::new_query_is(field.name, orders));
-        self.filter.add_field_ref_query_is(field.name, filter);
+        self.orders
+            .push(OrdersModel::new_query_is(Rc::new(field.clone()), orders));
+        self.filter.add_field_ref_query_is(Rc::new(field.clone()), filter);
         self.add(OptionQueryFilter::new(
             FilterBuilder {
                 steps,
@@ -686,7 +697,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn order<V: Ord + 'static + Scan<T>>(&mut self, field: Field<T, V>, order: Order) {
-        self.orders.push(OrdersModel::new_field(field.name, order.clone()));
+        self.orders
+            .push(OrdersModel::new_field(Rc::new(field.clone()), order.clone()));
         self.add_order(FieldOrder::new(field, order))
     }
 }
