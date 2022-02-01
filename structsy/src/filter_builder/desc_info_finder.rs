@@ -1,15 +1,14 @@
 use super::{
-    plan_model::{IndexInfo, InfoFinder, QueryValuePlan},
+    plan_model::{FieldPath, IndexInfo, InfoFinder, QueryValuePlan},
     query_model::SimpleQueryValue,
     reader::Reader,
 };
 use crate::{
     desc::{index_name, Description},
     format::PersistentEmbedded,
-    internal::FieldInfo,
     Order, SRes, Structsy,
 };
-use std::{ops::Bound, rc::Rc};
+use std::ops::Bound;
 
 fn index_score(
     reader: Reader,
@@ -384,14 +383,14 @@ impl InfoFinder for Structsy {
     fn find_index(
         &self,
         type_name: &str,
-        field_path: &[Rc<dyn FieldInfo>],
+        field_path: &FieldPath,
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo> {
         if let Ok(definition) = self.structsy_impl.full_definition_by_name(type_name) {
             let mut desc = Some(&definition.desc);
             let mut last_field = None;
-            for field in field_path {
+            for field in &field_path.path {
                 if let Some(Description::Struct(s)) = desc {
                     if let Some(field) = s.get_field(&field.name()) {
                         if let Some(val) = field.get_field_type_description() {
@@ -407,7 +406,7 @@ impl InfoFinder for Structsy {
             }
             if let Some(field) = last_field {
                 if let Some(_) = field.indexed() {
-                    let index_name = index_name(type_name, &field_path.iter().map(|x| x.name()).collect::<Vec<_>>());
+                    let index_name = index_name(type_name, &field_path.field_path_names_str());
                     Some(IndexInfo::new(
                         field_path.to_owned(),
                         index_name,

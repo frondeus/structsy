@@ -12,6 +12,25 @@ use std::{ops::Bound, rc::Rc};
 
 use super::query_model::{FieldNestedOrders, FilterHolder};
 
+#[derive(Clone)]
+pub(crate) struct FieldPath {
+    pub(crate) path: Vec<Rc<dyn FieldInfo>>,
+}
+impl FieldPath {
+    fn new() -> Self {
+        Self { path: Vec::new() }
+    }
+    pub fn field_path_names(&self) -> Vec<String> {
+        self.path.iter().map(|f| f.name().to_owned()).collect()
+    }
+    pub fn field_path_names_str(&self) -> Vec<&'static str> {
+        self.path.iter().map(|f| f.name()).collect()
+    }
+    fn push(&mut self, f: Rc<dyn FieldInfo>) {
+        self.path.push(f)
+    }
+}
+
 pub(crate) struct TypeSource {
     name: String,
 }
@@ -22,7 +41,7 @@ pub(crate) enum Source {
 }
 
 pub(crate) struct FilterFieldPlanItem {
-    field: Vec<Rc<dyn FieldInfo>>,
+    field: FieldPath,
     filter_by: FilterByPlan,
 }
 pub(crate) enum FilterPlanItem {
@@ -34,7 +53,7 @@ impl FilterPlanItem {
     fn group(filters: Vec<FilterPlanItem>, mode: FilterPlanMode) -> Self {
         FilterPlanItem::Group(FilterPlan { filters, mode })
     }
-    fn field(path: Vec<Rc<dyn FieldInfo>>, filter_by: FilterByPlan) -> Self {
+    fn field(path: FieldPath, filter_by: FilterByPlan) -> Self {
         FilterPlanItem::Field(FilterFieldPlanItem { field: path, filter_by })
     }
 }
@@ -169,13 +188,13 @@ impl FilterByPlan {
 }
 
 pub(crate) struct FieldOrderPlan {
-    field_path: Vec<Rc<dyn FieldInfo>>,
+    field_path: FieldPath,
     mode: Order,
     pre_ordered: bool,
 }
 impl FieldOrderPlan {
     fn field_path_names(&self) -> Vec<String> {
-        self.field_path.iter().map(|f| f.name().to_owned()).collect()
+        self.field_path.field_path_names()
     }
 }
 pub(crate) struct BufferedOrder {
@@ -193,17 +212,17 @@ pub(crate) enum OrderPlanItem {
     LoadContains(FieldNestedOrdersPlan),
 }
 pub(crate) struct FieldNestedOrdersPlan {
-    field_path: Vec<Rc<dyn FieldInfo>>,
+    field_path: FieldPath,
     orders: OrdersPlan,
 }
 impl FieldNestedOrdersPlan {
     fn field_path_names(&self) -> Vec<String> {
-        self.field_path.iter().map(|f| f.name().to_owned()).collect()
+        self.field_path.field_path_names()
     }
 }
 
 impl OrderPlanItem {
-    fn field(mut path: Vec<Rc<dyn FieldInfo>>, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
+    fn field(mut path: FieldPath, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
         path.push(field);
         OrderPlanItem::Field(FieldOrderPlan {
             field_path: path,
@@ -211,19 +230,19 @@ impl OrderPlanItem {
             pre_ordered: false,
         })
     }
-    fn load_equal(path: Vec<Rc<dyn FieldInfo>>, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_equal(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadEqual(FieldNestedOrdersPlan {
             field_path: path,
             orders,
         })
     }
-    fn load_contains(path: Vec<Rc<dyn FieldInfo>>, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_contains(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadContains(FieldNestedOrdersPlan {
             field_path: path,
             orders,
         })
     }
-    fn load_is(path: Vec<Rc<dyn FieldInfo>>, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_is(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadIs(FieldNestedOrdersPlan {
             field_path: path,
             orders,
@@ -292,7 +311,7 @@ pub(crate) struct ProjectionPlan {
 fn flat_or_deep_filter(
     x: FilterHolder,
     parent_mode: &FilterMode,
-    field_path: Vec<Rc<dyn FieldInfo>>,
+    field_path: FieldPath,
     elements: &mut Vec<FilterPlanItem>,
 ) {
     let FilterHolder { filters, mode } = x;
@@ -307,7 +326,7 @@ fn flat_or_deep_filter(
 }
 
 fn rationalize_filters_deep(
-    field_path: Vec<Rc<dyn FieldInfo>>,
+    field_path: FieldPath,
     filters: Vec<FilterItem>,
     parent_mode: &FilterMode,
     elements: &mut Vec<FilterPlanItem>,
@@ -353,7 +372,7 @@ fn rationalize_filters_deep(
 fn rationalize_filters(filter: FilterHolder) -> Option<FilterPlan> {
     let FilterHolder { filters, mode } = filter;
     let mut elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-    rationalize_filters_deep(vec![], filters, &mode, &mut elements);
+    rationalize_filters_deep(FieldPath::new(), filters, &mode, &mut elements);
     if elements.is_empty() {
         None
     } else {
@@ -363,7 +382,7 @@ fn rationalize_filters(filter: FilterHolder) -> Option<FilterPlan> {
         })
     }
 }
-fn recursive_rationalize_orders(path: Vec<Rc<dyn FieldInfo>>, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
+fn recursive_rationalize_orders(path: FieldPath, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
     for order in orders {
         match order {
             Orders::Field(f) => elements.push(OrderPlanItem::field(path.clone(), f)),
@@ -398,7 +417,7 @@ fn recursive_rationalize_orders(path: Vec<Rc<dyn FieldInfo>>, orders: Vec<Orders
 }
 fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
     let mut elements = Vec::new();
-    recursive_rationalize_orders(vec![], orders, &mut elements);
+    recursive_rationalize_orders(FieldPath::new(), orders, &mut elements);
     if elements.is_empty() {
         None
     } else {
@@ -407,7 +426,7 @@ fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
 }
 
 pub(crate) struct IndexInfo {
-    pub(crate) field_path: Vec<Rc<dyn FieldInfo>>,
+    pub(crate) field_path: FieldPath,
     pub(crate) index_name: String,
     pub(crate) index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
     pub(crate) ordering_mode: Order,
@@ -415,7 +434,7 @@ pub(crate) struct IndexInfo {
 }
 impl IndexInfo {
     pub(crate) fn new(
-        field_path: Vec<Rc<dyn FieldInfo>>,
+        field_path: FieldPath,
         index_name: String,
         index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         ordering_mode: Order,
@@ -430,7 +449,7 @@ impl IndexInfo {
         }
     }
     fn field_path_names(&self) -> Vec<String> {
-        self.field_path.iter().map(|f| f.name().to_owned()).collect()
+        self.field_path.field_path_names()
     }
 }
 
@@ -438,7 +457,7 @@ pub(crate) trait InfoFinder {
     fn find_index(
         &self,
         type_name: &str,
-        field_path: &[Rc<dyn FieldInfo>],
+        field_path: &FieldPath,
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo>;
@@ -560,26 +579,26 @@ mod tests {
         assert_eq!(fp.mode, FilterPlanMode::And);
         assert_eq!(fp.filters.len(), 4);
         match &fp.filters[0] {
-            FilterPlanItem::Field(f) => assert_eq!(f.field.first().unwrap().name(), "test"),
+            FilterPlanItem::Field(f) => assert_eq!(f.field.path.first().unwrap().name(), "test"),
             _ => panic!("expected field"),
         }
         match &fp.filters[1] {
-            FilterPlanItem::Field(f) => assert_eq!(f.field.last().unwrap().name(), "test1"),
+            FilterPlanItem::Field(f) => assert_eq!(f.field.path.first().unwrap().name(), "test1"),
             _ => panic!("expected field"),
         }
         match &fp.filters[2] {
-            FilterPlanItem::Field(f) => assert_eq!(f.field.first().unwrap().name(), "test2"),
+            FilterPlanItem::Field(f) => assert_eq!(f.field.path.first().unwrap().name(), "test2"),
             _ => panic!("expected field"),
         }
         match &fp.filters[3] {
             FilterPlanItem::Group(g) => {
                 assert_eq!(g.mode, FilterPlanMode::Or);
                 match &g.filters[0] {
-                    FilterPlanItem::Field(f) => assert_eq!(f.field.first().unwrap().name(), "test3"),
+                    FilterPlanItem::Field(f) => assert_eq!(f.field.path.first().unwrap().name(), "test3"),
                     _ => panic!("expected field"),
                 }
                 match &g.filters[1] {
-                    FilterPlanItem::Field(f) => assert_eq!(f.field.first().unwrap().name(), "test4"),
+                    FilterPlanItem::Field(f) => assert_eq!(f.field.path.first().unwrap().name(), "test4"),
                     _ => panic!("expected field"),
                 }
             }
