@@ -1,10 +1,12 @@
 use crate::{
     filter_builder::{
-        plan_model::{FilterPlan, QueryPlan, Source},
+        plan_model::{FilterPlan, QueryPlan, QueryValuePlan, Source},
         reader::Reader,
     },
+    internal::Field,
     Order, Persistent, Ref, SRes,
 };
+use std::ops::Bound;
 
 fn start<'a, T: Persistent + 'static>(
     source: Source,
@@ -70,3 +72,46 @@ impl<'a, T> Iterator for FilterExecution<'a, T> {
 }
 
 struct Accumulator {}
+
+pub(crate) trait CompareOperations<T> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool;
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool;
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool;
+    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+}
+
+impl<T, V: ValueCompare> CompareOperations<T> for Field<T, V> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.access)(t).equals(value)
+    }
+
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.access)(t).contains(value)
+    }
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.access)(t).is(value)
+    }
+
+    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.access)(t).range(value)
+    }
+
+    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.access)(t).range_contains(value)
+    }
+
+    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.access)(t).range_is(value)
+    }
+}
+
+pub(crate) trait ValueCompare {
+    fn equals(&self, value: QueryValuePlan) -> bool;
+    fn contains(&self, value: QueryValuePlan) -> bool;
+    fn is(&self, value: QueryValuePlan) -> bool;
+    fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+}
