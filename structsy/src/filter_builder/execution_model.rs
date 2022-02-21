@@ -73,6 +73,64 @@ impl<'a, T> Iterator for FilterExecution<'a, T> {
 
 struct Accumulator {}
 
+use std::rc::Rc;
+struct PathStep<T, V> {
+    field: Field<T, V>,
+    next: Rc<dyn CompareOperations<V>>,
+}
+enum FieldPath<T, V> {
+    Step(PathStep<T, V>),
+    Last(Rc<dyn CompareOperations<T>>),
+}
+
+impl<T, V> FieldPath<T, V> {
+    fn step(field: Field<T, V>, next: Rc<dyn CompareOperations<V>>) -> Self {
+        Self::Step(PathStep { field, next })
+    }
+    fn last(last: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::Last(last)
+    }
+}
+
+impl<T, V> CompareOperations<T> for FieldPath<T, V> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.equals((ps.field.access)(t), value),
+            Self::Last(c) => c.equals(t, value),
+        }
+    }
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.contains((ps.field.access)(t), value),
+            Self::Last(c) => c.contains(t, value),
+        }
+    }
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.is((ps.field.access)(t), value),
+            Self::Last(c) => c.is(t, value),
+        }
+    }
+    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.range((ps.field.access)(t), value),
+            Self::Last(c) => c.range(t, value),
+        }
+    }
+    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.range_contains((ps.field.access)(t), value),
+            Self::Last(c) => c.range_contains(t, value),
+        }
+    }
+    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        match self {
+            Self::Step(ps) => ps.next.range_is((ps.field.access)(t), value),
+            Self::Last(c) => c.range_is(t, value),
+        }
+    }
+}
+
 pub(crate) trait CompareOperations<T> {
     fn equals(&self, t: &T, value: QueryValuePlan) -> bool;
     fn contains(&self, t: &T, value: QueryValuePlan) -> bool;
