@@ -41,8 +41,8 @@ pub(crate) enum Source {
 }
 
 pub(crate) struct FilterFieldPlanItem {
-    field: FieldPathPlan,
-    filter_by: FilterByPlan,
+    pub(crate) field: FieldPathPlan,
+    pub(crate) filter_by: FilterByPlan,
 }
 pub(crate) enum FilterPlanItem {
     Field(FilterFieldPlanItem),
@@ -59,8 +59,8 @@ impl FilterPlanItem {
 }
 
 pub(crate) struct FilterPlan {
-    filters: Vec<FilterPlanItem>,
-    mode: FilterPlanMode,
+    pub(crate) filters: Vec<FilterPlanItem>,
+    pub(crate) mode: FilterPlanMode,
 }
 
 impl FilterPlan {

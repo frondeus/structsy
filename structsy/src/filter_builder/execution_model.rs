@@ -1,6 +1,8 @@
 use crate::{
     filter_builder::{
-        plan_model::{FieldPathPlan, FilterPlan, QueryPlan, QueryValuePlan, Source},
+        plan_model::{
+            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
+        },
         reader::Reader,
     },
     internal::Field,
@@ -25,6 +27,43 @@ fn start<'a, T: Persistent + 'static>(
         Source::Scan(_scan) => Box::new(reader.scan()?),
     })
 }
+
+fn field_to_compare_operations<T>(
+    field: FieldPathPlan,
+    access: Rc<dyn IntoCompareOperations<T>>,
+) -> Rc<dyn CompareOperations<T>> {
+    access.nested_compare_operations(field.field_path_names())
+}
+
+fn filter_plan_field_to_execution<T>(
+    plan: FilterFieldPlanItem,
+    access: Rc<dyn IntoCompareOperations<T>>,
+) -> FilterExecutionField<T> {
+    FilterExecutionField {
+        field: field_to_compare_operations(plan.field, access),
+        filter_by: plan.filter_by,
+    }
+}
+fn filter_plan_item_to_execution<T>(
+    plan: FilterPlanItem,
+    access: Rc<dyn IntoCompareOperations<T>>,
+) -> FilterExecutionItem<T> {
+    match plan {
+        FilterPlanItem::Field(f) => FilterExecutionItem::Field(filter_plan_field_to_execution(f, access)),
+        FilterPlanItem::Group(plan) => FilterExecutionItem::Group(filter_plan_to_execution(plan, access)),
+    }
+}
+fn filter_plan_to_execution<T>(plan: FilterPlan, access: Rc<dyn IntoCompareOperations<T>>) -> FilterExecutionGroup<T> {
+    let values = plan
+        .filters
+        .into_iter()
+        .map(move |v| filter_plan_item_to_execution(v, access.clone()))
+        .collect();
+    FilterExecutionGroup {
+        conditions: values,
+        mode: plan.mode,
+    }
+}
 fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
     fields: Rc<dyn IntoCompareOperations<T>>,
@@ -41,7 +80,7 @@ fn execute<'a, T: Persistent + 'static>(
     let iter = if let Some(f) = filter {
         Box::new(FilterExecution {
             source: iter,
-            filter: f,
+            filter: filter_plan_to_execution(f, fields),
         })
     } else {
         iter
@@ -52,29 +91,99 @@ fn execute<'a, T: Persistent + 'static>(
 
 struct FilterExecution<'a, T> {
     source: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
-    filter: FilterPlan,
+    filter: FilterExecutionGroup<T>,
 }
 
 trait FilterCheck<T> {
     fn check(&self, value: &T) -> bool;
 }
 
-impl<T> FilterCheck<T> for FilterPlan {
+struct FilterExecutionGroup<T> {
+    conditions: Vec<FilterExecutionItem<T>>,
+    mode: FilterPlanMode,
+}
+impl<T> FilterCheck<T> for FilterExecutionGroup<T> {
     fn check(&self, value: &T) -> bool {
-        false
+        match self.mode {
+            FilterPlanMode::And => {
+                let mut cond = true;
+                for con in &self.conditions {
+                    if !con.check(value) {
+                        cond = false;
+                        break;
+                    }
+                }
+                cond
+            }
+            FilterPlanMode::Or => {
+                let mut cond = false;
+                for con in &self.conditions {
+                    if con.check(value) {
+                        cond = true;
+                        break;
+                    }
+                }
+                cond
+            }
+            FilterPlanMode::Not => {
+                let mut cond = true;
+                for con in &self.conditions {
+                    if !con.check(value) {
+                        cond = false;
+                        break;
+                    }
+                }
+                !cond
+            }
+        }
+    }
+}
+
+enum FilterExecutionItem<T> {
+    Field(FilterExecutionField<T>),
+    Group(FilterExecutionGroup<T>),
+}
+struct FilterExecutionField<T> {
+    field: Rc<dyn CompareOperations<T>>,
+    filter_by: FilterByPlan,
+}
+impl<T> FilterCheck<T> for FilterExecutionItem<T> {
+    fn check(&self, value: &T) -> bool {
+        match self {
+            Self::Field(f) => f.check(value),
+            Self::Group(g) => g.check(value),
+        }
+    }
+}
+
+impl<T> FilterCheck<T> for FilterExecutionField<T> {
+    fn check(&self, rec: &T) -> bool {
+        match &self.filter_by {
+            FilterByPlan::Equal(value) => self.field.equals(rec, value.clone()),
+            FilterByPlan::Contains(value) => self.field.contains(rec, value.clone()),
+            FilterByPlan::Is(value) => self.field.is(rec, value.clone()),
+            FilterByPlan::Range(value) => self.field.range(rec, value.clone()),
+            FilterByPlan::RangeContains(value) => self.field.range_contains(rec, value.clone()),
+            FilterByPlan::RangeIs(value) => self.field.range_is(rec, value.clone()),
+            FilterByPlan::LoadAndEqual(value) => todo!(),
+            FilterByPlan::LoadAndContains(value) => todo!(),
+            FilterByPlan::LoadAndIs(value) => todo!(),
+        }
     }
 }
 
 impl<'a, T> Iterator for FilterExecution<'a, T> {
     type Item = (Ref<T>, T);
     fn next(&mut self) -> Option<Self::Item> {
-        self.source.next().filter(|v| self.filter.check(&v))
+        self.source.next().filter(|(_id, rec)| self.filter.check(&rec))
     }
 }
 
 struct Accumulator {}
 
 use std::rc::Rc;
+
+use super::plan_model::FilterFieldPlanItem;
 struct PathStep<T, V> {
     field: Field<T, V>,
     next: Rc<dyn CompareOperations<V>>,
