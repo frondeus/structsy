@@ -1,12 +1,12 @@
 use crate::{
     filter_builder::{
-        plan_model::{FilterPlan, QueryPlan, QueryValuePlan, Source},
+        plan_model::{FieldPathPlan, FilterPlan, QueryPlan, QueryValuePlan, Source},
         reader::Reader,
     },
     internal::Field,
     Order, Persistent, Ref, SRes,
 };
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 fn start<'a, T: Persistent + 'static>(
     source: Source,
@@ -27,6 +27,7 @@ fn start<'a, T: Persistent + 'static>(
 }
 fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
+    fields: Rc<dyn IntoCompareOperations<T>>,
     reader: Reader<'a>,
 ) -> SRes<Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>> {
     let QueryPlan {
@@ -89,6 +90,52 @@ impl<T, V> FieldPath<T, V> {
     }
     fn last(last: Rc<dyn CompareOperations<T>>) -> Self {
         Self::Last(last)
+    }
+}
+
+trait IntoCompareOperations<T> {
+    fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>>;
+}
+
+enum TypedFields<T, V> {
+    Holder((Field<T, V>, FieldsHolder<V>)),
+    Leaf(Rc<dyn CompareOperations<T>>),
+}
+impl<T, V> TypedFields<T, V> {
+    fn group(field: Field<T, V>, holder: FieldsHolder<V>) -> Self {
+        Self::Holder((field, holder))
+    }
+    fn leaf(field: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::Leaf(field)
+    }
+}
+
+impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
+    fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
+        match &self {
+            Self::Holder((field, holder)) => {
+                Rc::new(FieldPath::step(field.clone(), holder.nested_compare_operations(fields)))
+            }
+            Self::Leaf(l) => {
+                assert!(fields.is_empty());
+                l.clone()
+            }
+        }
+    }
+}
+
+struct FieldsHolder<V> {
+    fields: HashMap<String, Rc<dyn IntoCompareOperations<V>>>,
+}
+
+impl<T: 'static> IntoCompareOperations<T> for FieldsHolder<T> {
+    fn nested_compare_operations(&self, mut fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
+        let field = fields.pop();
+        if let Some(f) = field {
+            self.fields.get(&f).unwrap().nested_compare_operations(fields)
+        } else {
+            unreachable!()
+        }
     }
 }
 
