@@ -1,5 +1,5 @@
 use super::{
-    plan_model::{FieldPath, IndexInfo, InfoFinder, QueryValuePlan},
+    plan_model::{FieldPathPlan, IndexInfo, InfoFinder, QueryValuePlan},
     query_model::SimpleQueryValue,
     reader::Reader,
 };
@@ -383,7 +383,7 @@ impl InfoFinder for Structsy {
     fn find_index(
         &self,
         type_name: &str,
-        field_path: &FieldPath,
+        field_path: &FieldPathPlan,
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo> {

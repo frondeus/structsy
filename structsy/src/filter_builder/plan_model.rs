@@ -13,10 +13,10 @@ use std::{ops::Bound, rc::Rc};
 use super::query_model::{FieldNestedOrders, FilterHolder};
 
 #[derive(Clone)]
-pub(crate) struct FieldPath {
+pub(crate) struct FieldPathPlan {
     pub(crate) path: Vec<Rc<dyn FieldInfo>>,
 }
-impl FieldPath {
+impl FieldPathPlan {
     fn new() -> Self {
         Self { path: Vec::new() }
     }
@@ -41,7 +41,7 @@ pub(crate) enum Source {
 }
 
 pub(crate) struct FilterFieldPlanItem {
-    field: FieldPath,
+    field: FieldPathPlan,
     filter_by: FilterByPlan,
 }
 pub(crate) enum FilterPlanItem {
@@ -53,7 +53,7 @@ impl FilterPlanItem {
     fn group(filters: Vec<FilterPlanItem>, mode: FilterPlanMode) -> Self {
         FilterPlanItem::Group(FilterPlan { filters, mode })
     }
-    fn field(path: FieldPath, filter_by: FilterByPlan) -> Self {
+    fn field(path: FieldPathPlan, filter_by: FilterByPlan) -> Self {
         FilterPlanItem::Field(FilterFieldPlanItem { field: path, filter_by })
     }
 }
@@ -188,7 +188,7 @@ impl FilterByPlan {
 }
 
 pub(crate) struct FieldOrderPlan {
-    field_path: FieldPath,
+    field_path: FieldPathPlan,
     mode: Order,
     pre_ordered: bool,
 }
@@ -212,7 +212,7 @@ pub(crate) enum OrderPlanItem {
     LoadContains(FieldNestedOrdersPlan),
 }
 pub(crate) struct FieldNestedOrdersPlan {
-    field_path: FieldPath,
+    field_path: FieldPathPlan,
     orders: OrdersPlan,
 }
 impl FieldNestedOrdersPlan {
@@ -222,7 +222,7 @@ impl FieldNestedOrdersPlan {
 }
 
 impl OrderPlanItem {
-    fn field(mut path: FieldPath, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
+    fn field(mut path: FieldPathPlan, FieldOrder { field, mode }: FieldOrder) -> OrderPlanItem {
         path.push(field);
         OrderPlanItem::Field(FieldOrderPlan {
             field_path: path,
@@ -230,19 +230,19 @@ impl OrderPlanItem {
             pre_ordered: false,
         })
     }
-    fn load_equal(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_equal(path: FieldPathPlan, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadEqual(FieldNestedOrdersPlan {
             field_path: path,
             orders,
         })
     }
-    fn load_contains(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_contains(path: FieldPathPlan, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadContains(FieldNestedOrdersPlan {
             field_path: path,
             orders,
         })
     }
-    fn load_is(path: FieldPath, orders: OrdersPlan) -> OrderPlanItem {
+    fn load_is(path: FieldPathPlan, orders: OrdersPlan) -> OrderPlanItem {
         OrderPlanItem::LoadIs(FieldNestedOrdersPlan {
             field_path: path,
             orders,
@@ -311,7 +311,7 @@ pub(crate) struct ProjectionPlan {
 fn flat_or_deep_filter(
     x: FilterHolder,
     parent_mode: &FilterMode,
-    field_path: FieldPath,
+    field_path: FieldPathPlan,
     elements: &mut Vec<FilterPlanItem>,
 ) {
     let FilterHolder { filters, mode } = x;
@@ -326,7 +326,7 @@ fn flat_or_deep_filter(
 }
 
 fn rationalize_filters_deep(
-    field_path: FieldPath,
+    field_path: FieldPathPlan,
     filters: Vec<FilterItem>,
     parent_mode: &FilterMode,
     elements: &mut Vec<FilterPlanItem>,
@@ -372,7 +372,7 @@ fn rationalize_filters_deep(
 fn rationalize_filters(filter: FilterHolder) -> Option<FilterPlan> {
     let FilterHolder { filters, mode } = filter;
     let mut elements = Vec::<FilterPlanItem>::with_capacity(filters.len());
-    rationalize_filters_deep(FieldPath::new(), filters, &mode, &mut elements);
+    rationalize_filters_deep(FieldPathPlan::new(), filters, &mode, &mut elements);
     if elements.is_empty() {
         None
     } else {
@@ -382,7 +382,7 @@ fn rationalize_filters(filter: FilterHolder) -> Option<FilterPlan> {
         })
     }
 }
-fn recursive_rationalize_orders(path: FieldPath, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
+fn recursive_rationalize_orders(path: FieldPathPlan, orders: Vec<Orders>, elements: &mut Vec<OrderPlanItem>) {
     for order in orders {
         match order {
             Orders::Field(f) => elements.push(OrderPlanItem::field(path.clone(), f)),
@@ -417,7 +417,7 @@ fn recursive_rationalize_orders(path: FieldPath, orders: Vec<Orders>, elements: 
 }
 fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
     let mut elements = Vec::new();
-    recursive_rationalize_orders(FieldPath::new(), orders, &mut elements);
+    recursive_rationalize_orders(FieldPathPlan::new(), orders, &mut elements);
     if elements.is_empty() {
         None
     } else {
@@ -426,7 +426,7 @@ fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
 }
 
 pub(crate) struct IndexInfo {
-    pub(crate) field_path: FieldPath,
+    pub(crate) field_path: FieldPathPlan,
     pub(crate) index_name: String,
     pub(crate) index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
     pub(crate) ordering_mode: Order,
@@ -434,7 +434,7 @@ pub(crate) struct IndexInfo {
 }
 impl IndexInfo {
     pub(crate) fn new(
-        field_path: FieldPath,
+        field_path: FieldPathPlan,
         index_name: String,
         index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         ordering_mode: Order,
@@ -457,7 +457,7 @@ pub(crate) trait InfoFinder {
     fn find_index(
         &self,
         type_name: &str,
-        field_path: &FieldPath,
+        field_path: &FieldPathPlan,
         range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
         mode: Order,
     ) -> Option<IndexInfo>;
