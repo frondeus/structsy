@@ -8,6 +8,7 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
+        execution_model::FieldsHolder,
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
@@ -444,6 +445,7 @@ pub struct FilterBuilder<T> {
     pub(crate) steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Orders<T>,
     filter: FilterHolder,
+    fields_holder: FieldsHolder<T>,
     orders: Vec<OrdersModel>,
 }
 impl<T: 'static> Default for FilterBuilder<T> {
@@ -458,6 +460,7 @@ impl<T: 'static> FilterBuilder<T> {
             steps: Vec::new(),
             order: Orders { order: Vec::new() },
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder: Default::default(),
             orders: Vec::new(),
         }
     }
@@ -472,6 +475,9 @@ impl<T: 'static> FilterBuilder<T> {
 
     fn get_filter(&mut self) -> &mut FilterHolder {
         &mut self.filter
+    }
+    fn get_fields(&mut self) -> &mut FieldsHolder<T> {
+        &mut self.fields_holder
     }
 }
 
@@ -559,6 +565,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
+            fields_holder,
             orders,
         } = query;
         self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
@@ -569,6 +576,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 steps,
                 order,
                 filter: FilterHolder::new(FilterMode::And),
+                fields_holder,
                 orders: vec![],
             },
             field,
@@ -583,6 +591,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
+            fields_holder,
             orders,
         } = query;
         self.filter.add_field_ref_query_contains(Rc::new(field.clone()), filter);
@@ -593,6 +602,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 steps,
                 order,
                 filter: FilterHolder::new(FilterMode::And),
+                fields_holder,
                 orders: vec![],
             },
             field,
@@ -607,6 +617,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter,
+            fields_holder,
             orders,
         } = query;
         self.orders
@@ -617,6 +628,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
                 steps,
                 order,
                 filter: FilterHolder::new(FilterMode::And),
+                fields_holder,
                 orders: vec![],
             },
             field,
@@ -629,6 +641,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             order,
             mut filter,
             orders,
+            fields_holder,
         } = builder;
         filter.mode = FilterMode::Or;
         self.filter.add_group(filter);
@@ -637,6 +650,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Or),
+            fields_holder,
             orders: vec![],
         }));
     }
@@ -646,6 +660,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = builder;
         filter.mode = FilterMode::And;
@@ -655,6 +670,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder,
             orders: vec![],
         }))
     }
@@ -664,6 +680,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = filters;
         filter.mode = FilterMode::And;
@@ -674,6 +691,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order: Orders { order: vec![] },
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder,
             orders: vec![],
         }));
     }
@@ -683,6 +701,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = builder;
         filter.mode = FilterMode::Not;
@@ -692,6 +711,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Not),
+            fields_holder,
             orders: vec![],
         }))
     }

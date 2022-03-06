@@ -1,14 +1,15 @@
 use crate::{
     filter_builder::{
         plan_model::{
-            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
+            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source, 
         },
+        query_model::SimpleQueryValue,
         reader::Reader,
     },
-    internal::Field,
+    internal::{Field, FieldInfo},
     Order, Persistent, Ref, SRes,
 };
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::{Bound, RangeBounds}};
 
 fn start<'a, T: Persistent + 'static>(
     source: Source,
@@ -233,8 +234,26 @@ impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
     }
 }
 
-struct FieldsHolder<V> {
+pub (crate) struct FieldsHolder<V> {
     fields: HashMap<String, Rc<dyn IntoCompareOperations<V>>>,
+}
+
+impl<T:'static> FieldsHolder<T> {
+    pub(crate) fn add_field<V:ValueCompare +'static>(&mut self, field: Field<T,V>) {
+        self.fields.insert(field.name().to_owned(),Rc::new(TypedFields::<T,V>::leaf(Rc::new(field))));
+    }
+    pub(crate) fn add_nested_field<V:ValueCompare +'static>(&mut self, field: Field<T,V>, holder:FieldsHolder<V>) {
+        self.fields.insert(field.name().to_owned(),Rc::new(TypedFields::<T,V>::group(field,holder)));
+    }
+}
+
+
+impl<V> Default for FieldsHolder<V> {
+    fn default() -> Self {
+        Self {
+            fields : Default::default(),
+        }
+    }
 }
 
 impl<T: 'static> IntoCompareOperations<T> for FieldsHolder<T> {
