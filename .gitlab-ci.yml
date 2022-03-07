@@ -26,7 +26,7 @@ generate_test_data:
 # Run tests and generate coverage report
 coverage_report:
   image:
-    name: "ragnaroek/kcov_head:latest"
+    name: "kcov/kcov"
     #entrypoint: ["/bin/sh", "-c"]
     entrypoint: [""]
   stage: "coverage_report"
