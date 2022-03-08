@@ -4,31 +4,121 @@ use crate::{
     Order, Persistent, Ref,
 };
 use persy::PersyId;
+use std::{any::Any, cmp::Ordering};
 use std::{fmt::Debug, ops::Bound, rc::Rc};
 
-pub trait MyOrd {}
-pub trait MyEq: Debug {}
-
-#[derive(Clone)]
-struct Value<T> {
-    value: T,
+pub trait MyEq {
+    fn my_eq(&self, other: &dyn MyEq) -> bool;
+    fn gen_ref(&self) -> &dyn Any;
 }
-impl<T: Ord + Clone> MyOrd for Value<T> {}
-impl<T: PartialEq> MyEq for Value<T> {}
 
-impl<T> std::fmt::Debug for Value<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "embedded value")
+impl<T: EmbeddedDescription + PartialEq + 'static> MyEq for T {
+    fn my_eq(&self, other: &dyn MyEq) -> bool {
+        if let Some(x) = other.gen_ref().downcast_ref::<T>() {
+            self.eq(x)
+        } else {
+            false
+        }
+    }
+    fn gen_ref(&self) -> &dyn Any {
+        self
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RawRef {
-    id: PersyId,
-    ty: String,
+pub trait MyOrd {
+    fn my_cmp(&self, other: &dyn MyOrd) -> Option<Ordering>;
+    fn my_eq(&self, other: &dyn MyOrd) -> bool;
+    fn gen_ref(&self) -> &dyn Any;
 }
 
-#[derive(Debug, Clone)]
+impl<T: EmbeddedDescription + PartialOrd + 'static> MyOrd for T {
+    fn my_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
+        if let Some(x) = other.gen_ref().downcast_ref::<T>() {
+            self.partial_cmp(x)
+        } else {
+            None
+        }
+    }
+    fn my_eq(&self, other: &dyn MyOrd) -> bool {
+        if let Some(x) = other.gen_ref().downcast_ref::<T>() {
+            self.partial_cmp(x) == Some(Ordering::Equal)
+        } else {
+            false
+        }
+    }
+    fn gen_ref(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl PartialEq for EmbValue {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::OrdType(r) => match other {
+                Self::OrdType(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
+                Self::EqType(_) => false,
+            },
+            Self::EqType(e) => match other {
+                Self::OrdType(_) => false,
+                Self::EqType(eq) => e.my_eq(&**eq),
+            },
+        }
+    }
+}
+impl PartialOrd for EmbValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self {
+            Self::OrdType(r) => match other {
+                Self::OrdType(or) => r.my_cmp(&**or),
+                Self::EqType(_) => None,
+            },
+            Self::EqType(_) => None,
+        }
+    }
+}
+#[derive(Clone)]
+pub enum EmbValue {
+    //TODO: handle also the case of only eq and both eq and ord maybe with an enum
+    OrdType(Rc<dyn MyOrd>),
+    EqType(Rc<dyn MyEq>),
+}
+impl EmbValue {
+    pub(crate) fn new<T: EmbeddedDescription + Ord + 'static>(t: T) -> Self {
+        Self::OrdType(Rc::new(t))
+    }
+    pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
+        Self::EqType(Rc::new(t))
+    }
+}
+
+impl Debug for EmbValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OrdType(r) => {
+                write!(f, "{:?}", r.gen_ref().type_id())
+            }
+            Self::EqType(e) => {
+                write!(f, "{:?}", e.gen_ref().type_id())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub struct RawRef {
+    pub(crate) id: PersyId,
+    pub(crate) ty: String,
+}
+impl<T> From<&Ref<T>> for RawRef {
+    fn from(Ref { type_name, raw_id, .. }: &Ref<T>) -> Self {
+        Self {
+            id: raw_id.clone(),
+            ty: type_name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum SimpleQueryValue {
     U8(u8),
     U16(u16),
@@ -45,7 +135,7 @@ pub enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(Rc<dyn MyEq>),
+    Embedded(EmbValue),
 }
 
 pub trait SolveSimpleQueryValue {
@@ -88,7 +178,7 @@ impl<T: Persistent> SolveSimpleQueryValue for Ref<T> {
 
 impl<T: PartialEq + EmbeddedDescription + 'static> SolveSimpleQueryValue for T {
     fn new(self) -> SRes<SimpleQueryValue> {
-        Ok(SimpleQueryValue::Embedded(Rc::new(Value { value: self })))
+        Ok(SimpleQueryValue::Embedded(EmbValue::new_eq(self)))
     }
 }
 

@@ -9,6 +9,7 @@ mod plan_model;
 mod query_model;
 mod reader;
 mod start;
+mod value_compare;
 
 pub use embedded_filter_builder::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition};
 pub use filter_builder::{FilterBuilder, RangeCondition, Scan, SimpleCondition};

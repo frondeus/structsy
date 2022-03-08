@@ -1,7 +1,7 @@
 use crate::{
     filter_builder::{
         plan_model::{
-            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source, 
+            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
         },
         query_model::SimpleQueryValue,
         reader::Reader,
@@ -9,7 +9,10 @@ use crate::{
     internal::{Field, FieldInfo},
     Order, Persistent, Ref, SRes,
 };
-use std::{collections::HashMap, ops::{Bound, RangeBounds}};
+use std::{
+    collections::HashMap,
+    ops::{Bound, RangeBounds},
+};
 
 fn start<'a, T: Persistent + 'static>(
     source: Source,
@@ -234,24 +237,29 @@ impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
     }
 }
 
-pub (crate) struct FieldsHolder<V> {
+pub(crate) struct FieldsHolder<V> {
     fields: HashMap<String, Rc<dyn IntoCompareOperations<V>>>,
 }
 
-impl<T:'static> FieldsHolder<T> {
-    pub(crate) fn add_field<V:ValueCompare +'static>(&mut self, field: Field<T,V>) {
-        self.fields.insert(field.name().to_owned(),Rc::new(TypedFields::<T,V>::leaf(Rc::new(field))));
+impl<T: 'static> FieldsHolder<T> {
+    pub(crate) fn add_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>) {
+        self.fields.insert(
+            field.name().to_owned(),
+            Rc::new(TypedFields::<T, V>::leaf(Rc::new(field))),
+        );
     }
-    pub(crate) fn add_nested_field<V:ValueCompare +'static>(&mut self, field: Field<T,V>, holder:FieldsHolder<V>) {
-        self.fields.insert(field.name().to_owned(),Rc::new(TypedFields::<T,V>::group(field,holder)));
+    pub(crate) fn add_nested_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
+        self.fields.insert(
+            field.name().to_owned(),
+            Rc::new(TypedFields::<T, V>::group(field, holder)),
+        );
     }
 }
-
 
 impl<V> Default for FieldsHolder<V> {
     fn default() -> Self {
         Self {
-            fields : Default::default(),
+            fields: Default::default(),
         }
     }
 }
@@ -321,7 +329,7 @@ impl<T, V: ValueCompare> CompareOperations<T> for Field<T, V> {
     }
 
     fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
-        (self.access)(t).contains(value)
+        (self.access)(t).contains_value(value)
     }
     fn is(&self, t: &T, value: QueryValuePlan) -> bool {
         (self.access)(t).is(value)
@@ -342,9 +350,216 @@ impl<T, V: ValueCompare> CompareOperations<T> for Field<T, V> {
 
 pub(crate) trait ValueCompare {
     fn equals(&self, value: QueryValuePlan) -> bool;
-    fn contains(&self, value: QueryValuePlan) -> bool;
+    fn contains_value(&self, value: QueryValuePlan) -> bool;
     fn is(&self, value: QueryValuePlan) -> bool;
     fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+}
+
+macro_rules! index_conditions {
+    ($($t:ty),+) => {
+        $(
+        )+
+    };
+}
+
+impl ValueCompare for u8 {
+    fn equals(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Single(SimpleQueryValue::U8(v)) => self.eq(&v),
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn contains_value(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn is(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        let rv = match value {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        let lv = match value1 {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        (rv, lv).contains(self)
+    }
+    fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+}
+impl ValueCompare for Vec<u8> {
+    fn equals(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Array(v) => self.iter().map(|x| SimpleQueryValue::U8(*x)).collect::<Vec<_>>().eq(&v),
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn contains_value(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Single(SimpleQueryValue::U8(v)) => self.contains(&v),
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn is(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        let rv = match value {
+            Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Array(v)) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        let lv = match value1 {
+            Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Array(v)) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        (rv, lv).contains(&self.iter().map(|x| SimpleQueryValue::U8(*x)).collect::<Vec<_>>())
+    }
+    fn range_contains(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        let rv = match value {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        let lv = match value1 {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        for el in self {
+            if (rv, lv).contains(el) {
+                return true;
+            }
+        }
+        false
+    }
+    fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+}
+
+impl ValueCompare for Option<u8> {
+    fn equals(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Option(v) => self.map(|x| SimpleQueryValue::U8(x)).eq(&v),
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn contains_value(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn is(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Single(v) => self.map(|x| SimpleQueryValue::U8(x)).eq(&Some(v)),
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        let rv = match value {
+            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::U8(v)))) => Bound::Included(Some(v)),
+            Bound::Included(QueryValuePlan::Option(None)) => Bound::Included(None),
+            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::U8(v)))) => Bound::Excluded(Some(v)),
+            Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Excluded(None),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        let lv = match value1 {
+            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::U8(v)))) => Bound::Included(Some(v)),
+            Bound::Included(QueryValuePlan::Option(None)) => Bound::Included(None),
+            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::U8(v)))) => Bound::Excluded(Some(v)),
+            Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Excluded(None),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        (rv, lv).contains(self)
+    }
+
+    fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn range_is(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        let rv = match value {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(Some(v)),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(Some(v)),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        let lv = match value1 {
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Included(Some(v)),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::U8(v))) => Bound::Excluded(Some(v)),
+            Bound::Unbounded => Bound::Unbounded,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                return false;
+            }
+        };
+        (rv, lv).contains(self)
+    }
 }

@@ -2,13 +2,13 @@ use crate::{
     filter_builder::{
         embedded_filter_builder::EmbeddedFilterBuilder,
         execution_iterator::{IterT, Source},
+        execution_model::FieldsHolder,
         execution_step::ExecutionStep,
         filter_builder_step::{
             AndFilter, ConditionFilter, ConditionSingleFilter, EmbeddedFieldFilter, FilterBuilderStep, IndexFilter,
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
-        execution_model::FieldsHolder,
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
@@ -169,10 +169,11 @@ macro_rules! index_conditions {
 
         impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t> {
             fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: Option<$t>) {
-        filter.get_filter().add_field_equal(
-            Rc::new(field.clone()),
-            value.clone()
-        );
+                filter.get_filter().add_field_equal(
+                    Rc::new(field.clone()),
+                    value.clone()
+                );
+                //filter.get_fields().add_field(field);
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
                     filter.add(IndexFilter::new(index_name, v));
                 } else {
@@ -185,10 +186,10 @@ macro_rules! index_conditions {
 
         impl< T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
             fn range<R: RangeBounds<Option<$t>>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, range: R) {
-        filter.get_filter().add_field_range(
-            Rc::new(field.clone()),
-            (&range.start_bound(),&range.end_bound())
-        );
+                filter.get_filter().add_field_range(
+                    Rc::new(field.clone()),
+                    (&range.start_bound(),&range.end_bound())
+                );
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 // This may support index in future, but it does not now
