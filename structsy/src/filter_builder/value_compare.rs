@@ -8,6 +8,8 @@ use crate::{
 };
 use std::ops::{Bound, RangeBounds};
 
+use super::query_model::MyOrd;
+
 pub(crate) trait ValueCompare {
     fn equals(&self, value: QueryValuePlan) -> bool;
     fn contains_value(&self, value: QueryValuePlan) -> bool;
@@ -459,12 +461,10 @@ impl<T> ValueCompare for Option<Ref<T>> {
     }
 }
 
-/*
-
-impl<T:EmbeddedDescription+Ord> ValueCompare for T {
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for T {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => SimpleQueryValue::Embedded(EmbValue::new(&self)).eq(&v),
+            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => v.eq(self as &dyn MyOrd),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -481,24 +481,24 @@ impl<T:EmbeddedDescription+Ord> ValueCompare for T {
     }
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
         let lv = match value1 {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
-        (rv, lv).contains(self)
+        (rv, lv).contains(self as &dyn MyOrd)
     }
     fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         debug_assert!(false, "should never call wrong action");
@@ -509,10 +509,30 @@ impl<T:EmbeddedDescription+Ord> ValueCompare for T {
         false
     }
 }
-impl<T:EmbeddedDescription+Ord> ValueCompare for Vec<T> {
+
+impl<T: EmbeddedDescription + Ord + 'static> ValueCompare for Vec<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Array(v) => self.iter().map(|x|SimpleQueryValue::Embedded(x.clone())).collect::<Vec<_>>().eq(&v),
+            QueryValuePlan::Array(v) => {
+                let mut fi = v.iter().peekable();
+                let mut si = self.iter().peekable();
+                while let (Some(first), Some(second)) = (fi.peek(), si.peek()) {
+                    match first {
+                        SimpleQueryValue::Embedded(v) => {
+                            if !v.eq(second as &T as &dyn MyOrd) {
+                                return false;
+                            }
+                        }
+                        _ => {
+                            debug_assert!(false, "should never match a wrong type");
+                            return false;
+                        }
+                    }
+                    fi.next();
+                    si.next();
+                }
+                fi.peek().is_none() && si.peek().is_none()
+            }
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -521,7 +541,14 @@ impl<T:EmbeddedDescription+Ord> ValueCompare for Vec<T> {
     }
     fn contains_value(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => self.contains(&v),
+            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
+                for x in self {
+                    if v.eq(x as &dyn MyOrd) {
+                        return true;
+                    }
+                }
+                false
+            }
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -534,47 +561,47 @@ impl<T:EmbeddedDescription+Ord> ValueCompare for Vec<T> {
     }
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
-            Bound::Included(QueryValuePlan::Array(v)) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Array(v)) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Array(v)) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
-
         };
         let lv = match value1 {
-            Bound::Included(QueryValuePlan::Array(v)) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Array(v)) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Array(v)) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
-        (rv, lv).contains(&self.iter().map(|x|SimpleQueryValue::Embedded(x.clone())).collect::<Vec<_>>())
+        todo!()
+        //(rv, lv).contains(self)
     }
     fn range_contains(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
         let lv = match value1 {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(v),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
         for el in self {
-            if (rv.clone(),lv.clone()).contains(el) {
+            if (rv.clone(), lv.clone()).contains(el as &dyn MyOrd) {
                 return true;
             }
         }
@@ -585,6 +612,7 @@ impl<T:EmbeddedDescription+Ord> ValueCompare for Vec<T> {
         false
     }
 }
+/*
 
 impl<T:EmbeddedDescription+ Ord> ValueCompare for Option<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {

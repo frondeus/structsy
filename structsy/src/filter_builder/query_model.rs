@@ -31,6 +31,21 @@ pub trait MyOrd {
     fn gen_ref(&self) -> &dyn Any;
 }
 
+impl PartialEq<EmbValue> for dyn MyOrd {
+    fn eq(&self, other: &EmbValue) -> bool {
+        other.eq(self)
+    }
+}
+impl PartialOrd<EmbValue> for dyn MyOrd {
+    fn partial_cmp(&self, other: &EmbValue) -> Option<Ordering> {
+        other.partial_cmp(self).map(|r| match r {
+            Ordering::Equal => Ordering::Equal,
+            Ordering::Less => Ordering::Greater,
+            Ordering::Greater => Ordering::Less,
+        })
+    }
+}
+
 impl<T: EmbeddedDescription + PartialOrd + 'static> MyOrd for T {
     fn my_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
         if let Some(x) = other.gen_ref().downcast_ref::<T>() {
@@ -76,18 +91,49 @@ impl PartialOrd for EmbValue {
         }
     }
 }
+
+impl PartialEq<dyn MyOrd> for EmbValue {
+    fn eq(&self, other: &dyn MyOrd) -> bool {
+        match self {
+            Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
+            Self::EqType(e) => false,
+        }
+    }
+}
+
+impl PartialOrd<dyn MyOrd> for EmbValue {
+    fn partial_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
+        match self {
+            Self::OrdType(r) => r.my_cmp(other),
+            Self::EqType(_) => None,
+        }
+    }
+}
 #[derive(Clone)]
 pub enum EmbValue {
     //TODO: handle also the case of only eq and both eq and ord maybe with an enum
     OrdType(Rc<dyn MyOrd>),
     EqType(Rc<dyn MyEq>),
 }
+
 impl EmbValue {
     pub(crate) fn new<T: EmbeddedDescription + Ord + 'static>(t: T) -> Self {
         Self::OrdType(Rc::new(t))
     }
     pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
         Self::EqType(Rc::new(t))
+    }
+    pub(crate) fn my_eq_ord(&self, other: &dyn MyOrd) -> bool {
+        match self {
+            Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
+            Self::EqType(e) => false,
+        }
+    }
+    pub(crate) fn my_cmp_ord(&self, other: &dyn MyOrd) -> Option<Ordering> {
+        match self {
+            Self::OrdType(r) => r.my_cmp(other),
+            Self::EqType(_) => None,
+        }
     }
 }
 
