@@ -31,18 +31,39 @@ pub trait MyOrd {
     fn gen_ref(&self) -> &dyn Any;
 }
 
-impl PartialEq<EmbValue> for dyn MyOrd {
+impl<'a> PartialEq<EmbValue<'a>> for dyn MyOrd {
     fn eq(&self, other: &EmbValue) -> bool {
         other.eq(self)
     }
 }
-impl PartialOrd<EmbValue> for dyn MyOrd {
+impl<'a> PartialOrd<EmbValue<'a>> for dyn MyOrd {
     fn partial_cmp(&self, other: &EmbValue) -> Option<Ordering> {
         other.partial_cmp(self).map(|r| match r {
             Ordering::Equal => Ordering::Equal,
             Ordering::Less => Ordering::Greater,
             Ordering::Greater => Ordering::Less,
         })
+    }
+}
+impl<T: MyOrd + 'static> MyOrd for Option<T> {
+    fn my_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
+        match (self, other.gen_ref().downcast_ref::<Option<T>>()) {
+            (Some(f), Some(s)) => f.my_cmp(s),
+            (None, Some(_)) => Some(Ordering::Less),
+            (Some(_), None) => Some(Ordering::Greater),
+            (None, None) => Some(Ordering::Equal),
+        }
+    }
+    fn my_eq(&self, other: &dyn MyOrd) -> bool {
+        match (self, other.gen_ref().downcast_ref::<Option<T>>()) {
+            (Some(f), Some(s)) => f.my_eq(s),
+            (None, Some(_)) => false,
+            (Some(_), None) => false,
+            (None, None) => true,
+        }
+    }
+    fn gen_ref(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -66,25 +87,38 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> MyOrd for T {
     }
 }
 
-impl PartialEq for EmbValue {
+impl<'a> PartialEq for EmbValue<'a> {
     fn eq(&self, other: &Self) -> bool {
         match self {
             Self::OrdType(r) => match other {
                 Self::OrdType(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
+                Self::OrdRef(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
+                Self::EqType(_) => false,
+            },
+            Self::OrdRef(r) => match other {
+                Self::OrdType(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
+                Self::OrdRef(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
                 Self::EqType(_) => false,
             },
             Self::EqType(e) => match other {
                 Self::OrdType(_) => false,
+                Self::OrdRef(_) => false,
                 Self::EqType(eq) => e.my_eq(&**eq),
             },
         }
     }
 }
-impl PartialOrd for EmbValue {
+impl<'a> PartialOrd for EmbValue<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self {
             Self::OrdType(r) => match other {
                 Self::OrdType(or) => r.my_cmp(&**or),
+                Self::OrdRef(or) => r.my_cmp(&**or),
+                Self::EqType(_) => None,
+            },
+            Self::OrdRef(r) => match other {
+                Self::OrdType(or) => r.my_cmp(&**or),
+                Self::OrdRef(or) => r.my_cmp(&**or),
                 Self::EqType(_) => None,
             },
             Self::EqType(_) => None,
@@ -92,33 +126,39 @@ impl PartialOrd for EmbValue {
     }
 }
 
-impl PartialEq<dyn MyOrd> for EmbValue {
+impl<'a> PartialEq<dyn MyOrd> for EmbValue<'a> {
     fn eq(&self, other: &dyn MyOrd) -> bool {
         match self {
             Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
-            Self::EqType(e) => false,
+            Self::OrdRef(r) => r.my_cmp(other) == Some(Ordering::Equal),
+            Self::EqType(_) => false,
         }
     }
 }
 
-impl PartialOrd<dyn MyOrd> for EmbValue {
+impl<'a> PartialOrd<dyn MyOrd> for EmbValue<'a> {
     fn partial_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
         match self {
             Self::OrdType(r) => r.my_cmp(other),
+            Self::OrdRef(r) => r.my_cmp(other),
             Self::EqType(_) => None,
         }
     }
 }
 #[derive(Clone)]
-pub enum EmbValue {
+pub enum EmbValue<'a> {
     //TODO: handle also the case of only eq and both eq and ord maybe with an enum
     OrdType(Rc<dyn MyOrd>),
+    OrdRef(&'a dyn MyOrd),
     EqType(Rc<dyn MyEq>),
 }
 
-impl EmbValue {
-    pub(crate) fn new<T: EmbeddedDescription + Ord + 'static>(t: T) -> Self {
+impl<'a> EmbValue<'a> {
+    pub(crate) fn new<T: EmbeddedDescription + PartialOrd + 'static>(t: T) -> Self {
         Self::OrdType(Rc::new(t))
+    }
+    pub(crate) fn new_ref<T: EmbeddedDescription + PartialOrd + 'static>(t: &'a T) -> Self {
+        Self::OrdRef(t)
     }
     pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
         Self::EqType(Rc::new(t))
@@ -126,21 +166,26 @@ impl EmbValue {
     pub(crate) fn my_eq_ord(&self, other: &dyn MyOrd) -> bool {
         match self {
             Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
-            Self::EqType(e) => false,
+            Self::OrdRef(r) => r.my_cmp(other) == Some(Ordering::Equal),
+            Self::EqType(_) => false,
         }
     }
     pub(crate) fn my_cmp_ord(&self, other: &dyn MyOrd) -> Option<Ordering> {
         match self {
             Self::OrdType(r) => r.my_cmp(other),
+            Self::OrdRef(r) => r.my_cmp(other),
             Self::EqType(_) => None,
         }
     }
 }
 
-impl Debug for EmbValue {
+impl<'a> Debug for EmbValue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::OrdType(r) => {
+                write!(f, "{:?}", r.gen_ref().type_id())
+            }
+            Self::OrdRef(r) => {
                 write!(f, "{:?}", r.gen_ref().type_id())
             }
             Self::EqType(e) => {
@@ -181,7 +226,7 @@ pub enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(EmbValue),
+    Embedded(EmbValue<'static>),
 }
 
 pub trait SolveSimpleQueryValue {

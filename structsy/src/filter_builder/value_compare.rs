@@ -4,8 +4,9 @@ use crate::{
         query_model::{EmbValue, RawRef, SimpleQueryValue},
     },
     internal::EmbeddedDescription,
-    PersistentEmbedded, Ref,
+    Ref,
 };
+use std::cmp::{min, Ordering};
 use std::ops::{Bound, RangeBounds};
 
 use super::query_model::MyOrd;
@@ -510,7 +511,7 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for T {
     }
 }
 
-impl<T: EmbeddedDescription + Ord + 'static> ValueCompare for Vec<T> {
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
             QueryValuePlan::Array(v) => {
@@ -578,8 +579,40 @@ impl<T: EmbeddedDescription + Ord + 'static> ValueCompare for Vec<T> {
                 return false;
             }
         };
-        todo!()
-        //(rv, lv).contains(self)
+
+        fn inline_cmp<X: EmbeddedDescription + PartialOrd + 'static>(
+            left: &Vec<X>,
+            right: &Vec<SimpleQueryValue>,
+        ) -> Option<Ordering> {
+            let l = min(right.len(), left.len());
+
+            // Slice to the loop iteration range to enable bound check
+            // elimination in the compiler
+            let lhs = &left[..l];
+            let rhs = &right[..l];
+
+            for i in 0..l {
+                if let SimpleQueryValue::Embedded(v) = &rhs[i] {
+                    match (&lhs[i] as &X as &dyn MyOrd).partial_cmp(v) {
+                        Some(Ordering::Equal) => (),
+                        non_eq => return non_eq,
+                    }
+                }
+            }
+
+            left.len().partial_cmp(&right.len())
+        }
+
+        (match lv {
+            // TODO: double check this logic
+            Bound::Included(start) => inline_cmp(self, &start) == Some(Ordering::Less),
+            Bound::Excluded(start) => inline_cmp(self, &start) != Some(Ordering::Greater),
+            Bound::Unbounded => true,
+        }) && (match rv {
+            Bound::Included(end) => inline_cmp(self, &end) != Some(Ordering::Greater),
+            Bound::Excluded(end) => inline_cmp(self, &end) == Some(Ordering::Less),
+            Bound::Unbounded => true,
+        })
     }
     fn range_contains(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
@@ -612,12 +645,18 @@ impl<T: EmbeddedDescription + Ord + 'static> ValueCompare for Vec<T> {
         false
     }
 }
-/*
 
-impl<T:EmbeddedDescription+ Ord> ValueCompare for Option<T> {
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Option<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Option(v) => self.clone().map(|x|SimpleQueryValue::Embedded(x)).eq(&v),
+            QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v))) => {
+                if let Some(sv) = self {
+                    v.eq(sv as &T as &dyn MyOrd)
+                } else {
+                    false
+                }
+            }
+            QueryValuePlan::Option(None) => self.is_none(),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -630,7 +669,13 @@ impl<T:EmbeddedDescription+ Ord> ValueCompare for Option<T> {
     }
     fn is(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Single(v) => self.clone().map(|x|SimpleQueryValue::Embedded(x)).eq(&Some(v)),
+            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
+                if let Some(sv) = self {
+                    v.eq(sv as &T as &dyn MyOrd)
+                } else {
+                    false
+                }
+            }
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -639,28 +684,28 @@ impl<T:EmbeddedDescription+ Ord> ValueCompare for Option<T> {
     }
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
-            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) =>Bound::Included(Some(v)),
-            Bound::Included(QueryValuePlan::Option(None)) =>Bound::Included(None),
-            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) =>Bound::Excluded(Some(v)),
-            Bound::Excluded(QueryValuePlan::Option(None)) =>Bound::Excluded(None),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) => Bound::Included(Some(v)),
+            Bound::Included(QueryValuePlan::Option(None)) => Bound::Included(None),
+            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) => Bound::Excluded(Some(v)),
+            Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Excluded(None),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
         let lv = match value1 {
-            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) =>Bound::Included(Some(v)),
-            Bound::Included(QueryValuePlan::Option(None)) =>Bound::Included(None),
-            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) =>Bound::Excluded(Some(v)),
-            Bound::Excluded(QueryValuePlan::Option(None)) =>Bound::Excluded(None),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) => Bound::Included(Some(v)),
+            Bound::Included(QueryValuePlan::Option(None)) => Bound::Included(None),
+            Bound::Excluded(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) => Bound::Excluded(Some(v)),
+            Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Excluded(None),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
-        (rv, lv).contains(self)
+        (rv, lv).contains(&self.as_ref().map(|sv| EmbValue::new_ref(sv)))
     }
 
     fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
@@ -669,24 +714,23 @@ impl<T:EmbeddedDescription+ Ord> ValueCompare for Option<T> {
     }
     fn range_is(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(Some(v)),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(Some(v)),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(Some(v)),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(Some(v)),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
         let lv = match value1 {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Included(Some(v)),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) =>Bound::Excluded(Some(v)),
-            Bound::Unbounded =>Bound::Unbounded,
+            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(Some(v)),
+            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(Some(v)),
+            Bound::Unbounded => Bound::Unbounded,
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return false;
             }
         };
-        (rv, lv).contains(self)
+        (rv, lv).contains(&self.as_ref().map(|sv| EmbValue::new_ref(sv)))
     }
 }
-*/
