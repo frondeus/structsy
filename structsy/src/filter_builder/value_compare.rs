@@ -9,12 +9,14 @@ use crate::{
 use std::cmp::{min, Ordering};
 use std::ops::{Bound, RangeBounds};
 
-use super::query_model::MyOrd;
+use super::query_model::{MyEq, MyOrd};
 
-pub(crate) trait ValueCompare {
+pub trait ValueCompare {
     fn equals(&self, value: QueryValuePlan) -> bool;
     fn contains_value(&self, value: QueryValuePlan) -> bool;
     fn is(&self, value: QueryValuePlan) -> bool;
+}
+pub(crate) trait ValueRange: ValueCompare {
     fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
@@ -40,6 +42,8 @@ macro_rules! impl_value_compare {
                 debug_assert!(false, "should never call wrong action");
                 false
             }
+        }
+        impl ValueRange for $t {
             fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
                 let rv = match value {
                     Bound::Included(QueryValuePlan::Single(SimpleQueryValue::$v(v))) => Bound::Included(v),
@@ -97,6 +101,8 @@ macro_rules! impl_value_compare {
                 debug_assert!(false, "should never call wrong action");
                 false
             }
+        }
+        impl ValueRange for Vec<$t> {
             fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
                 let rv = match value {
                     Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
@@ -178,6 +184,8 @@ macro_rules! impl_value_compare {
                     }
                 }
             }
+        }
+        impl ValueRange for Option<$t> {
             fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
                 let rv = match value {
                     Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::$v(v)))) => Bound::Included(Some(v)),
@@ -266,6 +274,8 @@ impl<T> ValueCompare for Ref<T> {
         debug_assert!(false, "should never call wrong action");
         false
     }
+}
+impl<T> ValueRange for Ref<T> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Ref(v))) => Bound::Included(v),
@@ -325,6 +335,8 @@ impl<T> ValueCompare for Vec<Ref<T>> {
         debug_assert!(false, "should never call wrong action");
         false
     }
+}
+impl<T> ValueRange for Vec<Ref<T>> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
@@ -409,6 +421,8 @@ impl<T> ValueCompare for Option<Ref<T>> {
             }
         }
     }
+}
+impl<T> ValueRange for Option<Ref<T>> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Ref(v)))) => Bound::Included(Some(v)),
@@ -462,10 +476,10 @@ impl<T> ValueCompare for Option<Ref<T>> {
     }
 }
 
-impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for T {
+impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => v.eq(self as &dyn MyOrd),
+            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => v.eq(self as &dyn MyEq),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 false
@@ -480,6 +494,8 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for T {
         debug_assert!(false, "should never call wrong action");
         false
     }
+}
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
@@ -511,7 +527,7 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for T {
     }
 }
 
-impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
+impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for Vec<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
             QueryValuePlan::Array(v) => {
@@ -520,7 +536,7 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
                 while let (Some(first), Some(second)) = (fi.peek(), si.peek()) {
                     match first {
                         SimpleQueryValue::Embedded(v) => {
-                            if !v.eq(second as &T as &dyn MyOrd) {
+                            if !v.eq(second as &T as &dyn MyEq) {
                                 return false;
                             }
                         }
@@ -544,7 +560,7 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
         match value {
             QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
                 for x in self {
-                    if v.eq(x as &dyn MyOrd) {
+                    if v.eq(x as &dyn MyEq) {
                         return true;
                     }
                 }
@@ -560,6 +576,8 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
         debug_assert!(false, "should never call wrong action");
         false
     }
+}
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for Vec<T> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Array(v)) => Bound::Included(v),
@@ -646,12 +664,12 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Vec<T> {
     }
 }
 
-impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Option<T> {
+impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for Option<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
             QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v))) => {
                 if let Some(sv) = self {
-                    v.eq(sv as &T as &dyn MyOrd)
+                    v.eq(sv as &T as &dyn MyEq)
                 } else {
                     false
                 }
@@ -671,7 +689,7 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Option<T> {
         match value {
             QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
                 if let Some(sv) = self {
-                    v.eq(sv as &T as &dyn MyOrd)
+                    v.eq(sv as &T as &dyn MyEq)
                 } else {
                     false
                 }
@@ -682,6 +700,9 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueCompare for Option<T> {
             }
         }
     }
+}
+
+impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for Option<T> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
             Bound::Included(QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v)))) => Bound::Included(Some(v)),

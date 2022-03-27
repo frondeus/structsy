@@ -12,6 +12,7 @@ use crate::{
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
+        ValueCompare,
     },
     index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
@@ -100,13 +101,14 @@ pub trait RangeCondition<
 }
 pub trait SimpleCondition<
     T: Persistent + 'static,
-    V: PersistentEmbedded + Clone + PartialEq + 'static + SolveQueryValue,
+    V: PersistentEmbedded + ValueCompare + Clone + PartialEq + 'static + SolveQueryValue,
 >
 {
     fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
         filter
             .get_filter()
             .add_field_equal(Rc::new(field.clone()), value.clone());
+        filter.get_fields().add_field(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -122,6 +124,7 @@ pub trait SimpleCondition<
         filter
             .get_filter()
             .add_field_contains(Rc::new(field.clone()), value.clone());
+        //filter.get_fields().add_field(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -135,6 +138,7 @@ pub trait SimpleCondition<
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
         filter.get_filter().add_field_is(Rc::new(field.clone()), value.clone());
+        //filter.get_fields().add_field(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -173,7 +177,7 @@ macro_rules! index_conditions {
                     Rc::new(field.clone()),
                     value.clone()
                 );
-                //filter.get_fields().add_field(field);
+                filter.get_fields().add_field(field.clone());
                 if let (Some(index_name), Some(v)) = (FilterBuilder::<T>::is_indexed(field.name), value.clone()) {
                     filter.add(IndexFilter::new(index_name, v));
                 } else {
@@ -190,6 +194,7 @@ macro_rules! index_conditions {
                     Rc::new(field.clone()),
                     (&range.start_bound(),&range.end_bound())
                 );
+                filter.get_fields().add_field_ord(field.clone());
                 let start = clone_bound_ref(&range.start_bound());
                 let end = clone_bound_ref(&range.end_bound());
                 // This may support index in future, but it does not now

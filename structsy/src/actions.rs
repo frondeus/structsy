@@ -2,7 +2,7 @@ use crate::{
     filter::Filter,
     filter_builder::{
         EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, RangeCondition, SimpleCondition,
-        SimpleEmbeddedCondition, SolveQueryValue,
+        SimpleEmbeddedCondition, SolveQueryValue, ValueCompare, ValueRange,
     },
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
@@ -13,7 +13,7 @@ use std::ops::RangeBounds;
 pub trait EqualAction<X> {
     fn equal(self, value: X);
 }
-impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
@@ -34,7 +34,8 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
+    for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
@@ -54,14 +55,15 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded + SolveQueryValue> EqualAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
+    for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
 {
     #[inline]
     fn equal(self, value: V) {
-        V::is(self.1, self.0, value);
+        <V as SimpleCondition<T, V>>::is(self.1, self.0, value);
     }
 }
 impl<T> EqualAction<&str> for (Field<T, Option<String>>, &mut FilterBuilder<T>)

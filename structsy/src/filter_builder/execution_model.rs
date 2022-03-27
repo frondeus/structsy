@@ -4,7 +4,7 @@ use crate::{
             FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
         },
         reader::Reader,
-        value_compare::ValueCompare,
+        value_compare::{ValueCompare, ValueRange},
     },
     internal::{Field, FieldInfo},
     Order, Persistent, Ref, SRes,
@@ -243,12 +243,20 @@ pub(crate) struct FieldsHolder<V> {
 
 impl<T: 'static> FieldsHolder<T> {
     pub(crate) fn add_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>) {
+        // TODO handle Override
         self.fields.insert(
             field.name().to_owned(),
-            Rc::new(TypedFields::<T, V>::leaf(Rc::new(field))),
+            Rc::new(TypedFields::<T, V>::leaf(Rc::new(FieldValueCompare(field)))),
         );
     }
-    pub(crate) fn add_nested_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
+    pub(crate) fn add_field_ord<V: ValueRange + 'static>(&mut self, field: Field<T, V>) {
+        // TODO handle Override
+        self.fields.insert(
+            field.name().to_owned(),
+            Rc::new(TypedFields::<T, V>::leaf(Rc::new(FieldValueRange(field)))),
+        );
+    }
+    pub(crate) fn add_nested_field<V: 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
         self.fields.insert(
             field.name().to_owned(),
             Rc::new(TypedFields::<T, V>::group(field, holder)),
@@ -323,27 +331,55 @@ pub(crate) trait CompareOperations<T> {
     fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
 }
 
-impl<T, V: ValueCompare> CompareOperations<T> for Field<T, V> {
+struct FieldValueCompare<T, V>(Field<T, V>);
+struct FieldValueRange<T, V>(Field<T, V>);
+
+impl<T, V: ValueCompare> CompareOperations<T> for FieldValueCompare<T, V> {
     fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
-        (self.access)(t).equals(value)
+        (self.0.access)(t).equals(value)
     }
 
     fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
-        (self.access)(t).contains_value(value)
+        (self.0.access)(t).contains_value(value)
     }
     fn is(&self, t: &T, value: QueryValuePlan) -> bool {
-        (self.access)(t).is(value)
+        (self.0.access)(t).is(value)
+    }
+
+    fn range(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        false
+    }
+
+    fn range_contains(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        false
+    }
+
+    fn range_is(&self, t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        false
+    }
+}
+
+impl<T, V: ValueRange> CompareOperations<T> for FieldValueRange<T, V> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).equals(value)
+    }
+
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).contains_value(value)
+    }
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).is(value)
     }
 
     fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        (self.access)(t).range(value)
+        (self.0.access)(t).range(value)
     }
 
     fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        (self.access)(t).range_contains(value)
+        (self.0.access)(t).range_contains(value)
     }
 
     fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        (self.access)(t).range_is(value)
+        (self.0.access)(t).range_is(value)
     }
 }

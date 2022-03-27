@@ -102,7 +102,7 @@ impl From<FilterMode> for FilterPlanMode {
 }
 
 #[derive(Clone)]
-pub(crate) enum QueryValuePlan {
+pub enum QueryValuePlan {
     Single(SimpleQueryValue),
     Option(Option<SimpleQueryValue>),
     Array(Vec<SimpleQueryValue>),

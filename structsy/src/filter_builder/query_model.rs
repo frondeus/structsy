@@ -126,6 +126,16 @@ impl<'a> PartialOrd for EmbValue<'a> {
     }
 }
 
+impl<'a> PartialEq<dyn MyEq> for EmbValue<'a> {
+    fn eq(&self, other: &dyn MyEq) -> bool {
+        match self {
+            Self::OrdType(r) => false, //r.my_eq(other),
+            Self::OrdRef(r) => false,  // r.my_eq(other),
+            Self::EqType(e) => e.my_eq(other),
+        }
+    }
+}
+
 impl<'a> PartialEq<dyn MyOrd> for EmbValue<'a> {
     fn eq(&self, other: &dyn MyOrd) -> bool {
         match self {
