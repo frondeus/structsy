@@ -20,7 +20,7 @@ pub(crate) trait ValueCompare {
     fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
 }
 
-macro_rules! impl_field_type {
+macro_rules! impl_value_compare {
     ($t:ident,$v:ident) => {
         impl ValueCompare for $t {
             fn equals(&self, value: QueryValuePlan) -> bool {
@@ -233,20 +233,20 @@ macro_rules! impl_field_type {
     };
 }
 
-impl_field_type!(u8, U8);
-impl_field_type!(u16, U16);
-impl_field_type!(u32, U32);
-impl_field_type!(u64, U64);
-impl_field_type!(u128, U128);
-impl_field_type!(i8, I8);
-impl_field_type!(i16, I16);
-impl_field_type!(i32, I32);
-impl_field_type!(i64, I64);
-impl_field_type!(i128, I128);
-impl_field_type!(f32, F32);
-impl_field_type!(f64, F64);
-impl_field_type!(bool, Bool);
-impl_field_type!(String, String);
+impl_value_compare!(u8, U8);
+impl_value_compare!(u16, U16);
+impl_value_compare!(u32, U32);
+impl_value_compare!(u64, U64);
+impl_value_compare!(u128, U128);
+impl_value_compare!(i8, I8);
+impl_value_compare!(i16, I16);
+impl_value_compare!(i32, I32);
+impl_value_compare!(i64, I64);
+impl_value_compare!(i128, I128);
+impl_value_compare!(f32, F32);
+impl_value_compare!(f64, F64);
+impl_value_compare!(bool, Bool);
+impl_value_compare!(String, String);
 
 impl<T> ValueCompare for Ref<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
