@@ -22,6 +22,67 @@ pub(crate) trait ValueRange: ValueCompare {
     fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
 }
 
+impl<T: ValueCompare> ValueCompare for Option<T> {
+    fn equals(&self, value: QueryValuePlan) -> bool {
+        match (value, self) {
+            (QueryValuePlan::Option(Some(v)), Some(ov)) => ov.equals(QueryValuePlan::Single(v)),
+            (QueryValuePlan::Option(None), None) => true,
+            (QueryValuePlan::Option(Some(_)), None) => false,
+            (QueryValuePlan::Option(None), Some(_)) => false,
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn contains_value(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+    fn is(&self, value: QueryValuePlan) -> bool {
+        if let Some(v) = self {
+            v.equals(value)
+        } else {
+            false
+        }
+    }
+}
+
+impl<T: ValueCompare> ValueCompare for Vec<T> {
+    fn equals(&self, value: QueryValuePlan) -> bool {
+        match value {
+            QueryValuePlan::Array(v) => {
+                let mut fi = v.iter().peekable();
+                let mut si = self.iter().peekable();
+                while let (Some(first), Some(second)) = (fi.peek(), si.peek()) {
+                    if !second.equals(QueryValuePlan::Single((*first).clone())) {
+                        return false;
+                    }
+                }
+                fi.next();
+                si.next();
+                fi.peek().is_none() && si.peek().is_none()
+            }
+            _ => {
+                debug_assert!(false, "should never match a wrong type");
+                false
+            }
+        }
+    }
+    fn contains_value(&self, value: QueryValuePlan) -> bool {
+        for x in self {
+            if x.equals(value.clone()) {
+                return true;
+            }
+        }
+        false
+    }
+    fn is(&self, _value: QueryValuePlan) -> bool {
+        debug_assert!(false, "should never call wrong action");
+        false
+    }
+}
+
 macro_rules! impl_value_compare {
     ($t:ident,$v:ident) => {
         impl ValueCompare for $t {
@@ -70,34 +131,6 @@ macro_rules! impl_value_compare {
                 false
             }
             fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-                debug_assert!(false, "should never call wrong action");
-                false
-            }
-        }
-        impl ValueCompare for Vec<$t> {
-            fn equals(&self, value: QueryValuePlan) -> bool {
-                match value {
-                    QueryValuePlan::Array(v) => self
-                        .iter()
-                        .map(|x| SimpleQueryValue::$v(x.clone()))
-                        .collect::<Vec<_>>()
-                        .eq(&v),
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        false
-                    }
-                }
-            }
-            fn contains_value(&self, value: QueryValuePlan) -> bool {
-                match value {
-                    QueryValuePlan::Single(SimpleQueryValue::$v(v)) => self.contains(&v),
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        false
-                    }
-                }
-            }
-            fn is(&self, _value: QueryValuePlan) -> bool {
                 debug_assert!(false, "should never call wrong action");
                 false
             }
@@ -161,30 +194,6 @@ macro_rules! impl_value_compare {
             }
         }
 
-        impl ValueCompare for Option<$t> {
-            fn equals(&self, value: QueryValuePlan) -> bool {
-                match value {
-                    QueryValuePlan::Option(v) => self.clone().map(|x| SimpleQueryValue::$v(x)).eq(&v),
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        false
-                    }
-                }
-            }
-            fn contains_value(&self, _value: QueryValuePlan) -> bool {
-                debug_assert!(false, "should never call wrong action");
-                false
-            }
-            fn is(&self, value: QueryValuePlan) -> bool {
-                match value {
-                    QueryValuePlan::Single(v) => self.clone().map(|x| SimpleQueryValue::$v(x)).eq(&Some(v)),
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        false
-                    }
-                }
-            }
-        }
         impl ValueRange for Option<$t> {
             fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
                 let rv = match value {
@@ -306,36 +315,6 @@ impl<T> ValueRange for Ref<T> {
         false
     }
 }
-impl<T> ValueCompare for Vec<Ref<T>> {
-    fn equals(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Array(v) => self
-                .iter()
-                .map(|x| SimpleQueryValue::Ref(RawRef::from(x)))
-                .collect::<Vec<_>>()
-                .eq(&v),
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn contains_value(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Single(SimpleQueryValue::Ref(v)) => {
-                self.iter().map(|x| RawRef::from(x)).collect::<Vec<_>>().contains(&v)
-            }
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn is(&self, _value: QueryValuePlan) -> bool {
-        debug_assert!(false, "should never call wrong action");
-        false
-    }
-}
 impl<T> ValueRange for Vec<Ref<T>> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
@@ -395,33 +374,6 @@ impl<T> ValueRange for Vec<Ref<T>> {
     }
 }
 
-impl<T> ValueCompare for Option<Ref<T>> {
-    fn equals(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Option(v) => self.clone().map(|x| SimpleQueryValue::Ref(RawRef::from(&x))).eq(&v),
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn contains_value(&self, _value: QueryValuePlan) -> bool {
-        debug_assert!(false, "should never call wrong action");
-        false
-    }
-    fn is(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Single(v) => self
-                .clone()
-                .map(|x| SimpleQueryValue::Ref(RawRef::from(&x)))
-                .eq(&Some(v)),
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-}
 impl<T> ValueRange for Option<Ref<T>> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
@@ -527,56 +479,6 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
     }
 }
 
-impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for Vec<T> {
-    fn equals(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Array(v) => {
-                let mut fi = v.iter().peekable();
-                let mut si = self.iter().peekable();
-                while let (Some(first), Some(second)) = (fi.peek(), si.peek()) {
-                    match first {
-                        SimpleQueryValue::Embedded(v) => {
-                            if !v.eq(second as &T as &dyn MyEq) {
-                                return false;
-                            }
-                        }
-                        _ => {
-                            debug_assert!(false, "should never match a wrong type");
-                            return false;
-                        }
-                    }
-                    fi.next();
-                    si.next();
-                }
-                fi.peek().is_none() && si.peek().is_none()
-            }
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn contains_value(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
-                for x in self {
-                    if v.eq(x as &dyn MyEq) {
-                        return true;
-                    }
-                }
-                false
-            }
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn is(&self, _value: QueryValuePlan) -> bool {
-        debug_assert!(false, "should never call wrong action");
-        false
-    }
-}
 impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for Vec<T> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         let rv = match value {
@@ -661,44 +563,6 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for Vec<T> {
     fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
-    }
-}
-
-impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for Option<T> {
-    fn equals(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Option(Some(SimpleQueryValue::Embedded(v))) => {
-                if let Some(sv) = self {
-                    v.eq(sv as &T as &dyn MyEq)
-                } else {
-                    false
-                }
-            }
-            QueryValuePlan::Option(None) => self.is_none(),
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
-    }
-    fn contains_value(&self, _value: QueryValuePlan) -> bool {
-        debug_assert!(false, "should never call wrong action");
-        false
-    }
-    fn is(&self, value: QueryValuePlan) -> bool {
-        match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => {
-                if let Some(sv) = self {
-                    v.eq(sv as &T as &dyn MyEq)
-                } else {
-                    false
-                }
-            }
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                false
-            }
-        }
     }
 }
 

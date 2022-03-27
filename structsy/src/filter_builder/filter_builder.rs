@@ -124,7 +124,7 @@ pub trait SimpleCondition<
         filter
             .get_filter()
             .add_field_contains(Rc::new(field.clone()), value.clone());
-        //filter.get_fields().add_field(field.clone());
+        filter.get_fields().add_field(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))
@@ -138,7 +138,7 @@ pub trait SimpleCondition<
 
     fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
         filter.get_filter().add_field_is(Rc::new(field.clone()), value.clone());
-        //filter.get_fields().add_field(field.clone());
+        filter.get_fields().add_field(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(IndexFilter::new(index_name, value))

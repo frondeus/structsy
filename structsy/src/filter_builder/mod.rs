@@ -12,8 +12,7 @@ mod start;
 mod value_compare;
 
 pub use embedded_filter_builder::{EmbeddedFilterBuilder, EmbeddedRangeCondition, SimpleEmbeddedCondition};
-pub(crate) use filter_builder::SimpleCondition;
-pub use filter_builder::{FilterBuilder, RangeCondition, Scan};
+pub use filter_builder::{FilterBuilder, RangeCondition, Scan, SimpleCondition};
 pub(crate) use query_model::SolveQueryValue;
 pub(crate) use reader::{Reader, ReaderIterator};
 pub(crate) use value_compare::{ValueCompare, ValueRange};
