@@ -115,35 +115,37 @@ where
 pub trait RangeAction<X> {
     fn range(self, value: impl RangeBounds<X>);
 }
-impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range(self.1, self.0, value);
+        <V as RangeCondition<T, V>>::range(self.1, self.0, value);
     }
 }
-impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
+    for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range_contains(self.1, self.0, value);
+        <V as RangeCondition<T, V>>::range_contains(self.1, self.0, value);
     }
 }
 
-impl<T, V: PersistentEmbedded + SolveQueryValue> RangeAction<V> for (Field<T, Option<V>>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
+    for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
     V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range_is(self.1, self.0, value);
+        <V as RangeCondition<T, V>>::range_is(self.1, self.0, value);
     }
 }
 

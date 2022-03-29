@@ -12,7 +12,7 @@ use crate::{
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
-        ValueCompare,
+        ValueCompare, ValueRange,
     },
     index::RangeInstanceIter,
     internal::{Description, EmbeddedDescription, Field},
@@ -44,7 +44,7 @@ fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
 
 pub trait RangeCondition<
     T: Persistent + 'static,
-    V: PersistentEmbedded + Clone + PartialOrd + 'static + SolveQueryValue,
+    V: PersistentEmbedded + Clone + PartialOrd + 'static + SolveQueryValue + ValueRange,
 >
 {
     fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
@@ -53,6 +53,7 @@ pub trait RangeCondition<
         filter
             .get_filter()
             .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        filter.get_fields().add_field_ord(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeIndexFilter::new(index_name, field, (start, end)))
@@ -70,6 +71,7 @@ pub trait RangeCondition<
         filter
             .get_filter()
             .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        filter.get_fields().add_field_ord(field.clone());
         if V::indexable() {
             if let Some(index_name) = FilterBuilder::<T>::is_indexed(field.name) {
                 filter.add(RangeSingleIndexFilter::new(index_name, field, (start, end)))
@@ -85,6 +87,7 @@ pub trait RangeCondition<
         filter
             .get_filter()
             .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        filter.get_fields().add_field_ord(field.clone());
         let start = match range.start_bound() {
             Bound::Included(x) => Bound::Included(Some(x.clone())),
             Bound::Excluded(x) => Bound::Excluded(Some(x.clone())),
@@ -547,7 +550,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Bound::Excluded(x) => Bound::Excluded(x.to_string()),
             Bound::Unbounded => Bound::Unbounded,
         };
-        String::range(self, field, (start, end))
+        <String as RangeCondition<T, String>>::range(self, field, (start, end))
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)

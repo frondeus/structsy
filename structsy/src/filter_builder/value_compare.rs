@@ -16,7 +16,7 @@ pub trait ValueCompare {
     fn contains_value(&self, value: QueryValuePlan) -> bool;
     fn is(&self, value: QueryValuePlan) -> bool;
 }
-pub(crate) trait ValueRange: ValueCompare {
+pub trait ValueRange: ValueCompare {
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering>;
     fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
