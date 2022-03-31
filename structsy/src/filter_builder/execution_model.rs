@@ -207,29 +207,45 @@ impl<T, V> FieldPath<T, V> {
 }
 
 trait IntoCompareOperations<T> {
+    fn is_all_ops(&self) -> bool;
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>>;
 }
 
 enum TypedFields<T, V> {
     Holder((Field<T, V>, FieldsHolder<V>)),
-    Leaf(Rc<dyn CompareOperations<T>>),
+    LeafEq(Rc<dyn CompareOperations<T>>),
+    LeafRange(Rc<dyn CompareOperations<T>>),
 }
 impl<T, V> TypedFields<T, V> {
     fn group(field: Field<T, V>, holder: FieldsHolder<V>) -> Self {
         Self::Holder((field, holder))
     }
-    fn leaf(field: Rc<dyn CompareOperations<T>>) -> Self {
-        Self::Leaf(field)
+    fn leaf_eq(field: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::LeafEq(field)
+    }
+    fn leaf_range(field: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::LeafRange(field)
     }
 }
 
 impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
+    fn is_all_ops(&self) -> bool {
+        match &self {
+            Self::Holder(_) => false,
+            Self::LeafEq(_) => false,
+            Self::LeafRange(_) => true,
+        }
+    }
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         match &self {
             Self::Holder((field, holder)) => {
                 Rc::new(FieldPath::step(field.clone(), holder.nested_compare_operations(fields)))
             }
-            Self::Leaf(l) => {
+            Self::LeafEq(l) => {
+                assert!(fields.is_empty());
+                l.clone()
+            }
+            Self::LeafRange(l) => {
                 assert!(fields.is_empty());
                 l.clone()
             }
@@ -243,20 +259,33 @@ pub(crate) struct FieldsHolder<V> {
 
 impl<T: 'static> FieldsHolder<T> {
     pub(crate) fn add_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>) {
-        // TODO handle Override
-        self.fields.insert(
-            field.name().to_owned(),
-            Rc::new(TypedFields::<T, V>::leaf(Rc::new(FieldValueCompare(field)))),
-        );
+        use std::collections::hash_map::Entry;
+        match self.fields.entry(field.name().to_owned()) {
+            Entry::Vacant(v) => {
+                v.insert(Rc::new(TypedFields::<T, V>::leaf_eq(Rc::new(FieldValueCompare(field)))));
+            }
+            Entry::Occupied(_) => {}
+        }
     }
     pub(crate) fn add_field_ord<V: ValueRange + 'static>(&mut self, field: Field<T, V>) {
-        // TODO handle Override
-        self.fields.insert(
-            field.name().to_owned(),
-            Rc::new(TypedFields::<T, V>::leaf(Rc::new(FieldValueRange(field)))),
-        );
+        use std::collections::hash_map::Entry;
+        match self.fields.entry(field.name().to_owned()) {
+            Entry::Vacant(v) => {
+                v.insert(Rc::new(TypedFields::<T, V>::leaf_range(Rc::new(FieldValueRange(
+                    field,
+                )))));
+            }
+            Entry::Occupied(mut v) => {
+                if !v.get().is_all_ops() {
+                    v.insert(Rc::new(TypedFields::<T, V>::leaf_range(Rc::new(FieldValueRange(
+                        field,
+                    )))));
+                }
+            }
+        }
     }
     pub(crate) fn add_nested_field<V: 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
+        // TODO handle Override
         self.fields.insert(
             field.name().to_owned(),
             Rc::new(TypedFields::<T, V>::group(field, holder)),
@@ -273,6 +302,9 @@ impl<V> Default for FieldsHolder<V> {
 }
 
 impl<T: 'static> IntoCompareOperations<T> for FieldsHolder<T> {
+    fn is_all_ops(&self) -> bool {
+        false
+    }
     fn nested_compare_operations(&self, mut fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         let field = fields.pop();
         if let Some(f) = field {
@@ -354,7 +386,7 @@ impl<T, V: ValueCompare> CompareOperations<T> for FieldValueCompare<T, V> {
         false
     }
 
-    fn range_is(&self, t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         false
     }
 }
