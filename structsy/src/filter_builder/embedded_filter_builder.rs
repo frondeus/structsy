@@ -1,4 +1,5 @@
 use crate::filter_builder::{
+    execution_model::FieldsHolder,
     filter_builder::{EmbeddedOrder, FieldOrder, FilterBuilder, Item, OrderStep},
     query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue},
     reader::Reader,
@@ -219,7 +220,7 @@ impl<T: 'static> AndFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for AndFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>, reader: &mut Reader) -> Box<dyn Fn(&Self::Target, &mut Reader) -> bool> {
-        let (steps, _, _, _) = self.filters.components();
+        let (steps, _, _, _, _) = self.filters.components();
         let condition = build_condition(steps, reader);
         Box::new(move |r, reader| condition(r, reader))
     }
@@ -238,7 +239,7 @@ impl<T: 'static> NotFilter<T> {
 impl<T: 'static> EmbeddedFilterBuilderStep for NotFilter<T> {
     type Target = T;
     fn condition(self: Box<Self>, reader: &mut Reader) -> Box<dyn Fn(&Self::Target, &mut Reader) -> bool> {
-        let (steps, _, _, _) = self.filters.components();
+        let (steps, _, _, _, _) = self.filters.components();
         let condition = build_condition(steps, reader);
         Box::new(move |r, reader| !condition(r, reader))
     }
@@ -310,6 +311,7 @@ pub struct EmbeddedFilterBuilder<T> {
     steps: Vec<Box<dyn EmbeddedFilterBuilderStep<Target = T>>>,
     order: Vec<Box<dyn OrderStep<T>>>,
     filter: FilterHolder,
+    fields_holder: FieldsHolder<T>,
     orders: Vec<OrdersModel>,
 }
 impl<T> Default for EmbeddedFilterBuilder<T> {
@@ -331,6 +333,7 @@ impl<T> EmbeddedFilterBuilder<T> {
             steps: Vec::new(),
             order: Vec::new(),
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder: FieldsHolder::default(),
             orders: Vec::new(),
         }
     }
@@ -365,8 +368,9 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         Vec<Box<dyn OrderStep<T>>>,
         FilterHolder,
         Vec<OrdersModel>,
+        FieldsHolder<T>,
     ) {
-        (self.steps, self.order, self.filter, self.orders)
+        (self.steps, self.order, self.filter, self.orders, self.fields_holder)
     }
 
     fn add<F: EmbeddedFilterBuilderStep<Target = T> + 'static>(&mut self, filter: F) {
@@ -394,8 +398,8 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
     where
         V: 'static,
     {
-        let (conditions, orders, filter, orders_model) = filter.components();
-
+        let (conditions, orders, filter, orders_model, fields_holder) = filter.components();
+        self.fields_holder.add_nested_field(field.clone(), fields_holder);
         self.filter.add_field_embedded(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders_model));
@@ -415,6 +419,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = filters;
         filter.mode = FilterMode::Or;
@@ -424,6 +429,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Or),
+            fields_holder,
             orders: vec![],
         }))
     }
@@ -433,6 +439,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = filters;
         filter.mode = FilterMode::And;
@@ -442,6 +449,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder,
             orders: vec![],
         }))
     }
@@ -451,6 +459,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             mut filter,
+            fields_holder,
             orders,
         } = filters;
         filter.mode = FilterMode::Not;
@@ -460,6 +469,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
+            fields_holder,
             orders: vec![],
         }))
     }

@@ -557,8 +557,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: PersistentEmbedded + 'static,
     {
-        let (conditions, order, filter, orders_model) = filter.components();
+        let (conditions, order, filter, orders_model, fields_holder) = filter.components();
 
+        self.get_fields().add_nested_field(field.clone(), fields_holder);
         self.filter.add_field_embedded(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders_model));
@@ -577,6 +578,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = query;
+        //TODO: merge field holder
+        self.get_fields().add_field_ord(field.clone());
         self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_query_equal(Rc::new(field.clone()), orders));
@@ -603,6 +606,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = query;
+        //TODO: merge field holder
+        self.get_fields().add_field_ord(field.clone());
         self.filter.add_field_ref_query_contains(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_query_contains(Rc::new(field.clone()), orders));
@@ -622,6 +627,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     where
         V: Persistent + 'static,
     {
+        //TODO: merge field holder
         let FilterBuilder {
             steps,
             order,
@@ -629,6 +635,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = query;
+        self.get_fields().add_field_ord(field.clone());
         self.orders
             .push(OrdersModel::new_query_is(Rc::new(field.clone()), orders));
         self.filter.add_field_ref_query_is(Rc::new(field.clone()), filter);
@@ -652,6 +659,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             orders,
             fields_holder,
         } = builder;
+        //TODO: merge field holder
         filter.mode = FilterMode::Or;
         self.filter.add_group(filter);
         self.orders.extend(orders);
@@ -672,6 +680,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = builder;
+        //TODO: merge field holder
         filter.mode = FilterMode::And;
         self.filter.add_group(filter);
         self.orders.extend(orders);
@@ -692,6 +701,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = filters;
+        //TODO: merge field holder
         filter.mode = FilterMode::And;
         self.order.order.extend(order.order);
         self.filter.add_group(filter);
@@ -713,6 +723,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = builder;
+        //TODO: merge field holder
         filter.mode = FilterMode::Not;
         self.filter.add_group(filter);
         self.orders.extend(orders);
@@ -725,9 +736,10 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         }))
     }
 
-    pub fn order<V: Ord + 'static + Scan<T>>(&mut self, field: Field<T, V>, order: Order) {
+    pub fn order<V: ValueRange + Ord + 'static + Scan<T>>(&mut self, field: Field<T, V>, order: Order) {
         self.orders
             .push(OrdersModel::new_field(Rc::new(field.clone()), order.clone()));
+        self.get_fields().add_field_ord(field.clone());
         self.add_order(FieldOrder::new(field, order))
     }
 }
