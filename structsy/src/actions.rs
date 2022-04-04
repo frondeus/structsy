@@ -78,7 +78,7 @@ where
 
 impl<T: 'static, V> EqualAction<V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue,
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
 {
     #[inline]
     fn equal(self, value: V) {
@@ -95,7 +95,7 @@ impl<T: 'static> EqualAction<&str> for (Field<T, String>, &mut EmbeddedFilterBui
 
 impl<T: 'static, V> EqualAction<V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue,
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
 {
     #[inline]
     fn equal(self, value: V) {
@@ -104,11 +104,11 @@ where
 }
 impl<T: 'static, V> EqualAction<V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue,
+    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
 {
     #[inline]
     fn equal(self, value: V) {
-        V::is(self.1, self.0, value);
+        <V as SimpleEmbeddedCondition<T, V>>::is(self.1, self.0, value);
     }
 }
 
@@ -161,29 +161,29 @@ where
 
 impl<T: 'static, V> RangeAction<V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue,
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range(self.1, self.0, value);
+        <V as EmbeddedRangeCondition<T, V>>::range(self.1, self.0, value);
     }
 }
 impl<T: 'static, V> RangeAction<V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue,
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range_contains(self.1, self.0, value);
+        <V as EmbeddedRangeCondition<T, V>>::range_contains(self.1, self.0, value);
     }
 }
 impl<T: 'static, V> RangeAction<V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
 where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue,
+    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        V::range_is(self.1, self.0, value);
+        <V as EmbeddedRangeCondition<T, V>>::range_is(self.1, self.0, value);
     }
 }
 
