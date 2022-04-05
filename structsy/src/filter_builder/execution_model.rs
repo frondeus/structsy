@@ -10,6 +10,7 @@ use crate::{
     Order, Persistent, Ref, SRes,
 };
 use std::{
+    any::Any,
     collections::HashMap,
     ops::{Bound, RangeBounds},
 };
@@ -207,18 +208,48 @@ impl<T, V> FieldPath<T, V> {
 }
 
 trait IntoCompareOperations<T> {
-    fn is_all_ops(&self) -> bool;
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>>;
 }
 
-enum TypedFields<T, V> {
-    Holder((Field<T, V>, FieldsHolder<V>)),
+trait IntoFieldStep<T> {
+    fn build_step(&self, next: Rc<dyn CompareOperations<T>>) -> Rc<dyn CompareOperations<T>>;
+}
+
+struct FieldEmbedded<T, V> {
+    field: Field<T, V>,
+    embeedded: FieldsHolder<V>,
+}
+impl<T: 'static, V: 'static> IntoCompareOperations<T> for FieldEmbedded<T, V> {
+    fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
+        Rc::new(FieldPath::step(
+            self.field.clone(),
+            self.embeedded.nested_compare_operations(fields),
+        ))
+    }
+}
+
+enum TypedFields<T> {
+    Holder(Rc<dyn IntoCompareOperations<T>>),
+    HolderEq((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
+    HolderRange((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
     LeafEq(Rc<dyn CompareOperations<T>>),
     LeafRange(Rc<dyn CompareOperations<T>>),
 }
-impl<T, V> TypedFields<T, V> {
-    fn group(field: Field<T, V>, holder: FieldsHolder<V>) -> Self {
-        Self::Holder((field, holder))
+impl<T> Clone for TypedFields<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::LeafEq(eq) => Self::LeafEq(eq.clone()),
+            Self::LeafRange(or) => Self::LeafRange(or.clone()),
+            Self::Holder(v) => Self::Holder(v.clone()),
+            Self::HolderEq(v) => Self::HolderEq(v.clone()),
+            Self::HolderRange(v) => Self::HolderRange(v.clone()),
+        }
+    }
+}
+
+impl<T: 'static> TypedFields<T> {
+    fn group<V: 'static>(group: FieldEmbedded<T, V>) -> Self {
+        Self::Holder(Rc::new(group))
     }
     fn leaf_eq(field: Rc<dyn CompareOperations<T>>) -> Self {
         Self::LeafEq(field)
@@ -226,21 +257,41 @@ impl<T, V> TypedFields<T, V> {
     fn leaf_range(field: Rc<dyn CompareOperations<T>>) -> Self {
         Self::LeafRange(field)
     }
+    fn replace_group<V: 'static>(&mut self, group: FieldEmbedded<T, V>) {
+        *self = match self.clone() {
+            Self::LeafEq(eq) => Self::HolderEq((Rc::new(group), eq)),
+            Self::LeafRange(or) => Self::HolderRange((Rc::new(group), or)),
+            Self::Holder(v) => Self::Holder(v),
+            Self::HolderEq(v) => Self::HolderEq(v),
+            Self::HolderRange(v) => Self::HolderRange(v),
+        };
+    }
+    fn replace_leaf_eq(&mut self, field: Rc<dyn CompareOperations<T>>) {
+        *self = match self.clone() {
+            Self::LeafEq(eq) => Self::LeafEq(eq),
+            Self::LeafRange(or) => Self::LeafRange(or),
+            Self::Holder(n) => Self::HolderEq((n, field)),
+            Self::HolderEq(v) => Self::HolderEq(v),
+            Self::HolderRange(v) => Self::HolderRange(v),
+        };
+    }
+    fn replace_leaf_range(&mut self, field: Rc<dyn CompareOperations<T>>) {
+        *self = match self.clone() {
+            Self::LeafEq(_) => Self::LeafRange(field),
+            Self::LeafRange(or) => Self::LeafRange(or),
+            Self::Holder(g) => Self::HolderRange((g, field)),
+            Self::HolderEq((g, _)) => Self::HolderRange((g, field)),
+            Self::HolderRange(v) => Self::HolderRange(v),
+        };
+    }
 }
 
-impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
-    fn is_all_ops(&self) -> bool {
-        match &self {
-            Self::Holder(_) => false,
-            Self::LeafEq(_) => false,
-            Self::LeafRange(_) => true,
-        }
-    }
+impl<T: 'static> IntoCompareOperations<T> for TypedFields<T> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         match &self {
-            Self::Holder((field, holder)) => {
-                Rc::new(FieldPath::step(field.clone(), holder.nested_compare_operations(fields)))
-            }
+            Self::Holder(n) => n.nested_compare_operations(fields),
+            Self::HolderEq((n, _)) => n.nested_compare_operations(fields),
+            Self::HolderRange((n, _)) => n.nested_compare_operations(fields),
             Self::LeafEq(l) => {
                 assert!(fields.is_empty());
                 l.clone()
@@ -254,7 +305,14 @@ impl<T: 'static, V: 'static> IntoCompareOperations<T> for TypedFields<T, V> {
 }
 
 pub(crate) struct FieldsHolder<V> {
-    fields: HashMap<String, Rc<dyn IntoCompareOperations<V>>>,
+    fields: HashMap<String, TypedFields<V>>,
+}
+impl<V> Clone for FieldsHolder<V> {
+    fn clone(&self) -> Self {
+        Self {
+            fields: self.fields.clone(),
+        }
+    }
 }
 
 impl<T: 'static> FieldsHolder<T> {
@@ -262,34 +320,35 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(Rc::new(TypedFields::<T, V>::leaf_eq(Rc::new(FieldValueCompare(field)))));
+                v.insert(TypedFields::<T>::leaf_eq(Rc::new(FieldValueCompare(field))));
             }
-            Entry::Occupied(_) => {}
+            Entry::Occupied(mut o) => o.get_mut().replace_leaf_eq(Rc::new(FieldValueCompare(field))),
         }
     }
+
     pub(crate) fn add_field_ord<V: ValueRange + 'static>(&mut self, field: Field<T, V>) {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(Rc::new(TypedFields::<T, V>::leaf_range(Rc::new(FieldValueRange(
-                    field,
-                )))));
+                v.insert(TypedFields::<T>::leaf_range(Rc::new(FieldValueRange(field))));
             }
-            Entry::Occupied(mut v) => {
-                if !v.get().is_all_ops() {
-                    v.insert(Rc::new(TypedFields::<T, V>::leaf_range(Rc::new(FieldValueRange(
-                        field,
-                    )))));
-                }
-            }
+            Entry::Occupied(mut o) => o.get_mut().replace_leaf_range(Rc::new(FieldValueRange(field))),
         }
     }
     pub(crate) fn add_nested_field<V: 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
-        // TODO handle Override
-        self.fields.insert(
-            field.name().to_owned(),
-            Rc::new(TypedFields::<T, V>::group(field, holder)),
-        );
+        use std::collections::hash_map::Entry;
+        match self.fields.entry(field.name().to_owned()) {
+            Entry::Vacant(v) => {
+                v.insert(TypedFields::<T>::group(FieldEmbedded {
+                    field,
+                    embeedded: holder,
+                }));
+            }
+            Entry::Occupied(mut o) => o.get_mut().replace_group(FieldEmbedded {
+                field,
+                embeedded: holder,
+            }),
+        }
     }
 }
 
@@ -302,9 +361,6 @@ impl<V> Default for FieldsHolder<V> {
 }
 
 impl<T: 'static> IntoCompareOperations<T> for FieldsHolder<T> {
-    fn is_all_ops(&self) -> bool {
-        false
-    }
     fn nested_compare_operations(&self, mut fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         let field = fields.pop();
         if let Some(f) = field {
