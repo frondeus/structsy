@@ -10,7 +10,6 @@ use crate::{
     Order, Persistent, Ref, SRes,
 };
 use std::{
-    any::Any,
     collections::HashMap,
     ops::{Bound, RangeBounds},
 };
@@ -193,19 +192,6 @@ struct PathStep<T, V> {
     field: Field<T, V>,
     next: Rc<dyn CompareOperations<V>>,
 }
-enum FieldPath<T, V> {
-    Step(PathStep<T, V>),
-    Last(Rc<dyn CompareOperations<T>>),
-}
-
-impl<T, V> FieldPath<T, V> {
-    fn step(field: Field<T, V>, next: Rc<dyn CompareOperations<V>>) -> Self {
-        Self::Step(PathStep { field, next })
-    }
-    fn last(last: Rc<dyn CompareOperations<T>>) -> Self {
-        Self::Last(last)
-    }
-}
 
 trait IntoCompareOperations<T> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>>;
@@ -221,10 +207,10 @@ struct FieldEmbedded<T, V> {
 }
 impl<T: 'static, V: 'static> IntoCompareOperations<T> for FieldEmbedded<T, V> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
-        Rc::new(FieldPath::step(
-            self.field.clone(),
-            self.embeedded.nested_compare_operations(fields),
-        ))
+        Rc::new(PathStep {
+            field: self.field.clone(),
+            next: self.embeedded.nested_compare_operations(fields),
+        })
     }
 }
 
@@ -371,42 +357,24 @@ impl<T: 'static> IntoCompareOperations<T> for FieldsHolder<T> {
     }
 }
 
-impl<T, V> CompareOperations<T> for FieldPath<T, V> {
+impl<T, V> CompareOperations<T> for PathStep<T, V> {
     fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.equals((ps.field.access)(t), value),
-            Self::Last(c) => c.equals(t, value),
-        }
+        self.next.equals((self.field.access)(t), value)
     }
     fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.contains((ps.field.access)(t), value),
-            Self::Last(c) => c.contains(t, value),
-        }
+        self.next.contains((self.field.access)(t), value)
     }
     fn is(&self, t: &T, value: QueryValuePlan) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.is((ps.field.access)(t), value),
-            Self::Last(c) => c.is(t, value),
-        }
+        self.next.is((self.field.access)(t), value)
     }
     fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.range((ps.field.access)(t), value),
-            Self::Last(c) => c.range(t, value),
-        }
+        self.next.range((self.field.access)(t), value)
     }
     fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.range_contains((ps.field.access)(t), value),
-            Self::Last(c) => c.range_contains(t, value),
-        }
+        self.next.range_contains((self.field.access)(t), value)
     }
     fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        match self {
-            Self::Step(ps) => ps.next.range_is((ps.field.access)(t), value),
-            Self::Last(c) => c.range_is(t, value),
-        }
+        self.next.range_is((self.field.access)(t), value)
     }
 }
 
