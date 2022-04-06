@@ -214,87 +214,87 @@ impl<T: 'static, V: 'static> IntoCompareOperations<T> for FieldEmbedded<T, V> {
     }
 }
 
-enum TypedFields<T> {
-    Holder(Rc<dyn IntoCompareOperations<T>>),
-    HolderEq((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
-    HolderRange((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
-    LeafEq(Rc<dyn CompareOperations<T>>),
-    LeafRange(Rc<dyn CompareOperations<T>>),
+enum TypedField<T> {
+    Embedded(Rc<dyn IntoCompareOperations<T>>),
+    EmbeddedCompare((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
+    EmbeddedRange((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
+    SimpleCompare(Rc<dyn CompareOperations<T>>),
+    SimpleRange(Rc<dyn CompareOperations<T>>),
 }
-impl<T> Clone for TypedFields<T> {
+impl<T> Clone for TypedField<T> {
     fn clone(&self) -> Self {
         match self {
-            Self::LeafEq(eq) => Self::LeafEq(eq.clone()),
-            Self::LeafRange(or) => Self::LeafRange(or.clone()),
-            Self::Holder(v) => Self::Holder(v.clone()),
-            Self::HolderEq(v) => Self::HolderEq(v.clone()),
-            Self::HolderRange(v) => Self::HolderRange(v.clone()),
+            Self::SimpleCompare(eq) => Self::SimpleCompare(eq.clone()),
+            Self::SimpleRange(or) => Self::SimpleRange(or.clone()),
+            Self::Embedded(v) => Self::Embedded(v.clone()),
+            Self::EmbeddedCompare(v) => Self::EmbeddedCompare(v.clone()),
+            Self::EmbeddedRange(v) => Self::EmbeddedRange(v.clone()),
         }
     }
 }
 
-impl<T: 'static> TypedFields<T> {
-    fn group<V: 'static>(group: FieldEmbedded<T, V>) -> Self {
-        Self::Holder(Rc::new(group))
+impl<T: 'static> TypedField<T> {
+    fn embedded<V: 'static>(group: FieldEmbedded<T, V>) -> Self {
+        Self::Embedded(Rc::new(group))
     }
-    fn leaf_eq(field: Rc<dyn CompareOperations<T>>) -> Self {
-        Self::LeafEq(field)
+    fn simple_compare(field: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::SimpleCompare(field)
     }
-    fn leaf_range(field: Rc<dyn CompareOperations<T>>) -> Self {
-        Self::LeafRange(field)
+    fn simple_range(field: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::SimpleRange(field)
     }
-    fn replace_group<V: 'static>(&mut self, group: FieldEmbedded<T, V>) {
+    fn replace_embedded<V: 'static>(&mut self, group: FieldEmbedded<T, V>) {
         *self = match self.clone() {
-            Self::LeafEq(eq) => Self::HolderEq((Rc::new(group), eq)),
-            Self::LeafRange(or) => Self::HolderRange((Rc::new(group), or)),
-            Self::Holder(v) => Self::Holder(v),
-            Self::HolderEq(v) => Self::HolderEq(v),
-            Self::HolderRange(v) => Self::HolderRange(v),
+            Self::SimpleCompare(eq) => Self::EmbeddedCompare((Rc::new(group), eq)),
+            Self::SimpleRange(or) => Self::EmbeddedRange((Rc::new(group), or)),
+            Self::Embedded(v) => Self::Embedded(v),
+            Self::EmbeddedCompare(v) => Self::EmbeddedCompare(v),
+            Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
         };
     }
-    fn replace_leaf_eq(&mut self, field: Rc<dyn CompareOperations<T>>) {
+    fn replace_simple_compare(&mut self, field: Rc<dyn CompareOperations<T>>) {
         *self = match self.clone() {
-            Self::LeafEq(eq) => Self::LeafEq(eq),
-            Self::LeafRange(or) => Self::LeafRange(or),
-            Self::Holder(n) => Self::HolderEq((n, field)),
-            Self::HolderEq(v) => Self::HolderEq(v),
-            Self::HolderRange(v) => Self::HolderRange(v),
+            Self::SimpleCompare(eq) => Self::SimpleCompare(eq),
+            Self::SimpleRange(or) => Self::SimpleRange(or),
+            Self::Embedded(n) => Self::EmbeddedCompare((n, field)),
+            Self::EmbeddedCompare(v) => Self::EmbeddedCompare(v),
+            Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
         };
     }
-    fn replace_leaf_range(&mut self, field: Rc<dyn CompareOperations<T>>) {
+    fn replace_simple_range(&mut self, field: Rc<dyn CompareOperations<T>>) {
         *self = match self.clone() {
-            Self::LeafEq(_) => Self::LeafRange(field),
-            Self::LeafRange(or) => Self::LeafRange(or),
-            Self::Holder(g) => Self::HolderRange((g, field)),
-            Self::HolderEq((g, _)) => Self::HolderRange((g, field)),
-            Self::HolderRange(v) => Self::HolderRange(v),
+            Self::SimpleCompare(_) => Self::SimpleRange(field),
+            Self::SimpleRange(or) => Self::SimpleRange(or),
+            Self::Embedded(g) => Self::EmbeddedRange((g, field)),
+            Self::EmbeddedCompare((g, _)) => Self::EmbeddedRange((g, field)),
+            Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
         };
     }
 }
 
-impl<T: 'static> IntoCompareOperations<T> for TypedFields<T> {
+impl<T: 'static> IntoCompareOperations<T> for TypedField<T> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         match &self {
-            Self::Holder(n) => n.nested_compare_operations(fields),
-            Self::HolderEq((n, l)) => {
+            Self::Embedded(n) => n.nested_compare_operations(fields),
+            Self::EmbeddedCompare((n, l)) => {
                 if fields.is_empty() {
                     l.clone()
                 } else {
                     n.nested_compare_operations(fields)
                 }
             }
-            Self::HolderRange((n, l)) => {
+            Self::EmbeddedRange((n, l)) => {
                 if fields.is_empty() {
                     l.clone()
                 } else {
                     n.nested_compare_operations(fields)
                 }
             }
-            Self::LeafEq(l) => {
+            Self::SimpleCompare(l) => {
                 assert!(fields.is_empty());
                 l.clone()
             }
-            Self::LeafRange(l) => {
+            Self::SimpleRange(l) => {
                 assert!(fields.is_empty());
                 l.clone()
             }
@@ -303,7 +303,7 @@ impl<T: 'static> IntoCompareOperations<T> for TypedFields<T> {
 }
 
 pub(crate) struct FieldsHolder<V> {
-    fields: HashMap<String, TypedFields<V>>,
+    fields: HashMap<String, TypedField<V>>,
 }
 impl<V> Clone for FieldsHolder<V> {
     fn clone(&self) -> Self {
@@ -318,9 +318,9 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedFields::<T>::leaf_eq(Rc::new(FieldValueCompare(field))));
+                v.insert(TypedField::<T>::simple_compare(Rc::new(FieldValueCompare(field))));
             }
-            Entry::Occupied(mut o) => o.get_mut().replace_leaf_eq(Rc::new(FieldValueCompare(field))),
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_compare(Rc::new(FieldValueCompare(field))),
         }
     }
 
@@ -328,21 +328,21 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedFields::<T>::leaf_range(Rc::new(FieldValueRange(field))));
+                v.insert(TypedField::<T>::simple_range(Rc::new(FieldValueRange(field))));
             }
-            Entry::Occupied(mut o) => o.get_mut().replace_leaf_range(Rc::new(FieldValueRange(field))),
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_range(Rc::new(FieldValueRange(field))),
         }
     }
     pub(crate) fn add_nested_field<V: 'static>(&mut self, field: Field<T, V>, holder: FieldsHolder<V>) {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedFields::<T>::group(FieldEmbedded {
+                v.insert(TypedField::<T>::embedded(FieldEmbedded {
                     field,
                     embeedded: holder,
                 }));
             }
-            Entry::Occupied(mut o) => o.get_mut().replace_group(FieldEmbedded {
+            Entry::Occupied(mut o) => o.get_mut().replace_embedded(FieldEmbedded {
                 field,
                 embeedded: holder,
             }),
