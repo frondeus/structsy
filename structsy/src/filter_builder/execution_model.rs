@@ -276,8 +276,20 @@ impl<T: 'static> IntoCompareOperations<T> for TypedFields<T> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>> {
         match &self {
             Self::Holder(n) => n.nested_compare_operations(fields),
-            Self::HolderEq((n, _)) => n.nested_compare_operations(fields),
-            Self::HolderRange((n, _)) => n.nested_compare_operations(fields),
+            Self::HolderEq((n, l)) => {
+                if fields.is_empty() {
+                    l.clone()
+                } else {
+                    n.nested_compare_operations(fields)
+                }
+            }
+            Self::HolderRange((n, l)) => {
+                if fields.is_empty() {
+                    l.clone()
+                } else {
+                    n.nested_compare_operations(fields)
+                }
+            }
             Self::LeafEq(l) => {
                 assert!(fields.is_empty());
                 l.clone()
