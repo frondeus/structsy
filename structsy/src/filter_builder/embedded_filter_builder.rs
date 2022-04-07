@@ -435,13 +435,14 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             orders,
         } = filters;
         filter.mode = FilterMode::Or;
+        self.fields_holder.merge(fields_holder);
         self.filter.add_group(filter);
         self.orders.extend(orders);
         self.add(OrFilter::new(EmbeddedFilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Or),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }))
     }
@@ -455,13 +456,14 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             orders,
         } = filters;
         filter.mode = FilterMode::And;
+        self.fields_holder.merge(fields_holder);
         self.filter.add_group(filter);
         self.orders.extend(orders);
         self.add(AndFilter::new(EmbeddedFilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }))
     }
@@ -475,13 +477,14 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             orders,
         } = filters;
         filter.mode = FilterMode::Not;
+        self.fields_holder.merge(fields_holder);
         self.filter.add_group(filter);
         self.orders.extend(orders);
         self.add(NotFilter::new(EmbeddedFilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }))
     }

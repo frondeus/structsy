@@ -259,6 +259,39 @@ impl<T: 'static> TypedField<T> {
             Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
         };
     }
+    fn merge(&mut self, other: Self) {
+        *self = match self.clone() {
+            Self::SimpleCompare(v) => match other {
+                Self::SimpleCompare(_) => Self::SimpleCompare(v),
+                Self::SimpleRange(or) => Self::SimpleRange(or),
+                Self::Embedded(g) => Self::EmbeddedCompare((g, v)),
+                Self::EmbeddedCompare((g, _)) => Self::EmbeddedCompare((g, v)),
+                Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
+            },
+            Self::SimpleRange(or) => match other {
+                Self::SimpleCompare(_) => Self::SimpleRange(or),
+                Self::SimpleRange(_) => Self::SimpleRange(or),
+                Self::Embedded(g) => Self::EmbeddedRange((g, or)),
+                Self::EmbeddedCompare((g, _)) => Self::EmbeddedRange((g, or)),
+                Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
+            },
+            Self::Embedded(g) => match other {
+                Self::SimpleCompare(v) => Self::EmbeddedCompare((g, v)),
+                Self::SimpleRange(r) => Self::EmbeddedRange((g, r)),
+                Self::Embedded(_) => Self::Embedded(g),
+                Self::EmbeddedCompare((_, v)) => Self::EmbeddedCompare((g, v)),
+                Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
+            },
+            Self::EmbeddedCompare((g, v)) => match other {
+                Self::SimpleCompare(_) => Self::EmbeddedCompare((g, v)),
+                Self::SimpleRange(r) => Self::EmbeddedRange((g, r)),
+                Self::Embedded(_) => Self::EmbeddedCompare((g, v)),
+                Self::EmbeddedCompare((_, _)) => Self::EmbeddedCompare((g, v)),
+                Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
+            },
+            Self::EmbeddedRange(v) => Self::EmbeddedRange(v),
+        };
+    }
 }
 
 impl<T: 'static> IntoCompareOperations<T> for TypedField<T> {
@@ -335,6 +368,17 @@ impl<T: 'static> FieldsHolder<T> {
                 field,
                 embeedded: holder,
             }),
+        }
+    }
+    pub(crate) fn merge(&mut self, other: FieldsHolder<T>) {
+        use std::collections::hash_map::Entry;
+        for (name, field) in other.fields {
+            match self.fields.entry(name) {
+                Entry::Vacant(v) => {
+                    v.insert(field);
+                }
+                Entry::Occupied(mut o) => o.get_mut().merge(field),
+            }
         }
     }
 }

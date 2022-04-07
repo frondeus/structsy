@@ -659,15 +659,15 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             orders,
             fields_holder,
         } = builder;
-        //TODO: merge field holder
         filter.mode = FilterMode::Or;
+        self.fields_holder.merge(fields_holder);
         self.filter.add_group(filter);
         self.orders.extend(orders);
         self.add(OrFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Or),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }));
     }
@@ -680,15 +680,15 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = builder;
-        //TODO: merge field holder
         filter.mode = FilterMode::And;
+        self.fields_holder.merge(fields_holder);
         self.filter.add_group(filter);
         self.orders.extend(orders);
         self.add(AndFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::And),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }))
     }
@@ -701,8 +701,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = filters;
-        //TODO: merge field holder
         filter.mode = FilterMode::And;
+        self.fields_holder.merge(fields_holder);
         self.order.order.extend(order.order);
         self.filter.add_group(filter);
         self.orders.extend(orders);
@@ -710,7 +710,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             steps,
             order: Orders { order: vec![] },
             filter: FilterHolder::new(FilterMode::And),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }));
     }
@@ -723,15 +723,15 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = builder;
-        //TODO: merge field holder
         filter.mode = FilterMode::Not;
         self.filter.add_group(filter);
+        self.fields_holder.merge(fields_holder);
         self.orders.extend(orders);
         self.add(NotFilter::new(FilterBuilder {
             steps,
             order,
             filter: FilterHolder::new(FilterMode::Not),
-            fields_holder,
+            fields_holder: FieldsHolder::default(),
             orders: vec![],
         }))
     }
