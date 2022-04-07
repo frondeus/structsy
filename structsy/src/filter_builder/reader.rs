@@ -1,9 +1,10 @@
 use crate::{
+    filter_builder::{desc_info_finder::index_find_range, plan_model::IndexInfo},
     index::{map_entry, map_entry_snapshot, map_entry_tx, RangeInstanceIter},
     snapshot::{SnapshotIterator, SnapshotRecordIter},
     structsy::RecordIter,
     transaction::{raw_tx_scan, TxRecordIter},
-    Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
+    Order, Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
 };
 use std::ops::{Bound, RangeBounds};
 
@@ -133,6 +134,19 @@ impl<'a> Reader<'a> {
         )?;
         Ok(RangeInstanceIter::new(iter))
     }
+
+    pub(crate) fn find_range_from_info<P: Persistent + 'static>(
+        self,
+        info: IndexInfo,
+    ) -> SRes<Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>> {
+        index_find_range(
+            self,
+            &info.index_name,
+            info.index_range.unwrap_or((Bound::Unbounded, Bound::Unbounded)),
+            info.ordering_mode,
+        )
+    }
+
     pub(crate) fn structsy(&self) -> Structsy {
         match self {
             Reader::Structsy(st) => st.clone(),
