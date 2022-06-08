@@ -110,7 +110,7 @@ pub enum QueryValuePlan {
 }
 
 impl QueryValuePlan {
-    fn translate(qv: QueryValue) -> Self {
+    pub(crate) fn translate(qv: QueryValue) -> Self {
         match qv {
             QueryValue::Single(s) => QueryValuePlan::Single(s),
             QueryValue::Option(s) => QueryValuePlan::Option(s),

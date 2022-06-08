@@ -210,6 +210,15 @@ pub struct RawRef {
     pub(crate) id: PersyId,
     pub(crate) ty: String,
 }
+impl RawRef {
+    pub(crate) fn into_ref<T>(&self) -> Ref<T> {
+        Ref {
+            type_name: self.ty.clone(),
+            raw_id: self.id.clone(),
+            ph: std::marker::PhantomData,
+        }
+    }
+}
 impl<T> From<&Ref<T>> for RawRef {
     fn from(Ref { type_name, raw_id, .. }: &Ref<T>) -> Self {
         Self {

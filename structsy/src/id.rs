@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 pub struct Ref<T> {
     pub(crate) type_name: String,
     pub(crate) raw_id: PersyId,
-    ph: PhantomData<T>,
+    pub(crate) ph: PhantomData<T>,
 }
 
 impl<T: Persistent> Ref<T> {
