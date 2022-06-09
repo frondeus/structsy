@@ -431,6 +431,34 @@ impl<T: 'static> FieldsHolder<T> {
             Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(Rc::new(FieldValueRef(field, holder))),
         }
     }
+    pub(crate) fn add_field_vec_ref<X: Persistent + 'static>(
+        &mut self,
+        field: Field<T, Vec<Ref<X>>>,
+        holder: FieldsHolder<X>,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.fields.entry(field.name().to_owned()) {
+            Entry::Vacant(v) => {
+                v.insert(TypedField::<T>::simple_ref(Rc::new(FieldValueVecRef(field, holder))));
+            }
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(Rc::new(FieldValueVecRef(field, holder))),
+        }
+    }
+    pub(crate) fn add_field_option_ref<X: Persistent + 'static>(
+        &mut self,
+        field: Field<T, Option<Ref<X>>>,
+        holder: FieldsHolder<X>,
+    ) {
+        use std::collections::hash_map::Entry;
+        match self.fields.entry(field.name().to_owned()) {
+            Entry::Vacant(v) => {
+                v.insert(TypedField::<T>::simple_ref(Rc::new(FieldValueOptionRef(field, holder))));
+            }
+            Entry::Occupied(mut o) => o
+                .get_mut()
+                .replace_simple_ref(Rc::new(FieldValueOptionRef(field, holder))),
+        }
+    }
     pub(crate) fn add_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>) {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
@@ -557,6 +585,8 @@ pub(crate) trait RefBuildOperations<T>: CompareOperations<T> {
 }
 
 struct FieldValueRef<T, X>(Field<T, Ref<X>>, FieldsHolder<X>);
+struct FieldValueVecRef<T, X>(Field<T, Vec<Ref<X>>>, FieldsHolder<X>);
+struct FieldValueOptionRef<T, X>(Field<T, Option<Ref<X>>>, FieldsHolder<X>);
 struct FieldValueCompare<T, V>(Field<T, V>);
 struct FieldValueRange<T, V>(Field<T, V>);
 
@@ -657,13 +687,90 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueRef<T, X> {
     fn query_equals(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool {
         value.equals(RawRef::from((self.0.access)(t)), reader)
     }
+    fn query_contains(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
+    }
+    fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
+    }
+}
+
+impl<T, X: Persistent> CompareOperations<T> for FieldValueVecRef<T, X> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).equals(value)
+    }
+
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).contains_value(value)
+    }
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).is(value)
+    }
+
+    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range(value)
+    }
+
+    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range_contains(value)
+    }
+
+    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range_is(value)
+    }
+
+    fn query_equals(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
+    }
     fn query_contains(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool {
-        todo!()
-        //value.contains(RawRef::from((self.0.access)(t)),reader)
+        for r in (self.0.access)(t) {
+            if value.equals(RawRef::from(r), reader) {
+                return true;
+            }
+        }
+        false
+    }
+    fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
+    }
+}
+
+impl<T, X: Persistent> CompareOperations<T> for FieldValueOptionRef<T, X> {
+    fn equals(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).equals(value)
+    }
+
+    fn contains(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).contains_value(value)
+    }
+    fn is(&self, t: &T, value: QueryValuePlan) -> bool {
+        (self.0.access)(t).is(value)
+    }
+
+    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range(value)
+    }
+
+    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range_contains(value)
+    }
+
+    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+        (self.0.access)(t).range_is(value)
+    }
+
+    fn query_equals(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
+    }
+    fn query_contains(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
+        false
     }
     fn query_is(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool {
-        todo!()
-        //value.is(RawRef::from((self.0.access)(t)),reader)
+        if let Some(r) = (self.0.access)(t) {
+            value.equals(RawRef::from(r), reader)
+        } else {
+            false
+        }
     }
 }
 

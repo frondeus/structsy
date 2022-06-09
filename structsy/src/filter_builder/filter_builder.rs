@@ -579,7 +579,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             orders,
         } = query;
         //TODO: merge field holder
-        self.get_fields().add_field_ord(field.clone());
+        self.get_fields().add_field_ref(field.clone(), fields_holder.clone());
         self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_query_equal(Rc::new(field.clone()), orders));
@@ -607,7 +607,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             orders,
         } = query;
         //TODO: merge field holder
-        self.get_fields().add_field_ord(field.clone());
+        self.get_fields()
+            .add_field_vec_ref(field.clone(), fields_holder.clone());
         self.filter.add_field_ref_query_contains(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_query_contains(Rc::new(field.clone()), orders));
@@ -635,7 +636,8 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = query;
-        self.get_fields().add_field_ord(field.clone());
+        self.get_fields()
+            .add_field_option_ref(field.clone(), fields_holder.clone());
         self.orders
             .push(OrdersModel::new_query_is(Rc::new(field.clone()), orders));
         self.filter.add_field_ref_query_is(Rc::new(field.clone()), filter);
