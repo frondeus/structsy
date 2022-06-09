@@ -1,7 +1,7 @@
 use super::{
     plan_model::{FieldPathPlan, IndexInfo, InfoFinder, QueryValuePlan},
     query_model::SimpleQueryValue,
-    reader::Reader,
+    reader::{Reader, ReaderIterator},
 };
 use crate::{
     desc::{index_name, Description},
@@ -385,7 +385,7 @@ pub(crate) fn index_find_range<'a, P: Persistent + 'static>(
     index_name: &str,
     (b_0, b_1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>),
     order: Order,
-) -> SRes<Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>> {
+) -> SRes<Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>> {
     let bound_0 = match b_0 {
         Bound::Excluded(QueryValuePlan::Single(v)) => Bound::Excluded(v),
         Bound::Included(QueryValuePlan::Single(v)) => Bound::Included(v),
@@ -806,7 +806,7 @@ fn map_finder<'a, P: Persistent + 'static, K: PersistentEmbedded + 'static>(
     reader: Reader<'a>,
     name: &str,
     range: (Bound<K>, Bound<K>),
-) -> SRes<Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>> {
+) -> SRes<Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>> {
     let found = RangeInstanceIter::new(K::finder().find_range(reader, name, range)?);
     if Order::Desc == order {
         Ok(Box::new(found.reader_rev()))

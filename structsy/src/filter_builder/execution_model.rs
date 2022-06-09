@@ -4,7 +4,7 @@ use crate::{
             FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
         },
         query_model::RawRef,
-        reader::Reader,
+        reader::{Reader, ReaderIterator},
         value_compare::{ValueCompare, ValueRange},
     },
     internal::{Field, FieldInfo},
@@ -15,7 +15,7 @@ use std::{collections::HashMap, ops::Bound};
 fn start<'a, T: Persistent + 'static>(
     source: Source,
     reader: Reader<'a>,
-) -> SRes<Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>> {
+) -> SRes<Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>> {
     Ok(match source {
         Source::Index(index) => reader.find_range_from_info(index)?,
         Source::Scan(_scan) => Box::new(reader.scan()?),
@@ -93,7 +93,7 @@ fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
     fields: Rc<dyn IntoCompareOperations<T>>,
     reader: Reader<'a>,
-) -> SRes<Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>> {
+) -> SRes<Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>> {
     let QueryPlan {
         source,
         filter,
@@ -115,8 +115,14 @@ fn execute<'a, T: Persistent + 'static>(
 }
 
 struct FilterExecution<'a, T> {
-    source: Box<dyn Iterator<Item = (Ref<T>, T)> + 'a>,
+    source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>,
     filter: FilterExecutionGroup<T>,
+}
+
+impl<'b, T> ReaderIterator for FilterExecution<'b, T> {
+    fn reader<'a>(&'a mut self) -> Reader<'a> {
+        self.source.reader()
+    }
 }
 
 trait FilterCheck<T> {
@@ -214,8 +220,9 @@ impl<T> FilterCheck<T> for FilterExecutionField<T> {
 impl<'a, T> Iterator for FilterExecution<'a, T> {
     type Item = (Ref<T>, T);
     fn next(&mut self) -> Option<Self::Item> {
-        let reader: &mut Reader = todo!();
-        self.source.next().filter(|(_id, rec)| self.filter.check(&rec, reader))
+        self.source
+            .next()
+            .filter(|(_id, rec)| self.filter.check(&rec, &mut self.source.reader()))
     }
 }
 

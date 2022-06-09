@@ -138,7 +138,7 @@ impl<'a> Reader<'a> {
     pub(crate) fn find_range_from_info<P: Persistent + 'static>(
         self,
         info: IndexInfo,
-    ) -> SRes<Box<dyn Iterator<Item = (Ref<P>, P)> + 'a>> {
+    ) -> SRes<Box<dyn ReaderIterator<Item = (Ref<P>, P)> + 'a>> {
         index_find_range(
             self,
             &info.index_name,
