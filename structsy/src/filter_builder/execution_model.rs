@@ -267,7 +267,7 @@ enum TypedField<T> {
     EmbeddedRange((Rc<dyn IntoCompareOperations<T>>, Rc<dyn CompareOperations<T>>)),
     SimpleCompare(Rc<dyn CompareOperations<T>>),
     SimpleRange(Rc<dyn CompareOperations<T>>),
-    Ref(Rc<dyn CompareOperations<T>>),
+    Ref((Rc<dyn Query<T>>, Rc<dyn CompareOperations<T>>)),
 }
 impl<T> Clone for TypedField<T> {
     fn clone(&self) -> Self {
@@ -292,8 +292,8 @@ impl<T: 'static> TypedField<T> {
     fn simple_range(field: Rc<dyn CompareOperations<T>>) -> Self {
         Self::SimpleRange(field)
     }
-    fn simple_ref(r: Rc<dyn CompareOperations<T>>) -> Self {
-        Self::Ref(r)
+    fn simple_ref(r: Rc<dyn Query<T>>, c: Rc<dyn CompareOperations<T>>) -> Self {
+        Self::Ref((r, c))
     }
     fn replace_embedded<V: 'static>(&mut self, group: FieldEmbedded<T, V>) {
         *self = match self.clone() {
@@ -325,8 +325,8 @@ impl<T: 'static> TypedField<T> {
             Self::Ref(v) => Self::Ref(v),
         };
     }
-    fn replace_simple_ref(&mut self, field: Rc<dyn CompareOperations<T>>) {
-        *self = Self::Ref(field)
+    fn replace_simple_ref(&mut self, field: Rc<dyn Query<T>>, c: Rc<dyn CompareOperations<T>>) {
+        *self = Self::Ref((field, c))
     }
     fn merge(&mut self, other: Self) {
         *self = match self.clone() {
@@ -394,17 +394,15 @@ impl<T: 'static> IntoCompareOperations<T> for TypedField<T> {
                 assert!(fields.is_empty());
                 l.clone()
             }
-            Self::Ref(l) => {
+            Self::Ref((_q, c)) => {
                 assert!(fields.is_empty());
-                l.clone()
+                c.clone()
             }
         }
     }
     fn nested_ref_operations(&self, fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations> {
         match &self {
-            Self::Ref(l) => {
-                todo!()
-            }
+            Self::Ref((q, _c)) => q.query(filter_plan),
             _ => unreachable!(),
         }
     }
@@ -426,9 +424,15 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedField::<T>::simple_ref(Rc::new(FieldValueRef(field, holder))));
+                v.insert(TypedField::<T>::simple_ref(
+                    Rc::new(FieldValueRef(field.clone(), holder.clone())),
+                    Rc::new(FieldValueRef(field, holder)),
+                ));
             }
-            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(Rc::new(FieldValueRef(field, holder))),
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(
+                Rc::new(FieldValueRef(field.clone(), holder.clone())),
+                Rc::new(FieldValueRef(field, holder)),
+            ),
         }
     }
     pub(crate) fn add_field_vec_ref<X: Persistent + 'static>(
@@ -439,9 +443,15 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedField::<T>::simple_ref(Rc::new(FieldValueVecRef(field, holder))));
+                v.insert(TypedField::<T>::simple_ref(
+                    Rc::new(FieldValueVecRef(field.clone(), holder.clone())),
+                    Rc::new(FieldValueVecRef(field, holder)),
+                ));
             }
-            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(Rc::new(FieldValueVecRef(field, holder))),
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(
+                Rc::new(FieldValueVecRef(field.clone(), holder.clone())),
+                Rc::new(FieldValueVecRef(field, holder)),
+            ),
         }
     }
     pub(crate) fn add_field_option_ref<X: Persistent + 'static>(
@@ -452,11 +462,15 @@ impl<T: 'static> FieldsHolder<T> {
         use std::collections::hash_map::Entry;
         match self.fields.entry(field.name().to_owned()) {
             Entry::Vacant(v) => {
-                v.insert(TypedField::<T>::simple_ref(Rc::new(FieldValueOptionRef(field, holder))));
+                v.insert(TypedField::<T>::simple_ref(
+                    Rc::new(FieldValueOptionRef(field.clone(), holder.clone())),
+                    Rc::new(FieldValueOptionRef(field, holder)),
+                ));
             }
-            Entry::Occupied(mut o) => o
-                .get_mut()
-                .replace_simple_ref(Rc::new(FieldValueOptionRef(field, holder))),
+            Entry::Occupied(mut o) => o.get_mut().replace_simple_ref(
+                Rc::new(FieldValueOptionRef(field.clone(), holder.clone())),
+                Rc::new(FieldValueOptionRef(field, holder)),
+            ),
         }
     }
     pub(crate) fn add_field<V: ValueCompare + 'static>(&mut self, field: Field<T, V>) {
@@ -577,8 +591,6 @@ pub(crate) trait CompareOperations<T> {
 
 pub(crate) trait RefOperations {
     fn equals(&self, value: RawRef, reader: &mut Reader) -> bool;
-    fn contains(&self, value: Vec<RawRef>, reader: &mut Reader) -> bool;
-    fn is(&self, value: Option<RawRef>, reader: &mut Reader) -> bool;
 }
 pub(crate) trait RefBuildOperations<T>: CompareOperations<T> {
     fn operation(&self, filter: &FilterPlan) -> dyn RefOperations;
@@ -617,7 +629,7 @@ impl<T, V: ValueCompare> CompareOperations<T> for FieldValueCompare<T, V> {
     fn query_equals(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
     }
-    fn query_contains(&self, _t: &T, _value: &dyn RefOperations, reader: &mut Reader) -> bool {
+    fn query_contains(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
     }
     fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
@@ -774,10 +786,26 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueOptionRef<T, X> {
     }
 }
 
-trait Query {
+trait Query<T>: CompareOperations<T> {
     fn query(&self, fp: FilterPlan) -> Rc<dyn RefOperations>;
 }
-impl<T, X: Persistent + 'static> Query for FieldValueRef<T, X> {
+impl<T, X: Persistent + 'static> Query<T> for FieldValueRef<T, X> {
+    fn query(&self, fp: FilterPlan) -> Rc<dyn RefOperations> {
+        let access: Rc<dyn IntoCompareOperations<X>> = Rc::new(self.1.clone());
+        Rc::new(LinkQuery {
+            filter: filter_plan_to_execution(fp, access),
+        })
+    }
+}
+impl<T, X: Persistent + 'static> Query<T> for FieldValueVecRef<T, X> {
+    fn query(&self, fp: FilterPlan) -> Rc<dyn RefOperations> {
+        let access: Rc<dyn IntoCompareOperations<X>> = Rc::new(self.1.clone());
+        Rc::new(LinkQuery {
+            filter: filter_plan_to_execution(fp, access),
+        })
+    }
+}
+impl<T, X: Persistent + 'static> Query<T> for FieldValueOptionRef<T, X> {
     fn query(&self, fp: FilterPlan) -> Rc<dyn RefOperations> {
         let access: Rc<dyn IntoCompareOperations<X>> = Rc::new(self.1.clone());
         Rc::new(LinkQuery {
@@ -797,12 +825,5 @@ impl<T: Persistent> RefOperations for LinkQuery<T> {
         } else {
             false
         }
-    }
-
-    fn contains(&self, value: Vec<RawRef>, reader: &mut Reader) -> bool {
-        todo!()
-    }
-    fn is(&self, value: Option<RawRef>, reader: &mut Reader) -> bool {
-        todo!()
     }
 }
