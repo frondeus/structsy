@@ -251,7 +251,7 @@ impl OrderPlanItem {
 }
 
 pub(crate) struct OrdersPlan {
-    orders: Vec<OrderPlanItem>,
+    pub(crate) orders: Vec<OrderPlanItem>,
 }
 impl OrdersPlan {
     fn find_possible_indexes(&self, type_name: &str, info_finder: &dyn InfoFinder) -> Vec<IndexInfo> {
@@ -523,7 +523,6 @@ fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan
         None
     };
 
-    //TODO: select a way to choose an index
     let index = choose_index(filter_indexes, orders_indexes, info_finder);
     if let Some(idx) = index {
         if let Some(orders) = &mut orders {

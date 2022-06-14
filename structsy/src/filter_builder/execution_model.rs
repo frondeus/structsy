@@ -1,7 +1,8 @@
 use crate::{
     filter_builder::{
         plan_model::{
-            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, QueryPlan, QueryValuePlan, Source,
+            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, OrderPlanItem, QueryPlan,
+            QueryValuePlan, Source,
         },
         query_model::RawRef,
         reader::{Reader, ReaderIterator},
@@ -107,6 +108,15 @@ fn execute<'a, T: Persistent + 'static>(
             source: iter,
             filter: filter_plan_to_execution(f, fields),
         })
+    } else {
+        iter
+    };
+    let iter = if let Some(o) = orders {
+        if !o.orders.is_empty() {
+            Box::new(Accumulator::new(iter, o.orders))
+        } else {
+            iter
+        }
     } else {
         iter
     };
@@ -226,7 +236,53 @@ impl<'a, T> Iterator for FilterExecution<'a, T> {
     }
 }
 
-struct Accumulator {}
+struct Accumulator<'a, T> {
+    source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>,
+    orders: Vec<OrderPlanItem>,
+    buffer: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
+}
+impl<'a, T> Accumulator<'a, T> {
+    fn new(source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>, orders: Vec<OrderPlanItem>) -> Self {
+        Self {
+            source,
+            orders,
+            buffer: Default::default(),
+        }
+    }
+    fn order_item(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        for order in &self.orders {
+            let ord = todo!(); //order.compare(&first, &second);
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+}
+impl<'b, T: 'static> ReaderIterator for Accumulator<'b, T> {
+    fn reader<'a>(&'a mut self) -> Reader<'a> {
+        self.source.reader()
+    }
+}
+impl<'a, T: 'static> Iterator for Accumulator<'a, T> {
+    type Item = (Ref<T>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(iter) = &mut self.buffer {
+            iter.next()
+        } else {
+            let mut buffer = Vec::<(Ref<T>, T)>::new();
+            while let Some(item) = self.source.next() {
+                let index = match buffer.binary_search_by(|(_, e)| self.order_item(e, &item.1)) {
+                    Ok(index) => index,
+                    Err(index) => index,
+                };
+                buffer.insert(index, item);
+            }
+            self.buffer = Some(Box::new(buffer.into_iter()));
+            self.buffer.as_mut().unwrap().next()
+        }
+    }
+}
 
 use std::rc::Rc;
 
@@ -400,7 +456,7 @@ impl<T: 'static> IntoCompareOperations<T> for TypedField<T> {
             }
         }
     }
-    fn nested_ref_operations(&self, fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations> {
+    fn nested_ref_operations(&self, _fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations> {
         match &self {
             Self::Ref((q, _c)) => q.query(filter_plan),
             _ => unreachable!(),
