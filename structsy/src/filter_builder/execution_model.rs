@@ -1,15 +1,15 @@
 use crate::{
     filter_builder::{
         plan_model::{
-            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, OrderPlanItem, QueryPlan,
-            QueryValuePlan, Source,
+            FieldPathPlan, FilterByPlan, FilterPlan, FilterPlanItem, FilterPlanMode, OrderPlanItem, OrdersPlan,
+            QueryPlan, QueryValuePlan, Source,
         },
         query_model::RawRef,
         reader::{Reader, ReaderIterator},
         value_compare::{ValueCompare, ValueRange},
     },
     internal::{Field, FieldInfo},
-    Persistent, Ref, SRes,
+    Order, Persistent, Ref, SRes,
 };
 use std::{collections::HashMap, ops::Bound};
 
@@ -90,6 +90,33 @@ fn filter_plan_to_execution<T>(plan: FilterPlan, access: Rc<dyn IntoCompareOpera
         mode: plan.mode,
     }
 }
+
+struct OrderItemExcution<T> {
+    compare: Rc<dyn CompareOperations<T>>,
+    order: Order,
+}
+
+fn order_plan_item_to_execution<T>(
+    order: OrderPlanItem,
+    access: Rc<dyn IntoCompareOperations<T>>,
+) -> OrderItemExcution<T> {
+    match order {
+        OrderPlanItem::Field(f) => OrderItemExcution {
+            compare: access.nested_compare_operations(f.field_path.field_path_names()),
+            order: f.mode,
+        },
+        _ => todo!(),
+    }
+}
+
+fn order_plan_to_excution<T>(order: OrdersPlan, access: Rc<dyn IntoCompareOperations<T>>) -> Vec<OrderItemExcution<T>> {
+    order
+        .orders
+        .into_iter()
+        .map(|item| order_plan_item_to_execution(item, access.clone()))
+        .collect()
+}
+
 fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
     fields: Rc<dyn IntoCompareOperations<T>>,
@@ -106,14 +133,14 @@ fn execute<'a, T: Persistent + 'static>(
     let iter = if let Some(f) = filter {
         Box::new(FilterExecution {
             source: iter,
-            filter: filter_plan_to_execution(f, fields),
+            filter: filter_plan_to_execution(f, fields.clone()),
         })
     } else {
         iter
     };
     let iter = if let Some(o) = orders {
         if !o.orders.is_empty() {
-            Box::new(Accumulator::new(iter, o.orders))
+            Box::new(Accumulator::new(iter, order_plan_to_excution(o, fields)))
         } else {
             iter
         }
@@ -238,11 +265,11 @@ impl<'a, T> Iterator for FilterExecution<'a, T> {
 
 struct Accumulator<'a, T> {
     source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>,
-    orders: Vec<OrderPlanItem>,
+    orders: Vec<OrderItemExcution<T>>,
     buffer: Option<Box<dyn Iterator<Item = (Ref<T>, T)>>>,
 }
 impl<'a, T> Accumulator<'a, T> {
-    fn new(source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>, orders: Vec<OrderPlanItem>) -> Self {
+    fn new(source: Box<dyn ReaderIterator<Item = (Ref<T>, T)> + 'a>, orders: Vec<OrderItemExcution<T>>) -> Self {
         Self {
             source,
             orders,
@@ -251,7 +278,15 @@ impl<'a, T> Accumulator<'a, T> {
     }
     fn order_item(&self, first: &T, second: &T) -> std::cmp::Ordering {
         for order in &self.orders {
-            let ord = todo!(); //order.compare(&first, &second);
+            let ord = order.compare.compare(&first, &second);
+            let ord = match order.order {
+                Order::Asc => ord,
+                Order::Desc => match ord {
+                    std::cmp::Ordering::Greater => std::cmp::Ordering::Less,
+                    std::cmp::Ordering::Less => std::cmp::Ordering::Greater,
+                    std::cmp::Ordering::Equal => std::cmp::Ordering::Equal,
+                },
+            };
             if ord != std::cmp::Ordering::Equal {
                 return ord;
             }
@@ -631,6 +666,10 @@ impl<T, V> CompareOperations<T> for PathStep<T, V> {
     fn query_is(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool {
         self.next.query_is((self.field.access)(t), value, reader)
     }
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        self.next
+            .compare((self.field.access)(first), (self.field.access)(second))
+    }
 }
 
 pub(crate) trait CompareOperations<T> {
@@ -643,6 +682,7 @@ pub(crate) trait CompareOperations<T> {
     fn query_equals(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
     fn query_contains(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
     fn query_is(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering;
 }
 
 pub(crate) trait RefOperations {
@@ -691,6 +731,9 @@ impl<T, V: ValueCompare> CompareOperations<T> for FieldValueCompare<T, V> {
     fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
     }
+    fn compare(&self, _first: &T, _second: &T) -> std::cmp::Ordering {
+        std::cmp::Ordering::Less
+    }
 }
 
 impl<T, V: ValueRange> CompareOperations<T> for FieldValueRange<T, V> {
@@ -726,6 +769,10 @@ impl<T, V: ValueRange> CompareOperations<T> for FieldValueRange<T, V> {
     fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
     }
+
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        ((self.0.access)(first)).sort_compare((self.0.access)(second))
+    }
 }
 
 impl<T, X: Persistent> CompareOperations<T> for FieldValueRef<T, X> {
@@ -760,6 +807,9 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueRef<T, X> {
     }
     fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
+    }
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        ((self.0.access)(first)).sort_compare((self.0.access)(second))
     }
 }
 
@@ -801,6 +851,9 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueVecRef<T, X> {
     fn query_is(&self, _t: &T, _value: &dyn RefOperations, _reader: &mut Reader) -> bool {
         false
     }
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        ((self.0.access)(first)).sort_compare((self.0.access)(second))
+    }
 }
 
 impl<T, X: Persistent> CompareOperations<T> for FieldValueOptionRef<T, X> {
@@ -839,6 +892,9 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueOptionRef<T, X> {
         } else {
             false
         }
+    }
+    fn compare(&self, first: &T, second: &T) -> std::cmp::Ordering {
+        ((self.0.access)(first)).sort_compare((self.0.access)(second))
     }
 }
 

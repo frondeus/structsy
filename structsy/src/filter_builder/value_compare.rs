@@ -21,6 +21,7 @@ pub trait ValueRange: ValueCompare {
     fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
     fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn sort_compare(&self, other: &Self) -> std::cmp::Ordering;
 }
 
 impl<T: ValueCompare> ValueCompare for Option<T> {
@@ -158,6 +159,14 @@ impl<T: ValueRange> ValueRange for Option<T> {
             false
         }
     }
+    fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Some(v), Some(v1)) => v.sort_compare(v1),
+            (None, None) => std::cmp::Ordering::Equal,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+        }
+    }
 }
 
 impl<T: ValueRange> ValueRange for Vec<T> {
@@ -210,6 +219,10 @@ impl<T: ValueRange> ValueRange for Vec<T> {
     fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
+    }
+    fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
+        for el in self {}
+        todo!()
     }
 }
 
@@ -272,6 +285,11 @@ macro_rules! impl_value_compare {
             fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
                 debug_assert!(false, "should never call wrong action");
                 false
+            }
+
+            fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
+                use std::cmp::PartialOrd;
+                self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
             }
         }
     };
@@ -350,6 +368,10 @@ impl<T> ValueRange for Ref<T> {
         debug_assert!(false, "should never call wrong action");
         false
     }
+
+    fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
+    }
 }
 impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
     fn equals(&self, value: QueryValuePlan) -> bool {
@@ -408,5 +430,8 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
     fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
+    }
+    fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
     }
 }

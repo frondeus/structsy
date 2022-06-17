@@ -188,8 +188,8 @@ impl FilterByPlan {
 }
 
 pub(crate) struct FieldOrderPlan {
-    field_path: FieldPathPlan,
-    mode: Order,
+    pub(crate) field_path: FieldPathPlan,
+    pub(crate) mode: Order,
     pre_ordered: bool,
 }
 impl FieldOrderPlan {
