@@ -479,11 +479,8 @@ pub(crate) struct OrdersFilters {
     pub(crate) filter: FilterHolder,
 }
 impl OrdersFilters {
-    pub(crate) fn new(mode: FilterMode) -> Self {
-        Self {
-            orders: Vec::new(),
-            filter: FilterHolder::new(mode),
-        }
+    pub(crate) fn new(filter: FilterHolder, orders: Vec<Orders>) -> Self {
+        OrdersFilters { orders, filter }
     }
 }
 
@@ -491,8 +488,19 @@ impl OrdersFilters {
 pub(crate) struct Query {
     pub(crate) type_name: String,
     pub(crate) projections: Vec<Projection>,
-    pub(crate) builder: OrdersFilters,
+    pub(crate) orders_filter: OrdersFilters,
 }
+
+impl Query {
+    pub fn new(type_name: &str, filter: FilterHolder, orders: Vec<Orders>, projections: Vec<Projection>) -> Self {
+        Self {
+            type_name: type_name.to_owned(),
+            orders_filter: OrdersFilters::new(filter, orders),
+            projections,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct Projection {
     pub(crate) field: String,

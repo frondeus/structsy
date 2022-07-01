@@ -117,7 +117,7 @@ fn order_plan_to_excution<T>(order: OrdersPlan, access: Rc<dyn IntoCompareOperat
         .collect()
 }
 
-fn execute<'a, T: Persistent + 'static>(
+pub(crate) fn execute<'a, T: Persistent + 'static>(
     plan: QueryPlan,
     fields: Rc<dyn IntoCompareOperations<T>>,
     reader: Reader<'a>,
@@ -329,7 +329,7 @@ struct PathStep<T, V> {
     next: Rc<dyn CompareOperations<V>>,
 }
 
-trait IntoCompareOperations<T> {
+pub(crate) trait IntoCompareOperations<T> {
     fn nested_compare_operations(&self, fields: Vec<String>) -> Rc<dyn CompareOperations<T>>;
     fn nested_ref_operations(&self, fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations>;
 }

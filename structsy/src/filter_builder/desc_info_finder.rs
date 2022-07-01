@@ -790,8 +790,9 @@ pub(crate) fn index_find_range<'a, P: Persistent + 'static>(
             Bound::Excluded(SimpleQueryValue::Bool(_)) => unreachable!("wrong value in the range"),
             Bound::Excluded(SimpleQueryValue::Ref(_)) => unreachable!("wrong value in the range"),
             Bound::Excluded(SimpleQueryValue::Embedded(_)) => unreachable!("wrong value in the range"),
-
-            Bound::Unbounded => unreachable!("wrong value in the range"),
+            Bound::Unbounded => {
+                map_finder::<P, String>(order, reader, index_name, (Bound::Unbounded, Bound::Unbounded))
+            }
         },
         Bound::Included(SimpleQueryValue::Bool(_)) => unreachable!("wrong value in the range"),
         Bound::Included(SimpleQueryValue::Ref(_)) => unreachable!("wrong value in the range"),

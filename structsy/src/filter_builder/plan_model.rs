@@ -499,11 +499,11 @@ fn rationalize_projections(projections: Vec<Projection>) -> Option<ProjectionsPl
     }
 }
 
-fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan> {
+pub(crate) fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan> {
     let Query {
         type_name,
         projections,
-        builder: OrdersFilters { filter, orders },
+        orders_filter: OrdersFilters { filter, orders },
     } = query;
 
     let filter = rationalize_filters(filter);
