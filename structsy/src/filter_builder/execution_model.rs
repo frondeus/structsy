@@ -126,7 +126,9 @@ fn execute<'a, T: Persistent + 'static>(
         source,
         filter,
         orders,
-        projections,
+        //This is not used for now because the projections are based on code generation
+        //and do not have algorithms in them yet
+        projections: _projections,
     } = plan;
 
     let iter = start::<T>(source, reader)?;

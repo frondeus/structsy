@@ -4,7 +4,7 @@ use crate::{
     snapshot::{SnapshotIterator, SnapshotRecordIter},
     structsy::RecordIter,
     transaction::{raw_tx_scan, TxRecordIter},
-    Order, Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
+    Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
 };
 use std::ops::{Bound, RangeBounds};
 

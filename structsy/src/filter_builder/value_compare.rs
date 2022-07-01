@@ -221,8 +221,18 @@ impl<T: ValueRange> ValueRange for Vec<T> {
         false
     }
     fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
-        for el in self {}
-        todo!()
+        let s = self.len().cmp(&other.len());
+        if s == std::cmp::Ordering::Equal {
+            for c in 0..self.len() {
+                let vc = self[c].sort_compare(&other[c]);
+                if vc != std::cmp::Ordering::Equal {
+                    return vc;
+                }
+            }
+            std::cmp::Ordering::Equal
+        } else {
+            s
+        }
     }
 }
 
