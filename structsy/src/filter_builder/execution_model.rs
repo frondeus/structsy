@@ -259,9 +259,12 @@ impl<T> FilterCheck<T> for FilterExecutionField<T> {
 impl<'a, T> Iterator for FilterExecution<'a, T> {
     type Item = (Ref<T>, T);
     fn next(&mut self) -> Option<Self::Item> {
-        self.source
-            .next()
-            .filter(|(_id, rec)| self.filter.check(&rec, &mut self.source.reader()))
+        while let Some((id, rec)) = self.source.next() {
+            if self.filter.check(&rec, &mut self.source.reader()) {
+                return Some((id, rec));
+            }
+        }
+        None
     }
 }
 
