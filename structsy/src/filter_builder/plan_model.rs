@@ -23,6 +23,11 @@ impl FieldPathPlan {
     pub fn field_path_names(&self) -> Vec<String> {
         self.path.iter().map(|f| f.name().to_owned()).collect()
     }
+    pub fn reversed_field_path_names(&self) -> Vec<String> {
+        let mut fields = self.field_path_names();
+        fields.reverse();
+        fields
+    }
     pub fn field_path_names_str(&self) -> Vec<&'static str> {
         self.path.iter().map(|f| f.name()).collect()
     }

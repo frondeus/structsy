@@ -27,7 +27,7 @@ fn field_to_compare_operations<T>(
     field: &FieldPathPlan,
     access: Rc<dyn IntoCompareOperations<T>>,
 ) -> Rc<dyn CompareOperations<T>> {
-    access.nested_compare_operations(field.field_path_names())
+    access.nested_compare_operations(field.reversed_field_path_names())
 }
 
 fn filter_plan_field_to_execution<T>(
@@ -66,7 +66,7 @@ fn filter_by_query_to_execution<T>(
     access: Rc<dyn IntoCompareOperations<T>>,
 ) -> LoadExecution {
     LoadExecution {
-        ops: access.nested_ref_operations(field.field_path_names(), fp),
+        ops: access.nested_ref_operations(field.reversed_field_path_names(), fp),
     }
 }
 
@@ -102,7 +102,7 @@ fn order_plan_item_to_execution<T>(
 ) -> OrderItemExcution<T> {
     match order {
         OrderPlanItem::Field(f) => OrderItemExcution {
-            compare: access.nested_compare_operations(f.field_path.field_path_names()),
+            compare: access.nested_compare_operations(f.field_path.reversed_field_path_names()),
             order: f.mode,
         },
         _ => todo!(),

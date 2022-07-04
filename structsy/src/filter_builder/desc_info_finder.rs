@@ -389,12 +389,20 @@ pub(crate) fn index_find_range<'a, P: Persistent + 'static>(
     let bound_0 = match b_0 {
         Bound::Excluded(QueryValuePlan::Single(v)) => Bound::Excluded(v),
         Bound::Included(QueryValuePlan::Single(v)) => Bound::Included(v),
+        Bound::Excluded(QueryValuePlan::Option(Some(v))) => Bound::Excluded(v),
+        Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Unbounded,
+        Bound::Included(QueryValuePlan::Option(Some(v))) => Bound::Included(v),
+        Bound::Included(QueryValuePlan::Option(None)) => Bound::Unbounded,
         Bound::Unbounded => Bound::Unbounded,
         _ => todo!(),
     };
     let bound_1 = match b_1 {
         Bound::Excluded(QueryValuePlan::Single(v)) => Bound::Excluded(v),
         Bound::Included(QueryValuePlan::Single(v)) => Bound::Included(v),
+        Bound::Excluded(QueryValuePlan::Option(Some(v))) => Bound::Excluded(v),
+        Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Unbounded,
+        Bound::Included(QueryValuePlan::Option(Some(v))) => Bound::Included(v),
+        Bound::Included(QueryValuePlan::Option(None)) => Bound::Unbounded,
         Bound::Unbounded => Bound::Unbounded,
         _ => todo!(),
     };

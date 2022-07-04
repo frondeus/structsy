@@ -122,7 +122,7 @@ impl<T: ValueRange> ValueRange for Option<T> {
                     return false;
                 }
             };
-            s.range_contains((rv, lv))
+            s.range((rv, lv))
         } else {
             (match value {
                 Bound::Included(QueryValuePlan::Option(Some(_))) => false,
@@ -154,7 +154,7 @@ impl<T: ValueRange> ValueRange for Option<T> {
     }
     fn range_is(&self, r: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         if let Some(v) = self {
-            v.range_is(r)
+            v.range(r)
         } else {
             false
         }
