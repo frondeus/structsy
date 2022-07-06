@@ -60,10 +60,10 @@ impl<T: ValueCompare> ValueCompare for Vec<T> {
                     if !second.equals(QueryValuePlan::Single((*first).clone())) {
                         return false;
                     }
+                    fi.next();
+                    si.next();
                 }
-                fi.next();
-                si.next();
-                fi.peek().is_none() && si.peek().is_none()
+                fi.next().is_none() && si.next().is_none()
             }
             _ => {
                 debug_assert!(false, "should never match a wrong type");
@@ -89,8 +89,8 @@ impl<T: ValueRange> ValueRange for Option<T> {
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match (self, value) {
             (Some(v), QueryValuePlan::Option(Some(v1))) => v.compare(QueryValuePlan::Single(v1)),
-            (Some(_v), QueryValuePlan::Option(None)) => Some(Ordering::Greater),
-            (None, QueryValuePlan::Option(Some(_v1))) => Some(Ordering::Less),
+            (Some(_v), QueryValuePlan::Option(None)) => Some(Ordering::Less),
+            (None, QueryValuePlan::Option(Some(_v1))) => Some(Ordering::Greater),
             (None, QueryValuePlan::Option(None)) => Some(Ordering::Equal),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
@@ -124,27 +124,30 @@ impl<T: ValueRange> ValueRange for Option<T> {
             };
             s.range((rv, lv))
         } else {
-            (match value {
+            let none_start = match value {
                 Bound::Included(QueryValuePlan::Option(Some(_))) => false,
                 Bound::Included(QueryValuePlan::Option(None)) => true,
                 Bound::Excluded(QueryValuePlan::Option(Some(_))) => false,
-                Bound::Excluded(QueryValuePlan::Option(None)) => false,
-                Bound::Unbounded => true,
+                Bound::Excluded(QueryValuePlan::Option(None)) => true,
+                Bound::Unbounded => false,
                 _ => {
                     debug_assert!(false, "should never match a wrong type");
                     return false;
                 }
-            }) && (match value1 {
-                Bound::Included(QueryValuePlan::Option(Some(_))) => true,
+            };
+            let none_end = match value1 {
+                Bound::Included(QueryValuePlan::Option(Some(_))) => false,
+
                 Bound::Included(QueryValuePlan::Option(None)) => true,
-                Bound::Excluded(QueryValuePlan::Option(Some(_))) => true,
-                Bound::Excluded(QueryValuePlan::Option(None)) => false,
+                Bound::Excluded(QueryValuePlan::Option(Some(_))) => false,
+                Bound::Excluded(QueryValuePlan::Option(None)) => true,
                 Bound::Unbounded => true,
                 _ => {
                     debug_assert!(false, "should never match a wrong type");
                     return false;
                 }
-            })
+            };
+            none_end | none_start
         }
     }
 
@@ -156,15 +159,15 @@ impl<T: ValueRange> ValueRange for Option<T> {
         if let Some(v) = self {
             v.range(r)
         } else {
-            false
+            true
         }
     }
     fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (Some(v), Some(v1)) => v.sort_compare(v1),
             (None, None) => std::cmp::Ordering::Equal,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
         }
     }
 }
@@ -199,8 +202,8 @@ impl<T: ValueRange> ValueRange for Vec<T> {
     fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
         (match value {
             // TODO: double check this logic
-            Bound::Included(start) => self.compare(start) == Some(Ordering::Less),
-            Bound::Excluded(start) => self.compare(start) != Some(Ordering::Greater),
+            Bound::Included(start) => self.compare(start) != Some(Ordering::Less),
+            Bound::Excluded(start) => self.compare(start) == Some(Ordering::Greater),
             Bound::Unbounded => true,
         }) && (match value1 {
             Bound::Included(end) => self.compare(end) != Some(Ordering::Greater),

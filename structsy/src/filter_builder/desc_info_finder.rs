@@ -832,6 +832,17 @@ impl InfoFinder for Structsy {
         mode: Order,
     ) -> Option<IndexInfo> {
         if let Ok(definition) = self.structsy_impl.full_definition_by_name(type_name) {
+            match range {
+                Some((Bound::Included(QueryValuePlan::Array(_)), _)) => return None,
+                Some((Bound::Excluded(QueryValuePlan::Array(_)), _)) => return None,
+                Some((Bound::Included(QueryValuePlan::OptionArray(_)), _)) => return None,
+                Some((Bound::Excluded(QueryValuePlan::OptionArray(_)), _)) => return None,
+                Some((Bound::Included(QueryValuePlan::Option(None)), _)) => return None,
+                Some((Bound::Excluded(QueryValuePlan::Option(None)), _)) => return None,
+                Some((_, Bound::Included(QueryValuePlan::Option(None)))) => return None,
+                Some((_, Bound::Excluded(QueryValuePlan::Option(None)))) => return None,
+                _ => {}
+            }
             let mut desc = Some(&definition.desc);
             let mut last_field = None;
             for field in &field_path.path {
