@@ -54,16 +54,18 @@ impl<T: ValueCompare> ValueCompare for Vec<T> {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
             QueryValuePlan::Array(v) => {
-                let mut fi = v.iter().peekable();
-                let mut si = self.iter().peekable();
-                while let (Some(first), Some(second)) = (fi.peek(), si.peek()) {
-                    if !second.equals(QueryValuePlan::Single((*first).clone())) {
-                        return false;
+                if self.len() == v.len() {
+                    let mut fi = v.iter();
+                    let mut si = self.iter();
+                    while let (Some(first), Some(second)) = (fi.next(), si.next()) {
+                        if !second.equals(QueryValuePlan::Single((*first).clone())) {
+                            return false;
+                        }
                     }
-                    fi.next();
-                    si.next();
+                    true
+                } else {
+                    false
                 }
-                fi.next().is_none() && si.next().is_none()
             }
             _ => {
                 debug_assert!(false, "should never match a wrong type");
@@ -263,7 +265,7 @@ macro_rules! impl_value_compare {
         impl ValueRange for $t {
             fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
                 match value {
-                    QueryValuePlan::Single(SimpleQueryValue::$v(v)) => v.partial_cmp(self),
+                    QueryValuePlan::Single(SimpleQueryValue::$v(v)) => self.partial_cmp(&v),
                     _ => {
                         debug_assert!(false, "should never match a wrong type");
                         return None;
@@ -345,7 +347,7 @@ impl<T> ValueCompare for Ref<T> {
 impl<T> ValueRange for Ref<T> {
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match value {
-            QueryValuePlan::Single(SimpleQueryValue::Ref(v)) => v.partial_cmp(&RawRef::from(self)),
+            QueryValuePlan::Single(SimpleQueryValue::Ref(v)) => RawRef::from(self).partial_cmp(&v),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return None;
@@ -408,7 +410,7 @@ impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
 impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match value {
-            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => v.partial_cmp(self as &dyn MyOrd),
+            QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => (self as &dyn MyOrd).partial_cmp(&v),
             _ => {
                 debug_assert!(false, "should never match a wrong type");
                 return None;

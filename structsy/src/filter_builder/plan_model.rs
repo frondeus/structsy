@@ -179,9 +179,9 @@ pub(crate) enum FilterByPlan {
 impl FilterByPlan {
     fn solve_range(&self) -> Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)> {
         match self {
-            Self::Equal(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
-            Self::Contains(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
-            Self::Is(e) => Some((Bound::Included(e.clone()), Bound::Excluded(e.clone()))),
+            Self::Equal(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
+            Self::Contains(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
+            Self::Is(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
             Self::Range(e) => Some(e.clone()),
             Self::RangeContains(e) => Some(e.clone()),
             Self::RangeIs(e) => Some(e.clone()),

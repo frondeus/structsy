@@ -2,6 +2,7 @@ use crate::{
     filter_builder::{
         embedded_filter_builder::EmbeddedFilterBuilder,
         execution_iterator::{IterT, Source},
+        execution_model::execute,
         execution_model::FieldsHolder,
         execution_step::ExecutionStep,
         filter_builder_step::{
@@ -9,7 +10,8 @@ use crate::{
             NotFilter, OptionQueryFilter, OrFilter, QueryFilter, RangeConditionFilter, RangeIndexFilter,
             RangeOptionConditionFilter, RangeSingleConditionFilter, RangeSingleIndexFilter, VecQueryFilter,
         },
-        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, SolveQueryValue, SolveSimpleQueryValue},
+        plan_model::plan_from_query,
+        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
         start::{ScanStartStep, StartStep},
         ValueCompare, ValueRange,
@@ -464,6 +466,15 @@ impl<T: 'static> Default for FilterBuilder<T> {
 }
 
 impl<T: 'static> FilterBuilder<T> {
+    pub(crate) fn move_out_filter(&mut self) -> FilterHolder {
+        std::mem::replace(&mut self.filter, FilterHolder::new(FilterMode::And))
+    }
+    pub(crate) fn move_out_fields_holder(&mut self) -> FieldsHolder<T> {
+        std::mem::replace(&mut self.fields_holder, FieldsHolder::default())
+    }
+    pub(crate) fn move_out_orders(&mut self) -> Vec<OrdersModel> {
+        std::mem::replace(&mut self.orders, Vec::new())
+    }
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder {
             steps: Vec::new(),

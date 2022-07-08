@@ -418,11 +418,18 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
         self.add(EmbeddedFieldFilter::new(conditions, field))
     }
 
-    pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: FilterBuilder<V>)
+    pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, mut query: FilterBuilder<V>)
     where
         V: Persistent + 'static,
     {
-        self.get_fields().add_field_ord(field.clone());
+        self.get_fields()
+            .add_field_ref(field.clone(), query.move_out_fields_holder());
+        self.filter
+            .add_field_ref_query_equal(Rc::new(field.clone()), query.move_out_filter());
+        self.orders.push(OrdersModel::new_query_equal(
+            Rc::new(field.clone()),
+            query.move_out_orders(),
+        ));
         self.add(QueryFilter::new(query, field))
     }
 
