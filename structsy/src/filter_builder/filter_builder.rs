@@ -455,7 +455,7 @@ impl<T: Persistent + 'static> Orders<T> {
 pub struct FilterBuilder<T> {
     pub(crate) steps: Vec<Box<dyn FilterBuilderStep<Target = T>>>,
     order: Orders<T>,
-    filter: FilterHolder,
+    pub(crate) filter: FilterHolder,
     fields_holder: FieldsHolder<T>,
     orders: Vec<OrdersModel>,
 }
@@ -501,6 +501,16 @@ impl<T: 'static> FilterBuilder<T> {
     }
 }
 
+struct ToIter<'a, T> {
+    read_iterator: Box<dyn ReaderIterator<Item = T> + 'a>,
+}
+impl<'a, T> Iterator for ToIter<'a, T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.read_iterator.next()
+    }
+}
+
 impl<T: Persistent + 'static> FilterBuilder<T> {
     fn is_indexed(name: &str) -> Option<String> {
         let desc = T::get_description();
@@ -530,21 +540,12 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
     }
 
     pub fn finish<'a>(self, mut reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
-        if self.steps.is_empty() {
-            let start = Box::new(ScanStartStep::new());
-            let cond = Self::fill_conditions(Vec::new());
-            Box::new(start.start_reader(cond, self.order, reader_inst))
-        } else {
-            let reader = &mut reader_inst;
-            let mut executions = self.steps.into_iter().map(|e| e.prepare(reader)).collect::<Vec<_>>();
-            executions.sort_by_key(|x| x.get_score());
-            let (step, start) = executions.pop().unwrap().as_start();
-            if let Some(es) = step {
-                executions.insert(0, es);
-            }
-            let cond = Self::fill_conditions(executions);
-            Box::new(start.start_reader(cond, self.order, reader_inst))
-        }
+        let query = Query::new(T::get_name(), self.filter, self.orders, Vec::new());
+        let plan = plan_from_query(query, &reader_inst.structsy()).unwrap();
+        let iter = execute(plan, Rc::new(self.fields_holder), reader_inst);
+        Box::new(ToIter {
+            read_iterator: iter.unwrap(),
+        })
     }
 
     pub fn indexable_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
