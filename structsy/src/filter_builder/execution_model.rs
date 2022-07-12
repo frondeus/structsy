@@ -496,9 +496,12 @@ impl<T: 'static> IntoCompareOperations<T> for TypedField<T> {
             }
         }
     }
-    fn nested_ref_operations(&self, _fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations> {
+    fn nested_ref_operations(&self, fields: Vec<String>, filter_plan: FilterPlan) -> Rc<dyn RefOperations> {
         match &self {
             Self::Ref((q, _c)) => q.query(filter_plan),
+            Self::Embedded(e) => e.nested_ref_operations(fields, filter_plan),
+            Self::EmbeddedCompare((e, _)) => e.nested_ref_operations(fields, filter_plan),
+            Self::EmbeddedRange((e, _)) => e.nested_ref_operations(fields, filter_plan),
             _ => unreachable!(),
         }
     }
