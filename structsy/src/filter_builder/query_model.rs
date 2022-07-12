@@ -164,28 +164,8 @@ pub enum EmbValue<'a> {
 }
 
 impl<'a> EmbValue<'a> {
-    pub(crate) fn new<T: EmbeddedDescription + PartialOrd + 'static>(t: T) -> Self {
-        Self::OrdType(Rc::new(t))
-    }
-    pub(crate) fn new_ref<T: EmbeddedDescription + PartialOrd + 'static>(t: &'a T) -> Self {
-        Self::OrdRef(t)
-    }
     pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
         Self::EqType(Rc::new(t))
-    }
-    pub(crate) fn my_eq_ord(&self, other: &dyn MyOrd) -> bool {
-        match self {
-            Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
-            Self::OrdRef(r) => r.my_cmp(other) == Some(Ordering::Equal),
-            Self::EqType(_) => false,
-        }
-    }
-    pub(crate) fn my_cmp_ord(&self, other: &dyn MyOrd) -> Option<Ordering> {
-        match self {
-            Self::OrdType(r) => r.my_cmp(other),
-            Self::OrdRef(r) => r.my_cmp(other),
-            Self::EqType(_) => None,
-        }
     }
 }
 

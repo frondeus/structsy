@@ -1,6 +1,6 @@
 use crate::{
     filter_builder::{desc_info_finder::index_find_range, plan_model::IndexInfo},
-    index::{map_entry, map_entry_snapshot, map_entry_tx, RangeInstanceIter},
+    index::{map_entry, map_entry_snapshot, map_entry_tx},
     snapshot::{SnapshotIterator, SnapshotRecordIter},
     structsy::RecordIter,
     transaction::{raw_tx_scan, TxRecordIter},
@@ -113,26 +113,6 @@ impl<'a> Reader<'a> {
         } else {
             Ok(None)
         }
-    }
-
-    pub(crate) fn find_range<
-        K: PersistentEmbedded + Clone + 'static,
-        P: Persistent + 'static,
-        R: RangeBounds<K> + 'static,
-    >(
-        self,
-        name: &str,
-        range: R,
-    ) -> SRes<RangeInstanceIter<'a, K, P>> {
-        let iter = K::finder().find_range(
-            self,
-            name,
-            (
-                clone_bound_ref(&range.start_bound()),
-                clone_bound_ref(&range.end_bound()),
-            ),
-        )?;
-        Ok(RangeInstanceIter::new(iter))
     }
 
     pub(crate) fn find_range_from_info<P: Persistent + 'static>(

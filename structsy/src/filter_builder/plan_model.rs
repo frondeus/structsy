@@ -37,6 +37,7 @@ impl FieldPathPlan {
 }
 
 pub(crate) struct TypeSource {
+    #[allow(unused)]
     name: String,
 }
 
@@ -142,13 +143,13 @@ impl QueryValuePlan {
             Bound::Included(Self::Single(v)) => Some(Bound::Included(v)),
             Bound::Included(Self::Option(Some(v))) => Some(Bound::Included(v)),
             Bound::Included(Self::Option(None)) => Some(Bound::Unbounded),
-            Bound::Included(Self::Array(v)) => None,
-            Bound::Included(Self::OptionArray(v)) => None,
+            Bound::Included(Self::Array(_v)) => None,
+            Bound::Included(Self::OptionArray(_v)) => None,
             Bound::Excluded(Self::Single(v)) => Some(Bound::Excluded(v)),
             Bound::Excluded(Self::Option(Some(v))) => Some(Bound::Excluded(v)),
             Bound::Excluded(Self::Option(None)) => Some(Bound::Unbounded),
-            Bound::Excluded(Self::Array(v)) => None,
-            Bound::Excluded(Self::OptionArray(v)) => None,
+            Bound::Excluded(Self::Array(_v)) => None,
+            Bound::Excluded(Self::OptionArray(_v)) => None,
             Bound::Unbounded => Some(Bound::Unbounded),
         }
     }
@@ -202,14 +203,6 @@ impl FieldOrderPlan {
         self.field_path.field_path_names()
     }
 }
-pub(crate) struct BufferedOrder {
-    orders: Vec<FieldOrderPlan>,
-}
-pub(crate) struct IndexOrderPlan {
-    name: String,
-    range: Option<(Bound<QueryValue>, Bound<QueryValue>)>,
-    mode: Order,
-}
 pub(crate) enum OrderPlanItem {
     Field(FieldOrderPlan),
     LoadEqual(FieldNestedOrdersPlan),
@@ -217,10 +210,13 @@ pub(crate) enum OrderPlanItem {
     LoadContains(FieldNestedOrdersPlan),
 }
 pub(crate) struct FieldNestedOrdersPlan {
+    #[allow(unused)]
     field_path: FieldPathPlan,
+    #[allow(unused)]
     orders: OrdersPlan,
 }
 impl FieldNestedOrdersPlan {
+    #[allow(unused)]
     fn field_path_names(&self) -> Vec<String> {
         self.field_path.field_path_names()
     }
@@ -307,9 +303,11 @@ pub(crate) struct QueryPlan {
 }
 
 pub(crate) struct ProjectionsPlan {
+    #[allow(unused)]
     projections: Vec<ProjectionPlan>,
 }
 pub(crate) struct ProjectionPlan {
+    #[allow(unused)]
     field: String,
 }
 

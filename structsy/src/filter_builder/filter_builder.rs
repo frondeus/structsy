@@ -13,7 +13,6 @@ use crate::{
         plan_model::plan_from_query,
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue, SolveSimpleQueryValue},
         reader::{Reader, ReaderIterator},
-        start::{ScanStartStep, StartStep},
         ValueCompare, ValueRange,
     },
     index::RangeInstanceIter,
@@ -539,7 +538,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         Conditions { conditions: executions }
     }
 
-    pub fn finish<'a>(self, mut reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+    pub fn finish<'a>(self, reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
         let query = Query::new(T::get_name(), self.filter, self.orders, Vec::new());
         let plan = plan_from_query(query, &reader_inst.structsy()).unwrap();
         let iter = execute(plan, Rc::new(self.fields_holder), reader_inst);
