@@ -2,10 +2,9 @@ use crate::desc::index_name;
 use crate::transaction::TxIterator;
 use crate::{
     filter_builder::{Reader, ReaderIterator},
-    structsy::tx_read,
     Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyImpl, Sytx,
 };
-use persy::{IndexType, PersyId, Transaction, ValueIter, ValueMode};
+use persy::{IndexType, PersyId, ValueIter, ValueMode};
 use std::ops::Bound;
 use std::sync::Arc;
 use std::vec::IntoIter;
@@ -95,56 +94,6 @@ fn remove_index<T: IndexType, P: Persistent>(
         .trans
         .remove::<T, PersyId>(&idx, k.clone(), Some(id.raw_id.clone()))?;
     Ok(())
-}
-
-pub(crate) fn map_entry<P: Persistent>(db: &Structsy, entry: impl Iterator<Item = PersyId>) -> Vec<(Ref<P>, P)> {
-    entry
-        .into_iter()
-        .filter_map(|id| {
-            let r = Ref::new(id);
-            if let Ok(x) = db.read(&r) {
-                x.map(|c| (r, c))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-pub(crate) fn map_entry_snapshot<P: Persistent>(
-    snap: &Snapshot,
-    entry: impl Iterator<Item = PersyId>,
-) -> Vec<(Ref<P>, P)> {
-    entry
-        .into_iter()
-        .filter_map(|id| {
-            let r = Ref::new(id);
-            if let Ok(x) = snap.read(&r) {
-                x.map(|c| (r, c))
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-pub(crate) fn map_entry_tx<P: Persistent>(
-    tx: &mut Transaction,
-    st: &StructsyImpl,
-    entry: impl Iterator<Item = PersyId>,
-) -> Vec<(Ref<P>, P)> {
-    let info = st.check_defined::<P>().expect("already checked here");
-    entry
-        .into_iter()
-        .filter_map(|id| {
-            if let Ok(val) = tx_read::<P>(info.segment_name(), tx, &id) {
-                let r = Ref::new(id);
-                val.map(|x| (r, x))
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 pub fn declare_index<T: IndexType>(db: &mut dyn Sytx, name: &str, mode: ValueMode) -> SRes<()> {

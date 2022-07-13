@@ -1,20 +1,12 @@
 use crate::{
     filter_builder::{desc_info_finder::index_find_range, plan_model::IndexInfo},
-    index::{map_entry, map_entry_snapshot, map_entry_tx},
     snapshot::{SnapshotIterator, SnapshotRecordIter},
     structsy::RecordIter,
     transaction::{raw_tx_scan, TxRecordIter},
-    Persistent, PersistentEmbedded, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx, Sytx,
+    Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx,
 };
-use std::ops::{Bound, RangeBounds};
+use std::ops::Bound;
 
-fn clone_bound_ref<X: Clone>(bound: &Bound<&X>) -> Bound<X> {
-    match bound {
-        Bound::Included(x) => Bound::Included((*x).clone()),
-        Bound::Excluded(x) => Bound::Excluded((*x).clone()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
 pub trait ReaderIterator: Iterator {
     fn reader<'a>(&'a mut self) -> Reader<'a>;
 }
@@ -63,55 +55,6 @@ impl<'a> Reader<'a> {
             Reader::Structsy(st) => Ok(ScanIter::Structsy((st.scan::<T>()?, st.clone()))),
             Reader::Snapshot(snap) => Ok(ScanIter::Snapshot(snap.scan::<T>()?)),
             Reader::Tx(RefSytx { structsy_impl, trans }) => Ok(ScanIter::Tx(raw_tx_scan(structsy_impl, trans)?)),
-        }
-    }
-
-    pub(crate) fn find<K: PersistentEmbedded + 'static, P: Persistent>(
-        &mut self,
-        name: &str,
-        k: &K,
-    ) -> SRes<Vec<(Ref<P>, P)>> {
-        let iter = K::finder().find(self, name, k)?;
-        Ok(match self {
-            Reader::Structsy(st) => map_entry(st, iter),
-            Reader::Snapshot(st) => map_entry_snapshot(st, iter),
-            Reader::Tx(tx) => {
-                let st = tx.structsy().structsy_impl.clone();
-                map_entry_tx(tx.tx().trans, &st, iter)
-            }
-        })
-    }
-
-    pub(crate) fn find_range_first<
-        K: PersistentEmbedded + Clone + 'static,
-        P: Persistent + 'static,
-        R: RangeBounds<K> + 'static,
-    >(
-        &mut self,
-        name: &str,
-        range: R,
-    ) -> SRes<Option<Vec<(Ref<P>, P)>>> {
-        let iter = K::finder().find_range_first(
-            self,
-            name,
-            (
-                clone_bound_ref(&range.start_bound()),
-                clone_bound_ref(&range.end_bound()),
-            ),
-        )?;
-
-        let vec = match self {
-            Reader::Structsy(st) => map_entry(st, iter.into_iter()),
-            Reader::Snapshot(st) => map_entry_snapshot(st, iter.into_iter()),
-            Reader::Tx(tx) => {
-                let st = tx.structsy().structsy_impl.clone();
-                map_entry_tx(tx.tx().trans, &st, iter.into_iter())
-            }
-        };
-        if vec.len() < 1000 {
-            Ok(Some(vec))
-        } else {
-            Ok(None)
         }
     }
 
