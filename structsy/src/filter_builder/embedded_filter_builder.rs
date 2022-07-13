@@ -401,8 +401,7 @@ impl<T: 'static> EmbeddedFilterBuilder<T> {
             Bound::Excluded(x) => Bound::Excluded(x.to_string()),
             Bound::Unbounded => Bound::Unbounded,
         };
-        self.get_fields().add_field_ord(field.clone());
-        self.add(RangeConditionFilter::new(field, (start, end)))
+        <String as EmbeddedRangeCondition<T, String>>::range(self, field, (start, end))
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)
