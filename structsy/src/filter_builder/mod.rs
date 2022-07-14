@@ -1,5 +1,6 @@
 mod desc_info_finder;
 mod execution_model;
+mod fields_holder;
 mod filter_builder;
 mod plan_model;
 mod query_model;

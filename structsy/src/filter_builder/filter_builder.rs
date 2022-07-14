@@ -1,7 +1,7 @@
 use crate::{
     filter_builder::{
         execution_model::execute,
-        execution_model::FieldsHolder,
+        fields_holder::FieldsHolder,
         plan_model::plan_from_query,
         query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue},
         reader::{Reader, ReaderIterator},
