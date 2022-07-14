@@ -226,7 +226,7 @@ impl PersistentInfo {
 
                 quote! {
                     impl structsy::internal::FilterDefinition for #name {
-                        type Filter = structsy::internal::EmbeddedFilterBuilder<Self>;
+                        type Filter = structsy::internal::FilterBuilder<Self>;
                     }
                     impl structsy::internal::EmbeddedDescription for #name {
                         #desc
@@ -245,7 +245,7 @@ impl PersistentInfo {
 
                 quote! {
                     impl structsy::internal::FilterDefinition for #name {
-                        type Filter = structsy::internal::EmbeddedFilterBuilder<Self>;
+                        type Filter = structsy::internal::FilterBuilder<Self>;
                     }
                     impl structsy::internal::EmbeddedDescription for #name {
                         #desc

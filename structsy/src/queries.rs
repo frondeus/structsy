@@ -1,7 +1,7 @@
 #[allow(deprecated)]
 use crate::{
     filter::Filter,
-    filter_builder::{EmbeddedFilterBuilder, Reader},
+    filter_builder::Reader,
     internal::{EmbeddedDescription, FilterDefinition, Projection},
     Fetch, FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
@@ -80,7 +80,7 @@ pub trait Operators<F> {
 }
 
 pub trait EmbeddedQuery<T: PersistentEmbedded + FilterDefinition + 'static>: Sized {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T>;
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
     fn add_group(&mut self, filter: Filter<T>);
 }
 

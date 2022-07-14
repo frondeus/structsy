@@ -15,7 +15,7 @@ pub trait EqualAction<X> {
 }
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialEq + 'static,
 {
     #[inline]
@@ -26,7 +26,7 @@ where
 
 impl<T> EqualAction<&str> for (Field<T, String>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
 {
     #[inline]
     fn equal(self, value: &str) {
@@ -37,7 +37,7 @@ where
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
     for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialEq + 'static,
 {
     #[inline]
@@ -47,7 +47,7 @@ where
 }
 impl<T> EqualAction<&str> for (Field<T, Vec<String>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
 {
     #[inline]
     fn equal(self, value: &str) {
@@ -58,7 +58,7 @@ where
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
     for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialEq + 'static,
 {
     #[inline]
@@ -68,7 +68,7 @@ where
 }
 impl<T> EqualAction<&str> for (Field<T, Option<String>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
 {
     #[inline]
     fn equal(self, value: &str) {
@@ -208,6 +208,7 @@ where
     }
 }
 
+/*
 impl<T: 'static, V> QueryAction<Filter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
 where
     V: EmbeddedDescription + 'static,
@@ -217,6 +218,7 @@ where
         self.1.simple_persistent_embedded(self.0, value.extract_filter());
     }
 }
+*/
 
 impl<T: 'static, V> QueryAction<SnapshotQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
 where
@@ -230,7 +232,7 @@ where
 
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -241,7 +243,7 @@ where
 
 impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -252,7 +254,7 @@ where
 
 impl<T, V> QueryAction<Filter<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -263,7 +265,7 @@ where
 
 impl<T, V> QueryAction<Filter<V>> for (Field<T, V>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: EmbeddedDescription + 'static,
 {
     #[inline]
@@ -274,7 +276,7 @@ where
 
 impl<T, V> QueryAction<Filter<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -285,7 +287,7 @@ where
 
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -296,7 +298,7 @@ where
 
 impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Ref<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -307,7 +309,7 @@ where
 
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -318,7 +320,7 @@ where
 
 impl<T, V> QueryAction<SnapshotQuery<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -329,7 +331,7 @@ where
 
 impl<T, V> QueryAction<Filter<V>> for (Field<T, Vec<Ref<V>>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Persistent + 'static,
 {
     #[inline]
@@ -344,7 +346,7 @@ pub trait OrderAction {
 
 impl<T, V> OrderAction for (Field<T, V>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: Ord + ValueRange + 'static,
 {
     #[inline]

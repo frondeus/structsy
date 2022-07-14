@@ -200,9 +200,10 @@ fn test_embeddd_condition_filter_builder() {
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     RangeAction::range((EmbeddedData::field_test_ref(), &mut builder), first..second);
 
-    QueryAction::query(
+    /*QueryAction::query(
         (EmbeddedData::field_test_other_embedded(), &mut builder),
         Filter::<OtherEmbedded>::new(),
     );
+    */
     // EmbeddedData::field_test_option_vec_option(&mut bilder, Some(Vec::<u8>::new()));
 }

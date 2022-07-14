@@ -72,7 +72,9 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             read_iterator: iter.unwrap(),
         })
     }
+}
 
+impl<T: 'static> FilterBuilder<T> {
     pub fn cond_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
     where
         R: RangeBounds<&'a str>,
@@ -139,16 +141,20 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         self.get_fields().add_field_ord(field.clone());
     }
 
-    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)
+    pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: FilterBuilder<V>)
     where
         V: PersistentEmbedded + 'static,
     {
-        let (filter, orders_model, fields_holder) = filter.components();
+        let FilterBuilder {
+            filter,
+            orders,
+            fields_holder,
+        } = filter;
 
         self.get_fields().add_nested_field(field.clone(), fields_holder);
         self.filter.add_field_embedded(Rc::new(field.clone()), filter);
         self.orders
-            .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders_model));
+            .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders));
     }
 
     pub fn ref_query<V>(&mut self, field: Field<T, Ref<V>>, query: FilterBuilder<V>)

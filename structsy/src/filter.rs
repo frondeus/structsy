@@ -155,7 +155,7 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
 }
 
 impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for Filter<T> {
-    fn filter_builder(&mut self) -> &mut EmbeddedFilterBuilder<T> {
+    fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.filter_builder
     }
     fn add_group(&mut self, filter: Filter<T>) {
