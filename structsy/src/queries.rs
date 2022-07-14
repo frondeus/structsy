@@ -2,7 +2,7 @@
 use crate::{
     filter::Filter,
     filter_builder::Reader,
-    internal::{EmbeddedDescription, FilterDefinition, Projection},
+    internal::{EmbeddedDescription, Projection},
     Fetch, FilterBuilder, IntoResult, OwnedSytx, Persistent, PersistentEmbedded, Ref, Snapshot, Structsy,
 };
 /// Iterator for query results
@@ -79,12 +79,12 @@ pub trait Operators<F> {
     fn not<FN: Fn(F) -> F>(self, builder: FN) -> Self;
 }
 
-pub trait EmbeddedQuery<T: PersistentEmbedded + FilterDefinition + 'static>: Sized {
+pub trait EmbeddedQuery<T: PersistentEmbedded + 'static>: Sized {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T>;
     fn add_group(&mut self, filter: Filter<T>);
 }
 
-impl<T: EmbeddedDescription + FilterDefinition + 'static, Q: EmbeddedQuery<T>> Operators<Filter<T>> for Q {
+impl<T: EmbeddedDescription + 'static, Q: EmbeddedQuery<T>> Operators<Filter<T>> for Q {
     fn or<FN: Fn(Filter<T>) -> Filter<T>>(mut self, builder: FN) -> Self {
         self.filter_builder().or(builder(Filter::<T>::new()).extract_filter());
         self
@@ -283,7 +283,7 @@ impl<T: Persistent> IntoIterator for StructsyQuery<T> {
     }
 }
 
-pub struct ProjectionQuery<P: Projection<T>, T: FilterDefinition> {
+pub struct ProjectionQuery<P: Projection<T>, T> {
     builder: FilterBuilder<T>,
     structsy: Structsy,
     phantom: std::marker::PhantomData<P>,
@@ -482,10 +482,10 @@ impl<T: Persistent + 'static, Q: Query<T>> Operators<StructsyFilter<T>> for Q {
 
 #[cfg(test)]
 mod tests {
-    use super::{FilterBuilder, Query};
+    use super::Query;
     use crate::{
         actions::EqualAction,
-        internal::{Description, Field, FilterDefinition},
+        internal::{Description, Field},
         Filter, Persistent, Ref, SRes, Sytx,
     };
 
@@ -493,9 +493,6 @@ mod tests {
     struct ToQuery {
         first: String,
         second: Vec<String>,
-    }
-    impl FilterDefinition for ToQuery {
-        type Filter = FilterBuilder<Self>;
     }
     impl Persistent for ToQuery {
         fn get_name() -> &'static str {

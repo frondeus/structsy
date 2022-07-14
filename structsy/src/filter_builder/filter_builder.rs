@@ -20,13 +20,13 @@ pub struct FilterBuilder<T> {
     fields_holder: FieldsHolder<T>,
     orders: Vec<OrdersModel>,
 }
-impl<T: 'static> Default for FilterBuilder<T> {
+impl<T> Default for FilterBuilder<T> {
     fn default() -> Self {
         FilterBuilder::new()
     }
 }
 
-impl<T: 'static> FilterBuilder<T> {
+impl<T> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder {
             filter: FilterHolder::new(FilterMode::And),

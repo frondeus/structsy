@@ -156,9 +156,6 @@ impl PersistentInfo {
                 let filters = filter_tokens(&fields);
                 quote! {
 
-                impl structsy::internal::FilterDefinition for #name {
-                    type Filter = structsy::internal::FilterBuilder<Self>;
-                }
                 impl structsy::internal::Persistent for #name {
 
                     fn get_name() -> &'static str {
@@ -180,9 +177,6 @@ impl PersistentInfo {
                 let (desc, ser) = enum_serialization_tokens(name, variants);
 
                 quote! {
-                impl structsy::internal::FilterDefinition for #name {
-                    type Filter = structsy::internal::FilterBuilder<Self>;
-                }
                 impl structsy::internal::Persistent for #name {
 
                     #desc
@@ -225,9 +219,6 @@ impl PersistentInfo {
                 }
 
                 quote! {
-                    impl structsy::internal::FilterDefinition for #name {
-                        type Filter = structsy::internal::FilterBuilder<Self>;
-                    }
                     impl structsy::internal::EmbeddedDescription for #name {
                         #desc
                     }
@@ -244,9 +235,6 @@ impl PersistentInfo {
                 let (desc, ser) = enum_serialization_tokens(name, variants);
 
                 quote! {
-                    impl structsy::internal::FilterDefinition for #name {
-                        type Filter = structsy::internal::FilterBuilder<Self>;
-                    }
                     impl structsy::internal::EmbeddedDescription for #name {
                         #desc
                     }

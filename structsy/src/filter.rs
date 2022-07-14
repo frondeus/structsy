@@ -1,4 +1,4 @@
-use crate::internal::{EmbeddedDescription, FilterDefinition};
+use crate::internal::EmbeddedDescription;
 use crate::{
     filter_builder::{FilterBuilder, Reader},
     projection::Projection,
@@ -55,17 +55,17 @@ use crate::{
 ///     Ok(())
 /// }
 /// ```
-pub struct Filter<T: FilterDefinition> {
-    filter_builder: T::Filter,
+pub struct Filter<T> {
+    filter_builder: FilterBuilder<T>,
 }
 
-impl<T: FilterDefinition> Filter<T> {
+impl<T> Filter<T> {
     pub fn new() -> Self {
         Filter {
-            filter_builder: T::Filter::default(),
+            filter_builder: FilterBuilder::new(),
         }
     }
-    pub(crate) fn extract_filter(self) -> T::Filter {
+    pub(crate) fn extract_filter(self) -> FilterBuilder<T> {
         self.filter_builder
     }
 }
@@ -123,7 +123,7 @@ impl<T: Persistent> Filter<T> {
     }
 }
 
-impl<T: FilterDefinition> Default for Filter<T> {
+impl<T> Default for Filter<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -154,7 +154,7 @@ impl<T: Persistent + 'static> Fetch<(Ref<T>, T)> for Filter<T> {
     }
 }
 
-impl<T: EmbeddedDescription + FilterDefinition + 'static> EmbeddedQuery<T> for Filter<T> {
+impl<T: EmbeddedDescription + 'static> EmbeddedQuery<T> for Filter<T> {
     fn filter_builder(&mut self) -> &mut FilterBuilder<T> {
         &mut self.filter_builder
     }
