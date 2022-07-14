@@ -16,8 +16,8 @@ use std::{
 };
 
 pub struct FilterBuilder<T> {
-    pub(crate) filter: FilterHolder,
-    fields_holder: FieldsHolder<T>,
+    filters: FilterHolder,
+    fields: FieldsHolder<T>,
     orders: Vec<OrdersModel>,
 }
 impl<T> Default for FilterBuilder<T> {
@@ -29,18 +29,10 @@ impl<T> Default for FilterBuilder<T> {
 impl<T> FilterBuilder<T> {
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder {
-            filter: FilterHolder::new(FilterMode::And),
-            fields_holder: Default::default(),
+            filters: FilterHolder::new(FilterMode::And),
+            fields: Default::default(),
             orders: Vec::new(),
         }
-    }
-
-    fn get_filter(&mut self) -> &mut FilterHolder {
-        &mut self.filter
-    }
-
-    fn get_fields(&mut self) -> &mut FieldsHolder<T> {
-        &mut self.fields_holder
     }
 }
 
@@ -56,9 +48,9 @@ impl<'a, T> Iterator for ToIter<'a, T> {
 
 impl<T: Persistent + 'static> FilterBuilder<T> {
     pub fn finish<'a>(self, reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
-        let query = Query::new(T::get_name(), self.filter, self.orders, Vec::new());
+        let query = Query::new(T::get_name(), self.filters, self.orders, Vec::new());
         let plan = plan_from_query(query, &reader_inst.structsy()).unwrap();
-        let iter = execute(plan, Rc::new(self.fields_holder), reader_inst);
+        let iter = execute(plan, Rc::new(self.fields), reader_inst);
         Box::new(ToIter {
             read_iterator: iter.unwrap(),
         })
@@ -87,49 +79,49 @@ impl<T: 'static> FilterBuilder<T> {
     where
         V: ValueCompare + SolveQueryValue + 'static,
     {
-        self.get_filter().add_field_equal(Rc::new(field.clone()), value);
-        self.get_fields().add_field(field.clone());
+        self.filters.add_field_equal(Rc::new(field.clone()), value);
+        self.fields.add_field(field.clone());
     }
     pub fn cond_is<V>(&mut self, field: Field<T, Option<V>>, value: V)
     where
         V: ValueCompare + SolveQueryValue + 'static,
     {
-        self.get_filter().add_field_is(Rc::new(field.clone()), value);
-        self.get_fields().add_field(field.clone());
+        self.filters.add_field_is(Rc::new(field.clone()), value);
+        self.fields.add_field(field.clone());
     }
     pub fn cond_contains<V>(&mut self, field: Field<T, Vec<V>>, value: V)
     where
         V: ValueCompare + SolveQueryValue + 'static,
     {
-        self.get_filter().add_field_contains(Rc::new(field.clone()), value);
-        self.get_fields().add_field(field.clone());
+        self.filters.add_field_contains(Rc::new(field.clone()), value);
+        self.fields.add_field(field.clone());
     }
 
     pub fn cond_range<V, R: RangeBounds<V>>(&mut self, field: Field<T, V>, range: R)
     where
         V: ValueRange + SolveQueryValue + Clone + 'static,
     {
-        self.get_filter()
+        self.filters
             .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        self.get_fields().add_field_ord(field.clone());
+        self.fields.add_field_ord(field.clone());
     }
 
     pub fn cond_range_contains<V, R: RangeBounds<V>>(&mut self, field: Field<T, Vec<V>>, range: R)
     where
         V: ValueRange + SolveQueryValue + Clone + 'static,
     {
-        self.get_filter()
+        self.filters
             .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        self.get_fields().add_field_ord(field.clone());
+        self.fields.add_field_ord(field.clone());
     }
 
     pub fn cond_range_is<V, R: RangeBounds<V>>(&mut self, field: Field<T, Option<V>>, range: R)
     where
         V: ValueRange + SolveQueryValue + Clone + 'static,
     {
-        self.get_filter()
+        self.filters
             .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        self.get_fields().add_field_ord(field.clone());
+        self.fields.add_field_ord(field.clone());
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: FilterBuilder<V>)
@@ -137,13 +129,13 @@ impl<T: 'static> FilterBuilder<T> {
         V: PersistentEmbedded + 'static,
     {
         let FilterBuilder {
-            filter,
+            filters: filter,
             orders,
-            fields_holder,
+            fields: fields_holder,
         } = filter;
 
-        self.get_fields().add_nested_field(field.clone(), fields_holder);
-        self.filter.add_field_embedded(Rc::new(field.clone()), filter);
+        self.fields.add_nested_field(field.clone(), fields_holder);
+        self.filters.add_field_embedded(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_embedded(Rc::new(field.clone()), orders));
     }
@@ -153,12 +145,12 @@ impl<T: 'static> FilterBuilder<T> {
         V: Persistent + 'static,
     {
         let FilterBuilder {
-            filter,
-            fields_holder,
+            filters: filter,
+            fields: fields_holder,
             orders,
         } = query;
-        self.get_fields().add_field_ref(field.clone(), fields_holder.clone());
-        self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
+        self.fields.add_field_ref(field.clone(), fields_holder.clone());
+        self.filters.add_field_ref_query_equal(Rc::new(field.clone()), filter);
         self.orders
             .push(OrdersModel::new_query_equal(Rc::new(field.clone()), orders));
     }
@@ -168,13 +160,13 @@ impl<T: 'static> FilterBuilder<T> {
         V: Persistent + 'static,
     {
         let FilterBuilder {
-            filter,
-            fields_holder,
+            filters,
+            fields,
             orders,
         } = query;
-        self.get_fields()
-            .add_field_vec_ref(field.clone(), fields_holder.clone());
-        self.filter.add_field_ref_query_contains(Rc::new(field.clone()), filter);
+        self.fields.add_field_vec_ref(field.clone(), fields.clone());
+        self.filters
+            .add_field_ref_query_contains(Rc::new(field.clone()), filters);
         self.orders
             .push(OrdersModel::new_query_contains(Rc::new(field.clone()), orders));
     }
@@ -184,68 +176,67 @@ impl<T: 'static> FilterBuilder<T> {
         V: Persistent + 'static,
     {
         let FilterBuilder {
-            filter,
-            fields_holder,
+            filters,
+            fields,
             orders,
         } = query;
-        self.get_fields()
-            .add_field_option_ref(field.clone(), fields_holder.clone());
+        self.fields.add_field_option_ref(field.clone(), fields.clone());
         self.orders
             .push(OrdersModel::new_query_is(Rc::new(field.clone()), orders));
-        self.filter.add_field_ref_query_is(Rc::new(field.clone()), filter);
+        self.filters.add_field_ref_query_is(Rc::new(field.clone()), filters);
     }
 
     pub fn or(&mut self, builder: FilterBuilder<T>) {
         let FilterBuilder {
-            mut filter,
+            mut filters,
             orders,
-            fields_holder,
+            fields,
         } = builder;
-        filter.mode = FilterMode::Or;
-        self.fields_holder.merge(fields_holder);
-        self.filter.add_group(filter);
+        filters.mode = FilterMode::Or;
+        self.fields.merge(fields);
+        self.filters.add_group(filters);
         self.orders.extend(orders);
     }
 
     pub fn and(&mut self, builder: FilterBuilder<T>) {
         let FilterBuilder {
-            mut filter,
-            fields_holder,
+            mut filters,
+            fields,
             orders,
         } = builder;
-        filter.mode = FilterMode::And;
-        self.fields_holder.merge(fields_holder);
-        self.filter.add_group(filter);
+        filters.mode = FilterMode::And;
+        self.fields.merge(fields);
+        self.filters.add_group(filters);
         self.orders.extend(orders);
     }
 
     pub fn and_filter(&mut self, filters: FilterBuilder<T>) {
         let FilterBuilder {
-            mut filter,
-            fields_holder,
+            mut filters,
+            fields,
             orders,
         } = filters;
-        filter.mode = FilterMode::And;
-        self.fields_holder.merge(fields_holder);
-        self.filter.add_group(filter);
+        filters.mode = FilterMode::And;
+        self.fields.merge(fields);
+        self.filters.add_group(filters);
         self.orders.extend(orders);
     }
 
     pub fn not(&mut self, builder: FilterBuilder<T>) {
         let FilterBuilder {
-            mut filter,
-            fields_holder,
+            mut filters,
+            fields,
             orders,
         } = builder;
-        filter.mode = FilterMode::Not;
-        self.filter.add_group(filter);
-        self.fields_holder.merge(fields_holder);
+        filters.mode = FilterMode::Not;
+        self.filters.add_group(filters);
+        self.fields.merge(fields);
         self.orders.extend(orders);
     }
 
     pub fn order<V: ValueRange + Ord + 'static>(&mut self, field: Field<T, V>, order: Order) {
         self.orders
             .push(OrdersModel::new_field(Rc::new(field.clone()), order.clone()));
-        self.get_fields().add_field_ord(field.clone());
+        self.fields.add_field_ord(field.clone());
     }
 }
