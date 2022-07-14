@@ -1,8 +1,8 @@
 use crate::{
     filter::Filter,
     filter_builder::{
-        EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, RangeCondition, SimpleCondition,
-        SimpleEmbeddedCondition, SolveQueryValue, ValueCompare, ValueRange,
+        EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, SimpleEmbeddedCondition, SolveQueryValue,
+        ValueCompare, ValueRange,
     },
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
@@ -16,11 +16,11 @@ pub trait EqualAction<X> {
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+    V: PartialEq + 'static,
 {
     #[inline]
     fn equal(self, value: V) {
-        V::equal(self.1, self.0, value);
+        self.1.cond_equal(self.0, value);
     }
 }
 
@@ -30,7 +30,7 @@ where
 {
     #[inline]
     fn equal(self, value: &str) {
-        <String as SimpleCondition<T, String>>::equal(self.1, self.0, value.to_string());
+        self.1.cond_equal(self.0, value.to_string());
     }
 }
 
@@ -38,11 +38,11 @@ impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
     for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+    V: PartialEq + 'static,
 {
     #[inline]
     fn equal(self, value: V) {
-        V::contains(self.1, self.0, value);
+        self.1.cond_contains(self.0, value);
     }
 }
 impl<T> EqualAction<&str> for (Field<T, Vec<String>>, &mut FilterBuilder<T>)
@@ -51,7 +51,7 @@ where
 {
     #[inline]
     fn equal(self, value: &str) {
-        <String as SimpleCondition<T, String>>::contains(self.1, self.0, value.to_string());
+        self.1.cond_contains(self.0, value.to_string());
     }
 }
 
@@ -59,11 +59,11 @@ impl<T, V: PersistentEmbedded + SolveQueryValue + ValueCompare> EqualAction<V>
     for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: SimpleCondition<T, V> + PartialEq + Clone + 'static,
+    V: PartialEq + 'static,
 {
     #[inline]
     fn equal(self, value: V) {
-        <V as SimpleCondition<T, V>>::is(self.1, self.0, value);
+        self.1.cond_is(self.0, value);
     }
 }
 impl<T> EqualAction<&str> for (Field<T, Option<String>>, &mut FilterBuilder<T>)
@@ -72,7 +72,7 @@ where
 {
     #[inline]
     fn equal(self, value: &str) {
-        <String as SimpleCondition<T, String>>::is(self.1, self.0, value.to_string());
+        self.1.cond_is(self.0, value.to_string());
     }
 }
 
@@ -118,22 +118,22 @@ pub trait RangeAction<X> {
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+    V: PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        <V as RangeCondition<T, V>>::range(self.1, self.0, value);
+        self.1.cond_range(self.0, value);
     }
 }
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
     for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+    V: PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        <V as RangeCondition<T, V>>::range_contains(self.1, self.0, value);
+        self.1.cond_range_contains(self.0, value);
     }
 }
 
@@ -141,11 +141,11 @@ impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
     for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: Persistent + 'static,
-    V: RangeCondition<T, V> + PartialOrd + Clone + 'static,
+    V: PartialOrd + Clone + 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
-        <V as RangeCondition<T, V>>::range_is(self.1, self.0, value);
+        self.1.cond_range_is(self.0, value);
     }
 }
 
@@ -155,7 +155,7 @@ where
 {
     #[inline]
     fn range(self, value: impl RangeBounds<&'a str>) {
-        self.1.indexable_range_str(self.0, value)
+        self.1.cond_range_str(self.0, value)
     }
 }
 

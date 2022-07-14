@@ -4,141 +4,17 @@ use crate::{
         execution_model::execute,
         execution_model::FieldsHolder,
         plan_model::plan_from_query,
-        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue, SolveSimpleQueryValue},
+        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue},
         reader::{Reader, ReaderIterator},
         ValueCompare, ValueRange,
     },
-    internal::{EmbeddedDescription, Field},
+    internal::Field,
     Order, Persistent, PersistentEmbedded, Ref,
 };
 use std::{
     ops::{Bound, RangeBounds},
     rc::Rc,
 };
-
-pub trait RangeCondition<
-    T: Persistent + 'static,
-    V: PersistentEmbedded + Clone + PartialOrd + 'static + SolveQueryValue + ValueRange,
->
-{
-    fn range<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, V>, range: R) {
-        filter
-            .get_filter()
-            .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        filter.get_fields().add_field_ord(field.clone());
-    }
-
-    fn range_contains<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, range: R) {
-        filter
-            .get_filter()
-            .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        filter.get_fields().add_field_ord(field.clone());
-    }
-
-    fn range_is<R: RangeBounds<V>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, range: R) {
-        filter
-            .get_filter()
-            .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
-        filter.get_fields().add_field_ord(field.clone());
-    }
-}
-pub trait SimpleCondition<
-    T: Persistent + 'static,
-    V: PersistentEmbedded + ValueCompare + Clone + PartialEq + 'static + SolveQueryValue,
->
-{
-    fn equal(filter: &mut FilterBuilder<T>, field: Field<T, V>, value: V) {
-        filter
-            .get_filter()
-            .add_field_equal(Rc::new(field.clone()), value.clone());
-        filter.get_fields().add_field(field.clone());
-    }
-
-    fn contains(filter: &mut FilterBuilder<T>, field: Field<T, Vec<V>>, value: V) {
-        filter
-            .get_filter()
-            .add_field_contains(Rc::new(field.clone()), value.clone());
-        filter.get_fields().add_field(field.clone());
-    }
-
-    fn is(filter: &mut FilterBuilder<T>, field: Field<T, Option<V>>, value: V) {
-        filter.get_filter().add_field_is(Rc::new(field.clone()), value.clone());
-        filter.get_fields().add_field(field.clone());
-    }
-}
-
-impl<T: Persistent + 'static> RangeCondition<T, bool> for bool {}
-impl<T: Persistent + 'static> SimpleCondition<T, bool> for bool {}
-impl<T: Persistent + 'static> SimpleCondition<T, Vec<bool>> for Vec<bool> {}
-impl<T: Persistent + 'static> RangeCondition<T, Vec<bool>> for Vec<bool> {}
-
-impl<T: Persistent + 'static, R: Persistent + 'static> SimpleCondition<T, Ref<R>> for Ref<R> {}
-impl<T: Persistent + 'static, R: Persistent + 'static> RangeCondition<T, Ref<R>> for Ref<R> {}
-impl<T: Persistent + 'static, R: Persistent + 'static> SimpleCondition<T, Vec<Ref<R>>> for Vec<Ref<R>> {}
-impl<T: Persistent + 'static, R: Persistent + 'static> RangeCondition<T, Vec<Ref<R>>> for Vec<Ref<R>> {}
-impl<T: Persistent + 'static, R: Persistent + 'static> SimpleCondition<T, Option<Ref<R>>> for Option<Ref<R>> {}
-impl<T: Persistent + 'static, R: Persistent + 'static> RangeCondition<T, Option<Ref<R>>> for Option<Ref<R>> {}
-macro_rules! index_conditions {
-    ($($t:ty),+) => {
-        $(
-        impl<T: Persistent + 'static> SimpleCondition<T, $t>  for $t {}
-
-        impl<T: Persistent + 'static> SimpleCondition<T, Vec<$t>> for Vec<$t> {}
-
-        impl<T: Persistent + 'static> RangeCondition<T, Vec<$t>> for Vec<$t>{}
-
-        impl<T: Persistent + 'static> SimpleCondition<T, Option<$t>> for Option<$t> {
-            fn equal(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, value: Option<$t>) {
-                filter.get_filter().add_field_equal(
-                    Rc::new(field.clone()),
-                    value.clone()
-                );
-                filter.get_fields().add_field(field.clone());
-            }
-        }
-
-        impl<T: Persistent + 'static> RangeCondition<T, $t> for $t {}
-
-        impl< T: Persistent + 'static> RangeCondition<T, Option<$t>> for Option<$t> {
-            fn range<R: RangeBounds<Option<$t>>>(filter: &mut FilterBuilder<T>, field: Field<T, Option<$t>>, range: R) {
-                filter.get_filter().add_field_range(
-                    Rc::new(field.clone()),
-                    (&range.start_bound(),&range.end_bound())
-                );
-                filter.get_fields().add_field_ord(field.clone());
-            }
-        }
-
-        )+
-    };
-}
-
-index_conditions!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, String);
-
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveQueryValue>
-    SimpleCondition<T, V> for V
-{
-}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveQueryValue>
-    RangeCondition<T, V> for V
-{
-}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveSimpleQueryValue>
-    SimpleCondition<T, Vec<V>> for Vec<V>
-{
-}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
-    RangeCondition<T, Vec<V>> for Vec<V>
-{
-}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialEq + Clone + 'static + SolveSimpleQueryValue>
-    SimpleCondition<T, Option<V>> for Option<V>
-{
-}
-impl<T: Persistent + 'static, V: EmbeddedDescription + PartialOrd + Clone + 'static + SolveSimpleQueryValue>
-    RangeCondition<T, Option<V>> for Option<V>
-{
-}
 
 pub struct FilterBuilder<T> {
     pub(crate) filter: FilterHolder,
@@ -197,7 +73,7 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
         })
     }
 
-    pub fn indexable_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
+    pub fn cond_range_str<'a, R>(&mut self, field: Field<T, String>, range: R)
     where
         R: RangeBounds<&'a str>,
     {
@@ -211,7 +87,56 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             Bound::Excluded(x) => Bound::Excluded(x.to_string()),
             Bound::Unbounded => Bound::Unbounded,
         };
-        <String as RangeCondition<T, String>>::range(self, field, (start, end))
+        self.cond_range(field, (start, end));
+    }
+
+    pub fn cond_equal<V>(&mut self, field: Field<T, V>, value: V)
+    where
+        V: ValueCompare + SolveQueryValue + 'static,
+    {
+        self.get_filter().add_field_equal(Rc::new(field.clone()), value);
+        self.get_fields().add_field(field.clone());
+    }
+    pub fn cond_is<V>(&mut self, field: Field<T, Option<V>>, value: V)
+    where
+        V: ValueCompare + SolveQueryValue + 'static,
+    {
+        self.get_filter().add_field_is(Rc::new(field.clone()), value);
+        self.get_fields().add_field(field.clone());
+    }
+    pub fn cond_contains<V>(&mut self, field: Field<T, Vec<V>>, value: V)
+    where
+        V: ValueCompare + SolveQueryValue + 'static,
+    {
+        self.get_filter().add_field_contains(Rc::new(field.clone()), value);
+        self.get_fields().add_field(field.clone());
+    }
+
+    pub fn cond_range<V, R: RangeBounds<V>>(&mut self, field: Field<T, V>, range: R)
+    where
+        V: ValueRange + SolveQueryValue + Clone + 'static,
+    {
+        self.get_filter()
+            .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        self.get_fields().add_field_ord(field.clone());
+    }
+
+    pub fn cond_range_contains<V, R: RangeBounds<V>>(&mut self, field: Field<T, Vec<V>>, range: R)
+    where
+        V: ValueRange + SolveQueryValue + Clone + 'static,
+    {
+        self.get_filter()
+            .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        self.get_fields().add_field_ord(field.clone());
+    }
+
+    pub fn cond_range_is<V, R: RangeBounds<V>>(&mut self, field: Field<T, Option<V>>, range: R)
+    where
+        V: ValueRange + SolveQueryValue + Clone + 'static,
+    {
+        self.get_filter()
+            .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
+        self.get_fields().add_field_ord(field.clone());
     }
 
     pub fn simple_persistent_embedded<V>(&mut self, field: Field<T, V>, filter: EmbeddedFilterBuilder<V>)
@@ -235,7 +160,6 @@ impl<T: Persistent + 'static> FilterBuilder<T> {
             fields_holder,
             orders,
         } = query;
-        //TODO: merge field holder
         self.get_fields().add_field_ref(field.clone(), fields_holder.clone());
         self.filter.add_field_ref_query_equal(Rc::new(field.clone()), filter);
         self.orders
