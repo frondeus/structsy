@@ -1,6 +1,6 @@
 use crate::internal::{EmbeddedDescription, FilterDefinition};
 use crate::{
-    filter_builder::{EmbeddedFilterBuilder, FilterBuilder, Reader},
+    filter_builder::{FilterBuilder, Reader},
     projection::Projection,
     queries::ProjectionResult,
     queries::{EmbeddedQuery, Query},

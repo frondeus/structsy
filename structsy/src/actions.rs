@@ -1,9 +1,6 @@
 use crate::{
     filter::Filter,
-    filter_builder::{
-        EmbeddedFilterBuilder, EmbeddedRangeCondition, FilterBuilder, SimpleEmbeddedCondition, SolveQueryValue,
-        ValueCompare, ValueRange,
-    },
+    filter_builder::{FilterBuilder, SolveQueryValue, ValueCompare, ValueRange},
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
     Order, Persistent, PersistentEmbedded, Ref,
@@ -76,48 +73,13 @@ where
     }
 }
 
-impl<T: 'static, V> EqualAction<V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
-{
-    #[inline]
-    fn equal(self, value: V) {
-        V::equal(self.1, self.0, value);
-    }
-}
-
-impl<T: 'static> EqualAction<&str> for (Field<T, String>, &mut EmbeddedFilterBuilder<T>) {
-    #[inline]
-    fn equal(self, value: &str) {
-        <String as SimpleEmbeddedCondition<T, String>>::equal(self.1, self.0, value.to_string());
-    }
-}
-
-impl<T: 'static, V> EqualAction<V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
-{
-    #[inline]
-    fn equal(self, value: V) {
-        V::contains(self.1, self.0, value);
-    }
-}
-impl<T: 'static, V> EqualAction<V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: SimpleEmbeddedCondition<T, V> + PartialEq + Clone + 'static + SolveQueryValue + ValueCompare,
-{
-    #[inline]
-    fn equal(self, value: V) {
-        <V as SimpleEmbeddedCondition<T, V>>::is(self.1, self.0, value);
-    }
-}
-
 pub trait RangeAction<X> {
     fn range(self, value: impl RangeBounds<X>);
 }
+
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialOrd + Clone + 'static,
 {
     #[inline]
@@ -128,7 +90,7 @@ where
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
     for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialOrd + Clone + 'static,
 {
     #[inline]
@@ -140,7 +102,7 @@ where
 impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
     for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
     V: PartialOrd + Clone + 'static,
 {
     #[inline]
@@ -151,7 +113,7 @@ where
 
 impl<'a, T> RangeAction<&'a str> for (Field<T, String>, &mut FilterBuilder<T>)
 where
-    T: Persistent + 'static,
+    T: 'static,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<&'a str>) {
@@ -159,75 +121,8 @@ where
     }
 }
 
-impl<T: 'static, V> RangeAction<V> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
-{
-    #[inline]
-    fn range(self, value: impl RangeBounds<V>) {
-        <V as EmbeddedRangeCondition<T, V>>::range(self.1, self.0, value);
-    }
-}
-impl<T: 'static, V> RangeAction<V> for (Field<T, Vec<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
-{
-    #[inline]
-    fn range(self, value: impl RangeBounds<V>) {
-        <V as EmbeddedRangeCondition<T, V>>::range_contains(self.1, self.0, value);
-    }
-}
-impl<T: 'static, V> RangeAction<V> for (Field<T, Option<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: EmbeddedRangeCondition<T, V> + PartialOrd + Clone + 'static + SolveQueryValue + ValueRange,
-{
-    #[inline]
-    fn range(self, value: impl RangeBounds<V>) {
-        <V as EmbeddedRangeCondition<T, V>>::range_is(self.1, self.0, value);
-    }
-}
-
-impl<'a, T: 'static> RangeAction<&'a str> for (Field<T, String>, &mut EmbeddedFilterBuilder<T>) {
-    #[inline]
-    fn range(self, value: impl RangeBounds<&'a str>) {
-        self.1.simple_range_str(self.0, value)
-    }
-}
-
 pub trait QueryAction<X> {
     fn query(self, value: X);
-}
-
-impl<T: 'static, V> QueryAction<StructsyQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn query(self, value: StructsyQuery<V>) {
-        self.1.ref_query(self.0, value.builder());
-    }
-}
-
-/*
-impl<T: 'static, V> QueryAction<Filter<V>> for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: EmbeddedDescription + 'static,
-{
-    #[inline]
-    fn query(self, value: Filter<V>) {
-        self.1.simple_persistent_embedded(self.0, value.extract_filter());
-    }
-}
-*/
-
-impl<T: 'static, V> QueryAction<SnapshotQuery<V>> for (Field<T, Ref<V>>, &mut EmbeddedFilterBuilder<T>)
-where
-    V: Persistent + 'static,
-{
-    #[inline]
-    fn query(self, value: SnapshotQuery<V>) {
-        self.1.ref_query(self.0, value.builder());
-    }
 }
 
 impl<T, V> QueryAction<StructsyQuery<V>> for (Field<T, Option<Ref<V>>>, &mut FilterBuilder<T>)
@@ -347,17 +242,6 @@ pub trait OrderAction {
 impl<T, V> OrderAction for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: 'static,
-    V: Ord + ValueRange + 'static,
-{
-    #[inline]
-    fn order(self, value: Order) {
-        self.1.order(self.0, value)
-    }
-}
-
-impl<T, V> OrderAction for (Field<T, V>, &mut EmbeddedFilterBuilder<T>)
-where
-    T: PersistentEmbedded + 'static,
     V: Ord + ValueRange + 'static,
 {
     #[inline]

@@ -1,6 +1,5 @@
 use crate::{
     filter_builder::{
-        embedded_filter_builder::EmbeddedFilterBuilder,
         execution_model::execute,
         execution_model::FieldsHolder,
         plan_model::plan_from_query,
@@ -28,15 +27,6 @@ impl<T: 'static> Default for FilterBuilder<T> {
 }
 
 impl<T: 'static> FilterBuilder<T> {
-    pub(crate) fn move_out_filter(&mut self) -> FilterHolder {
-        std::mem::replace(&mut self.filter, FilterHolder::new(FilterMode::And))
-    }
-    pub(crate) fn move_out_fields_holder(&mut self) -> FieldsHolder<T> {
-        std::mem::replace(&mut self.fields_holder, FieldsHolder::default())
-    }
-    pub(crate) fn move_out_orders(&mut self) -> Vec<OrdersModel> {
-        std::mem::replace(&mut self.orders, Vec::new())
-    }
     pub fn new() -> FilterBuilder<T> {
         FilterBuilder {
             filter: FilterHolder::new(FilterMode::And),
@@ -48,6 +38,7 @@ impl<T: 'static> FilterBuilder<T> {
     fn get_filter(&mut self) -> &mut FilterHolder {
         &mut self.filter
     }
+
     fn get_fields(&mut self) -> &mut FieldsHolder<T> {
         &mut self.fields_holder
     }

@@ -1,6 +1,6 @@
 #[allow(deprecated)]
 use structsy::{
-    internal::{EmbeddedFilterBuilder, EqualAction, FilterBuilder, QueryAction, RangeAction},
+    internal::{EqualAction, FilterBuilder, QueryAction, RangeAction},
     Filter, Ref,
 };
 use structsy_derive::{Persistent, PersistentEmbedded};
@@ -144,7 +144,7 @@ pub struct OtherEmbedded {}
 #[test]
 fn test_embeddd_condition_filter_builder() {
     //let st = Structsy::open("abc").expect("structsy_can_open");
-    let mut builder = EmbeddedFilterBuilder::<EmbeddedData>::new();
+    let mut builder = FilterBuilder::<EmbeddedData>::new();
     EqualAction::equal((EmbeddedData::field_test_string(), &mut builder), String::from("aaa"));
     EqualAction::equal((EmbeddedData::field_test_string(), &mut builder), "aaa");
     EqualAction::equal((EmbeddedData::field_test_u8(), &mut builder), 1u8);
@@ -200,10 +200,9 @@ fn test_embeddd_condition_filter_builder() {
     let second = "ReferedData@s0c5a58".parse::<Ref<ReferedData>>().unwrap();
     RangeAction::range((EmbeddedData::field_test_ref(), &mut builder), first..second);
 
-    /*QueryAction::query(
+    QueryAction::query(
         (EmbeddedData::field_test_other_embedded(), &mut builder),
         Filter::<OtherEmbedded>::new(),
     );
-    */
     // EmbeddedData::field_test_option_vec_option(&mut bilder, Some(Vec::<u8>::new()));
 }

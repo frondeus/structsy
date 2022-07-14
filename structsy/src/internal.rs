@@ -11,7 +11,6 @@ pub use crate::desc::{
     StructDescriptionBuilder, ValueTypeBuilder, VariantDescription,
 };
 pub use crate::filter::Filter;
-pub use crate::filter_builder::EmbeddedFilterBuilder;
 pub use crate::filter_builder::FilterBuilder;
 pub use crate::format::PersistentEmbedded;
 pub use crate::index::{declare_index, IndexableValue};
