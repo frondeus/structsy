@@ -176,7 +176,7 @@ pub enum ValueType {
 }
 
 impl ValueType {
-    pub(crate) fn index_score(&self, reader: Reader, index_name: &str) -> SRes<usize> {
+    pub(crate) fn index_score(&self, reader: &mut Reader, index_name: &str) -> SRes<usize> {
         match self {
             ValueType::Value(v) => v.index_score(reader, index_name),
             ValueType::Array(v) => v.index_score(reader, index_name),
@@ -273,7 +273,7 @@ impl SimpleValueType {
         Ok(())
     }
 
-    pub(crate) fn index_score(&self, reader: Reader, index_name: &str) -> SRes<usize> {
+    pub(crate) fn index_score(&self, reader: &mut Reader, index_name: &str) -> SRes<usize> {
         match self {
             SimpleValueType::U8 => u8::finder().score(reader, index_name, None),
             SimpleValueType::U16 => u16::finder().score(reader, index_name, None),

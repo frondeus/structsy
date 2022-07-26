@@ -9,9 +9,6 @@ pub trait PersistentEmbedded {
     fn read(read: &mut dyn Read) -> SRes<Self>
     where
         Self: Sized;
-    fn indexable() -> bool {
-        false
-    }
     fn finder() -> Box<dyn Finder<Self>>
     where
         Self: Sized + 'static,
@@ -28,9 +25,6 @@ impl PersistentEmbedded for u8 {
     fn read(read: &mut dyn Read) -> SRes<u8> {
         Ok(ReadBytesExt::read_u8(read)?)
     }
-    fn indexable() -> bool {
-        true
-    }
     fn finder() -> Box<dyn Finder<Self>>
     where
         Self: Sized + 'static,
@@ -45,9 +39,6 @@ impl PersistentEmbedded for i8 {
     }
     fn read(read: &mut dyn Read) -> SRes<i8> {
         Ok(ReadBytesExt::read_i8(read)?)
-    }
-    fn indexable() -> bool {
-        true
     }
     fn finder() -> Box<dyn Finder<Self>>
     where
@@ -83,9 +74,6 @@ impl PersistentEmbedded for String {
         read.take(size).read_to_string(&mut s)?;
         Ok(s)
     }
-    fn indexable() -> bool {
-        true
-    }
     fn finder() -> Box<dyn Finder<Self>>
     where
         Self: Sized + 'static,
@@ -111,9 +99,6 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Option<T> {
             Ok(None)
         }
     }
-    fn indexable() -> bool {
-        false
-    }
 }
 
 impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
@@ -132,9 +117,6 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
         }
         Ok(v)
     }
-    fn indexable() -> bool {
-        false
-    }
 }
 impl<T: Persistent> PersistentEmbedded for Ref<T> {
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
@@ -145,9 +127,6 @@ impl<T: Persistent> PersistentEmbedded for Ref<T> {
     fn read(read: &mut dyn Read) -> SRes<Ref<T>> {
         let s_id = String::read(read)?;
         Ok(Ref::new(s_id.parse()?))
-    }
-    fn indexable() -> bool {
-        false
     }
 }
 
@@ -160,9 +139,6 @@ macro_rules! impl_persistent_embedded {
             }
             fn read(read: &mut dyn Read) -> SRes<$t> {
                 Ok(ReadBytesExt::$r::<BigEndian>(read)?)
-            }
-            fn indexable() -> bool {
-                true
             }
             fn finder() -> Box<dyn Finder<Self>>
             where

@@ -11,372 +11,83 @@ use crate::{
 };
 use std::ops::Bound;
 
+macro_rules! score_for_type {
+    ($t:ident,$e:ident,$fi:ident) => {
+        fn $fi(
+                reader: &mut Reader,
+                index_name: &str,
+                bound: (Bound<SimpleQueryValue>, Bound<SimpleQueryValue>),
+            ) -> Option<SRes<usize>> {
+            match bound {
+        (Bound::Included(SimpleQueryValue::$e(r0)),Bound::Included(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))),
+        (Bound::Included(SimpleQueryValue::$e(r0)),Bound::Excluded(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))),
+        (Bound::Included(SimpleQueryValue::$e(r0)),Bound::Unbounded) =>
+            Some($t::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded)))),
+        (Bound::Excluded(SimpleQueryValue::$e(r0)),Bound::Included(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))),
+        (Bound::Excluded(SimpleQueryValue::$e(r0)),Bound::Excluded(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))),
+        (Bound::Excluded(SimpleQueryValue::$e(r0)),Bound::Unbounded) =>
+            Some($t::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded)))),
+        (Bound::Unbounded,Bound::Included(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))),
+        (Bound::Unbounded,Bound::Excluded(SimpleQueryValue::$e(r1))) =>
+                Some($t::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))),
+                _ => None,
+            }
+        }
+    };
+}
+
+score_for_type!(u8, U8, score_for_u8);
+score_for_type!(u16, U16, score_for_u16);
+score_for_type!(u32, U32, score_for_u32);
+score_for_type!(u64, U64, score_for_u64);
+score_for_type!(u128, U128, score_for_u128);
+score_for_type!(i8, I8, score_for_i8);
+score_for_type!(i16, I16, score_for_i16);
+score_for_type!(i32, I32, score_for_i32);
+score_for_type!(i64, I64, score_for_i64);
+score_for_type!(i128, I128, score_for_i128);
+score_for_type!(f32, F32, score_for_f32);
+score_for_type!(f64, F64, score_for_f64);
+score_for_type!(String, String, score_for_string);
+
 fn index_score(
-    reader: Reader,
+    reader: &mut Reader,
     index_name: &str,
-    (bound_0, bound_1): (Bound<SimpleQueryValue>, Bound<SimpleQueryValue>),
+    bound: (Bound<SimpleQueryValue>, Bound<SimpleQueryValue>),
 ) -> SRes<usize> {
-    match bound_0 {
-        Bound::Included(SimpleQueryValue::U8(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::U8(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::U16(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::U16(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-
-        Bound::Included(SimpleQueryValue::U32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::U32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::U128(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::U128(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::U64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::U64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => u64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::I8(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i8::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::I8(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i8::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::I16(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i16::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::I16(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i16::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::I32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::I32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::I64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::I64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::I128(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i128::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::I128(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => i128::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::F32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => f32::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::F32(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => f32::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::F64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => f64::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::F64(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => f64::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded))),
-            _ => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::String(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => {
-                String::finder().score(reader, index_name, Some((Bound::Included(r0), Bound::Unbounded)))
-            }
-            _ => Ok(usize::MAX),
-        },
-        Bound::Excluded(SimpleQueryValue::String(r0)) => match bound_1 {
-            Bound::Included(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Included(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Excluded(r1))))
-            }
-            Bound::Unbounded => {
-                String::finder().score(reader, index_name, Some((Bound::Excluded(r0), Bound::Unbounded)))
-            }
-            _ => Ok(usize::MAX),
-        },
-
-        Bound::Unbounded => match bound_1 {
-            Bound::Included(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Included(r1))))
-            }
-            Bound::Included(SimpleQueryValue::Bool(_)) => Ok(usize::MAX),
-            Bound::Included(SimpleQueryValue::Ref(_)) => Ok(usize::MAX),
-            Bound::Included(SimpleQueryValue::Embedded(_)) => Ok(usize::MAX),
-            Bound::Excluded(SimpleQueryValue::U8(r1)) => {
-                u8::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U16(r1)) => {
-                u16::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U32(r1)) => {
-                u32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U64(r1)) => {
-                u64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::U128(r1)) => {
-                u128::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I8(r1)) => {
-                i8::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I16(r1)) => {
-                i16::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I32(r1)) => {
-                i32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I64(r1)) => {
-                i64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::I128(r1)) => {
-                i128::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F32(r1)) => {
-                f32::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::F64(r1)) => {
-                f64::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::String(r1)) => {
-                String::finder().score(reader, index_name, Some((Bound::Unbounded, Bound::Excluded(r1))))
-            }
-            Bound::Excluded(SimpleQueryValue::Bool(_)) => Ok(usize::MAX),
-            Bound::Excluded(SimpleQueryValue::Ref(_)) => Ok(usize::MAX),
-            Bound::Excluded(SimpleQueryValue::Embedded(_)) => Ok(usize::MAX),
-
-            Bound::Unbounded => Ok(usize::MAX),
-        },
-        Bound::Included(SimpleQueryValue::Bool(_)) => Ok(usize::MAX),
-        Bound::Included(SimpleQueryValue::Ref(_)) => Ok(usize::MAX),
-        Bound::Included(SimpleQueryValue::Embedded(_)) => Ok(usize::MAX),
-        Bound::Excluded(SimpleQueryValue::Bool(_)) => Ok(usize::MAX),
-        Bound::Excluded(SimpleQueryValue::Ref(_)) => Ok(usize::MAX),
-        Bound::Excluded(SimpleQueryValue::Embedded(_)) => Ok(usize::MAX),
+    if let Some(x) = score_for_u8(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_u16(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_u32(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_u64(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_u128(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_i8(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_i16(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_i32(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_i64(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_i128(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_f32(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_f64(reader, index_name, bound.clone()) {
+        x
+    } else if let Some(x) = score_for_string(reader, index_name, bound.clone()) {
+        x
+    } else {
+        Ok(usize::MAX)
     }
 }
 
@@ -880,15 +591,16 @@ impl InfoFinder for Structsy {
         }
     }
     fn score_index(&self, index: &IndexInfo) -> SRes<usize> {
-        let reader = Reader::Structsy(self.clone());
+        //TODO: score also in other context like with transaction
+        let mut reader = Reader::Structsy(self.clone());
         if let Some(bounds) = index.index_range.clone() {
             if let Some(bb) = QueryValuePlan::extract_bounds(bounds) {
-                index_score(reader, &index.index_name, bb)
+                index_score(&mut reader, &index.index_name, bb)
             } else {
-                index.value_type.index_score(reader, &index.index_name)
+                index.value_type.index_score(&mut reader, &index.index_name)
             }
         } else {
-            index.value_type.index_score(reader, &index.index_name)
+            index.value_type.index_score(&mut reader, &index.index_name)
         }
     }
 }
