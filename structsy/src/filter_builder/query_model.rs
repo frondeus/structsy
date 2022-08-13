@@ -167,6 +167,12 @@ impl<'a> EmbValue<'a> {
     pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
         Self::EqType(Rc::new(t))
     }
+    pub(crate) fn new_ord<T: EmbeddedDescription + PartialOrd + 'static>(t: T) -> Self {
+        Self::OrdType(Rc::new(t))
+    }
+    pub(crate) fn new_ord_ref<T: EmbeddedDescription + PartialOrd + 'static>(t: &'a T) -> Self {
+        Self::OrdRef(t)
+    }
 }
 
 impl<'a> Debug for EmbValue<'a> {
@@ -228,8 +234,141 @@ pub enum SimpleQueryValue {
     Embedded(EmbValue<'static>),
 }
 
+impl SimpleQueryValue {
+    pub(crate) fn to_range(&self) -> RangeQueryValue {
+        match self {
+            SimpleQueryValue::U8(v) => RangeQueryValue::U8((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::U16(v) => RangeQueryValue::U16((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::U32(v) => RangeQueryValue::U32((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::U64(v) => RangeQueryValue::U64((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::U128(v) => {
+                RangeQueryValue::U128((Bound::Included(v.clone()), Bound::Included(v.clone())))
+            }
+            SimpleQueryValue::I8(v) => RangeQueryValue::I8((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::I16(v) => RangeQueryValue::I16((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::I32(v) => RangeQueryValue::I32((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::I64(v) => RangeQueryValue::I64((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::I128(v) => {
+                RangeQueryValue::I128((Bound::Included(v.clone()), Bound::Included(v.clone())))
+            }
+            SimpleQueryValue::F32(v) => RangeQueryValue::F32((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::F64(v) => RangeQueryValue::F64((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::Bool(v) => {
+                RangeQueryValue::Bool((Bound::Included(v.clone()), Bound::Included(v.clone())))
+            }
+            SimpleQueryValue::String(v) => {
+                RangeQueryValue::String((Bound::Included(v.clone()), Bound::Included(v.clone())))
+            }
+            SimpleQueryValue::Ref(v) => RangeQueryValue::Ref((Bound::Included(v.clone()), Bound::Included(v.clone()))),
+            SimpleQueryValue::Embedded(v) => {
+                RangeQueryValue::Embedded((Bound::Included(v.clone()), Bound::Included(v.clone())))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RangeQueryValue {
+    U8((Bound<u8>, Bound<u8>)),
+    U16((Bound<u16>, Bound<u16>)),
+    U32((Bound<u32>, Bound<u32>)),
+    U64((Bound<u64>, Bound<u64>)),
+    U128((Bound<u128>, Bound<u128>)),
+    I8((Bound<i8>, Bound<i8>)),
+    I16((Bound<i16>, Bound<i16>)),
+    I32((Bound<i32>, Bound<i32>)),
+    I64((Bound<i64>, Bound<i64>)),
+    I128((Bound<i128>, Bound<i128>)),
+    F32((Bound<f32>, Bound<f32>)),
+    F64((Bound<f64>, Bound<f64>)),
+    Bool((Bound<bool>, Bound<bool>)),
+    String((Bound<String>, Bound<String>)),
+    Ref((Bound<RawRef>, Bound<RawRef>)),
+    Embedded((Bound<EmbValue<'static>>, Bound<EmbValue<'static>>)),
+    Option(OptionRangeQueryValue),
+    OptionVec(OptionVecRangeQueryValue),
+    Vec(VecRangeQueryValue),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VecRangeQueryValue {
+    U8((Bound<Vec<u8>>, Bound<Vec<u8>>)),
+    U16((Bound<Vec<u16>>, Bound<Vec<u16>>)),
+    U32((Bound<Vec<u32>>, Bound<Vec<u32>>)),
+    U64((Bound<Vec<u64>>, Bound<Vec<u64>>)),
+    U128((Bound<Vec<u128>>, Bound<Vec<u128>>)),
+    I8((Bound<Vec<i8>>, Bound<Vec<i8>>)),
+    I16((Bound<Vec<i16>>, Bound<Vec<i16>>)),
+    I32((Bound<Vec<i32>>, Bound<Vec<i32>>)),
+    I64((Bound<Vec<i64>>, Bound<Vec<i64>>)),
+    I128((Bound<Vec<i128>>, Bound<Vec<i128>>)),
+    F32((Bound<Vec<f32>>, Bound<Vec<f32>>)),
+    F64((Bound<Vec<f64>>, Bound<Vec<f64>>)),
+    Bool((Bound<Vec<bool>>, Bound<Vec<bool>>)),
+    String((Bound<Vec<String>>, Bound<Vec<String>>)),
+    Ref((Bound<Vec<RawRef>>, Bound<Vec<RawRef>>)),
+    Embedded((Bound<Vec<EmbValue<'static>>>, Bound<Vec<EmbValue<'static>>>)),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptionRangeQueryValue {
+    U8((Bound<Option<u8>>, Bound<Option<u8>>)),
+    U16((Bound<Option<u16>>, Bound<Option<u16>>)),
+    U32((Bound<Option<u32>>, Bound<Option<u32>>)),
+    U64((Bound<Option<u64>>, Bound<Option<u64>>)),
+    U128((Bound<Option<u128>>, Bound<Option<u128>>)),
+    I8((Bound<Option<i8>>, Bound<Option<i8>>)),
+    I16((Bound<Option<i16>>, Bound<Option<i16>>)),
+    I32((Bound<Option<i32>>, Bound<Option<i32>>)),
+    I64((Bound<Option<i64>>, Bound<Option<i64>>)),
+    I128((Bound<Option<i128>>, Bound<Option<i128>>)),
+    F32((Bound<Option<f32>>, Bound<Option<f32>>)),
+    F64((Bound<Option<f64>>, Bound<Option<f64>>)),
+    Bool((Bound<Option<bool>>, Bound<Option<bool>>)),
+    String((Bound<Option<String>>, Bound<Option<String>>)),
+    Ref((Bound<Option<RawRef>>, Bound<Option<RawRef>>)),
+    Embedded((Bound<Option<EmbValue<'static>>>, Bound<Option<EmbValue<'static>>>)),
+}
+#[derive(Debug, Clone, PartialEq)]
+pub enum OptionVecRangeQueryValue {
+    U8((Bound<Option<Vec<u8>>>, Bound<Option<Vec<u8>>>)),
+    U16((Bound<Option<Vec<u16>>>, Bound<Option<Vec<u16>>>)),
+    U32((Bound<Option<Vec<u32>>>, Bound<Option<Vec<u32>>>)),
+    U64((Bound<Option<Vec<u64>>>, Bound<Option<Vec<u64>>>)),
+    U128((Bound<Option<Vec<u128>>>, Bound<Option<Vec<u128>>>)),
+    I8((Bound<Option<Vec<i8>>>, Bound<Option<Vec<i8>>>)),
+    I16((Bound<Option<Vec<i16>>>, Bound<Option<Vec<i16>>>)),
+    I32((Bound<Option<Vec<i32>>>, Bound<Option<Vec<i32>>>)),
+    I64((Bound<Option<Vec<i64>>>, Bound<Option<Vec<i64>>>)),
+    I128((Bound<Option<Vec<i128>>>, Bound<Option<Vec<i128>>>)),
+    F32((Bound<Option<Vec<f32>>>, Bound<Option<Vec<f32>>>)),
+    F64((Bound<Option<Vec<f64>>>, Bound<Option<Vec<f64>>>)),
+    Bool((Bound<Option<Vec<bool>>>, Bound<Option<Vec<bool>>>)),
+    String((Bound<Option<Vec<String>>>, Bound<Option<Vec<String>>>)),
+    Ref((Bound<Option<Vec<RawRef>>>, Bound<Option<Vec<RawRef>>>)),
+    Embedded(
+        (
+            Bound<Option<Vec<EmbValue<'static>>>>,
+            Bound<Option<Vec<EmbValue<'static>>>>,
+        ),
+    ),
+}
+
 pub trait SolveSimpleQueryValue {
     fn new(self) -> SRes<SimpleQueryValue>;
+}
+
+pub trait SolveRangeQueryValue {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue;
+    fn range_vec(val: (&Bound<&Vec<Self>>, &Bound<&Vec<Self>>)) -> VecRangeQueryValue
+    where
+        Self: Sized;
+    fn range_option(val: (&Bound<&Option<Self>>, &Bound<&Option<Self>>)) -> OptionRangeQueryValue
+    where
+        Self: Sized;
+    fn range_option_vec(val: (&Bound<&Option<Vec<Self>>>, &Bound<&Option<Vec<Self>>>)) -> OptionVecRangeQueryValue
+    where
+        Self: Sized;
 }
 
 macro_rules! impl_query_type {
@@ -237,6 +376,31 @@ macro_rules! impl_query_type {
         impl SolveSimpleQueryValue for $t {
             fn new(self) -> SRes<SimpleQueryValue> {
                 Ok(SimpleQueryValue::$v1(self))
+            }
+        }
+        impl SolveRangeQueryValue for $t {
+            fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+                RangeQueryValue::$v1((val.0.cloned(), val.1.cloned()))
+            }
+            fn range_vec(val: (&Bound<&Vec<Self>>, &Bound<&Vec<Self>>)) -> VecRangeQueryValue
+            where
+                Self: Sized,
+            {
+                VecRangeQueryValue::$v1((val.0.cloned(), val.1.cloned()))
+            }
+            fn range_option(val: (&Bound<&Option<Self>>, &Bound<&Option<Self>>)) -> OptionRangeQueryValue
+            where
+                Self: Sized,
+            {
+                OptionRangeQueryValue::$v1((val.0.cloned(), val.1.cloned()))
+            }
+            fn range_option_vec(
+                val: (&Bound<&Option<Vec<Self>>>, &Bound<&Option<Vec<Self>>>),
+            ) -> OptionVecRangeQueryValue
+            where
+                Self: Sized,
+            {
+                OptionVecRangeQueryValue::$v1((val.0.cloned(), val.1.cloned()))
             }
         }
     };
@@ -259,21 +423,159 @@ impl_query_type!(String, String);
 
 impl<T: Persistent> SolveSimpleQueryValue for Ref<T> {
     fn new(self) -> SRes<SimpleQueryValue> {
-        Ok(SimpleQueryValue::Ref(RawRef {
-            ty: T::get_name().to_owned(),
-            id: self.raw_id,
-        }))
+        Ok(SimpleQueryValue::Ref(RawRef::from(&self)))
+    }
+}
+impl<T: Persistent> SolveRangeQueryValue for Ref<T> {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(RawRef::from(*v)),
+            Bound::Excluded(v) => Bound::Excluded(RawRef::from(*v)),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(RawRef::from(*v)),
+            Bound::Excluded(v) => Bound::Excluded(RawRef::from(*v)),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        RangeQueryValue::Ref((first, second))
+    }
+    fn range_vec(val: (&Bound<&Vec<Self>>, &Bound<&Vec<Self>>)) -> VecRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(v.iter().map(RawRef::from).collect()),
+            Bound::Excluded(v) => Bound::Excluded(v.iter().map(RawRef::from).collect()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(v.iter().map(RawRef::from).collect()),
+            Bound::Excluded(v) => Bound::Excluded(v.iter().map(RawRef::from).collect()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        VecRangeQueryValue::Ref((first, second))
+    }
+    fn range_option(val: (&Bound<&Option<Self>>, &Bound<&Option<Self>>)) -> OptionRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(RawRef::from)),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(RawRef::from)),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(RawRef::from)),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(RawRef::from)),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        OptionRangeQueryValue::Ref((first, second))
+    }
+    fn range_option_vec(val: (&Bound<&Option<Vec<Self>>>, &Bound<&Option<Vec<Self>>>)) -> OptionVecRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(|x| x.iter().map(RawRef::from).collect())),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(|x| x.iter().map(RawRef::from).collect())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(|x| x.iter().map(RawRef::from).collect())),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(|x| x.iter().map(RawRef::from).collect())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        OptionVecRangeQueryValue::Ref((first, second))
     }
 }
 
-impl<T: PartialEq + EmbeddedDescription + 'static> SolveSimpleQueryValue for T {
+impl<T: PartialEq + EmbeddedDescription + Clone + 'static> SolveSimpleQueryValue for T {
     fn new(self) -> SRes<SimpleQueryValue> {
         Ok(SimpleQueryValue::Embedded(EmbValue::new_eq(self)))
+    }
+}
+impl<T: EmbeddedDescription + PartialOrd + Clone + 'static> SolveRangeQueryValue for T {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(EmbValue::new_ord((*v).clone())),
+            Bound::Excluded(v) => Bound::Excluded(EmbValue::new_ord((*v).clone())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(EmbValue::new_ord((*v).clone())),
+            Bound::Excluded(v) => Bound::Excluded(EmbValue::new_ord((*v).clone())),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        RangeQueryValue::Embedded((first, second))
+    }
+    fn range_vec(val: (&Bound<&Vec<Self>>, &Bound<&Vec<Self>>)) -> VecRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(v.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            Bound::Excluded(v) => Bound::Excluded(v.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(v.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            Bound::Excluded(v) => Bound::Excluded(v.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        VecRangeQueryValue::Embedded((first, second))
+    }
+    fn range_option(val: (&Bound<&Option<Self>>, &Bound<&Option<Self>>)) -> OptionRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(|v| EmbValue::new_ord(v.clone()))),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(|v| EmbValue::new_ord(v.clone()))),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(v.as_ref().map(|v| EmbValue::new_ord(v.clone()))),
+            Bound::Excluded(v) => Bound::Excluded(v.as_ref().map(|v| EmbValue::new_ord(v.clone()))),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        OptionRangeQueryValue::Embedded((first, second))
+    }
+    fn range_option_vec(val: (&Bound<&Option<Vec<Self>>>, &Bound<&Option<Vec<Self>>>)) -> OptionVecRangeQueryValue
+    where
+        Self: Sized,
+    {
+        let first = match val.0 {
+            Bound::Included(v) => Bound::Included(
+                v.as_ref()
+                    .map(|x| x.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            ),
+            Bound::Excluded(v) => Bound::Excluded(
+                v.as_ref()
+                    .map(|x| x.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            ),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        let second = match val.1 {
+            Bound::Included(v) => Bound::Included(
+                v.as_ref()
+                    .map(|x| x.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            ),
+            Bound::Excluded(v) => Bound::Excluded(
+                v.as_ref()
+                    .map(|x| x.iter().map(|v| EmbValue::new_ord(v.clone())).collect()),
+            ),
+            Bound::Unbounded => Bound::Unbounded,
+        };
+        OptionVecRangeQueryValue::Embedded((first, second))
     }
 }
 
 pub trait SolveQueryValue {
     fn new(self) -> SRes<QueryValue>;
+}
+pub trait SolveQueryRange {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue;
 }
 
 impl<T: SolveSimpleQueryValue> SolveQueryValue for T {
@@ -281,10 +583,20 @@ impl<T: SolveSimpleQueryValue> SolveQueryValue for T {
         Ok(QueryValue::Single(self.new()?))
     }
 }
+impl<T: SolveRangeQueryValue> SolveQueryRange for T {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        SolveRangeQueryValue::range(val)
+    }
+}
 
 impl<T: SolveSimpleQueryValue> SolveQueryValue for Option<T> {
     fn new(self) -> SRes<QueryValue> {
         Ok(QueryValue::Option(self.map(|v| v.new()).transpose()?))
+    }
+}
+impl<T: SolveRangeQueryValue> SolveQueryRange for Option<T> {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        RangeQueryValue::Option(SolveRangeQueryValue::range_option(val))
     }
 }
 
@@ -300,6 +612,11 @@ impl<T: SolveSimpleQueryValue> SolveQueryValue for Option<Vec<T>> {
         ))
     }
 }
+impl<T: SolveRangeQueryValue> SolveQueryRange for Option<Vec<T>> {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        RangeQueryValue::OptionVec(SolveRangeQueryValue::range_option_vec(val))
+    }
+}
 
 impl<T: SolveSimpleQueryValue> SolveQueryValue for Vec<T> {
     fn new(self) -> SRes<QueryValue> {
@@ -308,6 +625,11 @@ impl<T: SolveSimpleQueryValue> SolveQueryValue for Vec<T> {
                 .map(|v| v.new())
                 .collect::<SRes<Vec<SimpleQueryValue>>>()?,
         ))
+    }
+}
+impl<T: SolveRangeQueryValue> SolveQueryRange for Vec<T> {
+    fn range(val: (&Bound<&Self>, &Bound<&Self>)) -> RangeQueryValue {
+        RangeQueryValue::Vec(SolveRangeQueryValue::range_vec(val))
     }
 }
 
@@ -336,13 +658,6 @@ pub(crate) struct FilterHolder {
     pub(crate) filters: Vec<FilterItem>,
     pub(crate) mode: FilterMode,
 }
-fn bound_value<X: Clone + SolveQueryValue>(bound: &Bound<&X>) -> Bound<QueryValue> {
-    match bound {
-        Bound::Included(x) => Bound::Included(SolveQueryValue::new((*x).clone()).unwrap()),
-        Bound::Excluded(x) => Bound::Excluded(SolveQueryValue::new((*x).clone()).unwrap()),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
 impl FilterHolder {
     pub(crate) fn new(mode: FilterMode) -> Self {
         Self {
@@ -369,36 +684,36 @@ impl FilterHolder {
         }))
     }
 
-    pub(crate) fn add_field_range<T: SolveQueryValue + Clone>(
+    pub(crate) fn add_field_range<T: SolveQueryRange + Clone>(
         &mut self,
         field: Rc<dyn FieldInfo>,
-        (first, second): (&Bound<&T>, &Bound<&T>),
+        range: (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
             field,
-            filter_type: FilterType::Range((bound_value(first), bound_value(second))),
+            filter_type: FilterType::Range(SolveQueryRange::range(range)),
         }))
     }
 
-    pub(crate) fn add_field_range_is<T: SolveQueryValue + Clone>(
+    pub(crate) fn add_field_range_is<T: SolveQueryRange + Clone>(
         &mut self,
         field: Rc<dyn FieldInfo>,
-        (first, second): (&Bound<&T>, &Bound<&T>),
+        range: (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
             field,
-            filter_type: FilterType::RangeIs((bound_value(first), bound_value(second))),
+            filter_type: FilterType::RangeIs(SolveQueryRange::range(range)),
         }))
     }
 
-    pub(crate) fn add_field_range_contains<T: SolveQueryValue + Clone>(
+    pub(crate) fn add_field_range_contains<T: SolveQueryRange + Clone>(
         &mut self,
         field: Rc<dyn FieldInfo>,
-        (first, second): (&Bound<&T>, &Bound<&T>),
+        range: (&Bound<&T>, &Bound<&T>),
     ) {
         self.filters.push(FilterItem::Field(FilterFieldItem {
             field,
-            filter_type: FilterType::RangeContains((bound_value(first), bound_value(second))),
+            filter_type: FilterType::RangeContains(SolveQueryRange::range(range)),
         }))
     }
 
@@ -444,9 +759,9 @@ pub(crate) enum FilterType {
     Equal(QueryValue),
     Contains(QueryValue),
     Is(QueryValue),
-    Range((Bound<QueryValue>, Bound<QueryValue>)),
-    RangeContains((Bound<QueryValue>, Bound<QueryValue>)),
-    RangeIs((Bound<QueryValue>, Bound<QueryValue>)),
+    Range(RangeQueryValue),
+    RangeContains(RangeQueryValue),
+    RangeIs(RangeQueryValue),
     Embedded(FilterHolder),
     QueryEqual(FilterHolder),
     QueryContains(FilterHolder),

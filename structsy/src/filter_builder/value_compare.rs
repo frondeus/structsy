@@ -1,7 +1,10 @@
 use crate::{
     filter_builder::{
         plan_model::QueryValuePlan,
-        query_model::{RawRef, SimpleQueryValue},
+        query_model::{
+            EmbValue, OptionRangeQueryValue, OptionVecRangeQueryValue, RangeQueryValue, RawRef, SimpleQueryValue,
+            VecRangeQueryValue,
+        },
     },
     internal::EmbeddedDescription,
     Ref,
@@ -17,11 +20,36 @@ pub trait ValueCompare {
     fn is(&self, value: QueryValuePlan) -> bool;
 }
 pub trait ValueRange: ValueCompare {
+    type RangeType;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering>;
-    fn range(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
-    fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
-    fn range_is(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range(&self, value: RangeQueryValue) -> bool;
+    fn range_vec(&self, _value: VecRangeQueryValue) -> bool {
+        false
+    }
+    fn range_contains(&self, value: RangeQueryValue) -> bool;
+    fn range_is(&self, value: RangeQueryValue) -> bool;
     fn sort_compare(&self, other: &Self) -> std::cmp::Ordering;
+    fn extract_range_vec(_value: VecRangeQueryValue) -> (Bound<Vec<Self::RangeType>>, Bound<Vec<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        unreachable!()
+    }
+    fn extract_range_option(
+        _value: OptionRangeQueryValue,
+    ) -> (Bound<Option<Self::RangeType>>, Bound<Option<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        unreachable!()
+    }
+    fn extract_range_option_vec(_value: OptionVecRangeQueryValue) -> (VecRangeQueryValue, bool)
+    where
+        Self: Sized,
+    {
+        unreachable!()
+    }
+    fn map_type(&self) -> Self::RangeType;
 }
 
 impl<T: ValueCompare> ValueCompare for Option<T> {
@@ -87,7 +115,11 @@ impl<T: ValueCompare> ValueCompare for Vec<T> {
     }
 }
 
-impl<T: ValueRange> ValueRange for Option<T> {
+impl<T: ValueRange + PartialOrd> ValueRange for Option<T>
+where
+    <T as ValueRange>::RangeType: PartialOrd,
+{
+    type RangeType = Option<<T as ValueRange>::RangeType>;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match (self, value) {
             (Some(v), QueryValuePlan::Option(Some(v1))) => v.compare(QueryValuePlan::Single(v1)),
@@ -100,64 +132,51 @@ impl<T: ValueRange> ValueRange for Option<T> {
             }
         }
     }
-    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        if let Some(s) = self {
-            let rv = match value {
-                Bound::Included(QueryValuePlan::Option(Some(v))) => Bound::Included(QueryValuePlan::Single(v)),
-                Bound::Included(QueryValuePlan::Option(None)) => Bound::Unbounded,
-                Bound::Excluded(QueryValuePlan::Option(Some(v))) => Bound::Excluded(QueryValuePlan::Single(v)),
-                Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Unbounded,
-                Bound::Unbounded => Bound::Unbounded,
-                _ => {
-                    debug_assert!(false, "should never match a wrong type");
-                    return false;
+    fn range(&self, value: RangeQueryValue) -> bool {
+        match value {
+            RangeQueryValue::Option(vr) => {
+                let r = T::extract_range_option(vr);
+                if self.is_some() {
+                    let nb0 = match r.0 {
+                        Bound::Included(Some(v)) => Bound::Included(Some(v)),
+                        Bound::Included(None) => Bound::Unbounded,
+                        Bound::Excluded(Some(v)) => Bound::Excluded(Some(v)),
+                        Bound::Excluded(None) => Bound::Unbounded,
+                        Bound::Unbounded => Bound::Unbounded,
+                    };
+                    let nb1 = match r.1 {
+                        Bound::Included(Some(v)) => Bound::Included(Some(v)),
+                        Bound::Included(None) => Bound::Unbounded,
+                        Bound::Excluded(Some(v)) => Bound::Excluded(Some(v)),
+                        Bound::Excluded(None) => Bound::Unbounded,
+                        Bound::Unbounded => Bound::Unbounded,
+                    };
+                    (nb0, nb1).contains(&self.map_type())
+                } else {
+                    match r {
+                        (Bound::Included(Some(_)), Bound::Included(Some(_))) => false,
+                        (Bound::Excluded(Some(_)), Bound::Excluded(Some(_))) => false,
+                        _ => true,
+                    }
                 }
-            };
-            let lv = match value1 {
-                Bound::Included(QueryValuePlan::Option(Some(v))) => Bound::Included(QueryValuePlan::Single(v)),
-                Bound::Included(QueryValuePlan::Option(None)) => Bound::Unbounded,
-                Bound::Excluded(QueryValuePlan::Option(Some(v))) => Bound::Excluded(QueryValuePlan::Single(v)),
-                Bound::Excluded(QueryValuePlan::Option(None)) => Bound::Unbounded,
-                Bound::Unbounded => Bound::Unbounded,
-                _ => {
-                    debug_assert!(false, "should never match a wrong type");
-                    return false;
+            }
+            RangeQueryValue::OptionVec(vr) => {
+                let (r, is_none) = T::extract_range_option_vec(vr);
+                if let Some(v) = self {
+                    T::range_vec(&v, r)
+                } else {
+                    is_none
                 }
-            };
-            s.range((rv, lv))
-        } else {
-            let none_start = match value {
-                Bound::Included(QueryValuePlan::Option(Some(_))) => false,
-                Bound::Included(QueryValuePlan::Option(None)) => true,
-                Bound::Excluded(QueryValuePlan::Option(Some(_))) => false,
-                Bound::Excluded(QueryValuePlan::Option(None)) => true,
-                Bound::Unbounded => false,
-                _ => {
-                    debug_assert!(false, "should never match a wrong type");
-                    return false;
-                }
-            };
-            let none_end = match value1 {
-                Bound::Included(QueryValuePlan::Option(Some(_))) => false,
-
-                Bound::Included(QueryValuePlan::Option(None)) => true,
-                Bound::Excluded(QueryValuePlan::Option(Some(_))) => false,
-                Bound::Excluded(QueryValuePlan::Option(None)) => true,
-                Bound::Unbounded => true,
-                _ => {
-                    debug_assert!(false, "should never match a wrong type");
-                    return false;
-                }
-            };
-            none_end | none_start
+            }
+            _ => false,
         }
     }
 
-    fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
-    fn range_is(&self, r: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, r: RangeQueryValue) -> bool {
         if let Some(v) = self {
             v.range(r)
         } else {
@@ -172,9 +191,17 @@ impl<T: ValueRange> ValueRange for Option<T> {
             (None, Some(_)) => std::cmp::Ordering::Greater,
         }
     }
+
+    fn map_type(&self) -> Self::RangeType {
+        self.as_ref().map(|x| x.map_type())
+    }
 }
 
-impl<T: ValueRange> ValueRange for Vec<T> {
+impl<T: ValueRange> ValueRange for Vec<T>
+where
+    <T as ValueRange>::RangeType: PartialOrd,
+{
+    type RangeType = Vec<<T as ValueRange>::RangeType>;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         let left = self;
         let right = match value {
@@ -201,19 +228,16 @@ impl<T: ValueRange> ValueRange for Vec<T> {
         left.len().partial_cmp(&right.len())
     }
 
-    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        (match value {
-            // TODO: double check this logic
-            Bound::Included(start) => self.compare(start) != Some(Ordering::Less),
-            Bound::Excluded(start) => self.compare(start) == Some(Ordering::Greater),
-            Bound::Unbounded => true,
-        }) && (match value1 {
-            Bound::Included(end) => self.compare(end) != Some(Ordering::Greater),
-            Bound::Excluded(end) => self.compare(end) == Some(Ordering::Less),
-            Bound::Unbounded => true,
-        })
+    fn range(&self, value: RangeQueryValue) -> bool {
+        match value {
+            RangeQueryValue::Vec(vr) => T::extract_range_vec(vr).contains(&self.map_type()),
+            _ => false,
+        }
     }
-    fn range_contains(&self, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_vec(&self, value: VecRangeQueryValue) -> bool {
+        T::extract_range_vec(value).contains(&self.map_type())
+    }
+    fn range_contains(&self, value: RangeQueryValue) -> bool {
         for el in self {
             if el.range(value.clone()) {
                 return true;
@@ -221,7 +245,7 @@ impl<T: ValueRange> ValueRange for Vec<T> {
         }
         false
     }
-    fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
@@ -239,6 +263,42 @@ impl<T: ValueRange> ValueRange for Vec<T> {
             s
         }
     }
+
+    fn map_type(&self) -> Self::RangeType {
+        self.iter().map(|x| x.map_type()).collect()
+    }
+    fn extract_range_option_vec(value: OptionVecRangeQueryValue) -> (VecRangeQueryValue, bool)
+    where
+        Self: Sized,
+    {
+        T::extract_range_option_vec(value)
+    }
+}
+
+fn map_option_vec<T>(
+    (b0, b1): (Bound<Option<Vec<T>>>, Bound<Option<Vec<T>>>),
+) -> ((Bound<Vec<T>>, Bound<Vec<T>>), bool) {
+    let is_none = match (&b0, &b0) {
+        (Bound::Included(Some(_)), Bound::Included(Some(_))) => false,
+        (Bound::Excluded(Some(_)), Bound::Excluded(Some(_))) => false,
+        _ => true,
+    };
+
+    let nb0 = match b0 {
+        Bound::Included(Some(v)) => Bound::Included(v),
+        Bound::Included(None) => Bound::Unbounded,
+        Bound::Excluded(Some(v)) => Bound::Excluded(v),
+        Bound::Excluded(None) => Bound::Unbounded,
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    let nb1 = match b1 {
+        Bound::Included(Some(v)) => Bound::Included(v),
+        Bound::Included(None) => Bound::Unbounded,
+        Bound::Excluded(Some(v)) => Bound::Excluded(v),
+        Bound::Excluded(None) => Bound::Unbounded,
+        Bound::Unbounded => Bound::Unbounded,
+    };
+    ((nb0, nb1), is_none)
 }
 
 macro_rules! impl_value_compare {
@@ -263,6 +323,7 @@ macro_rules! impl_value_compare {
             }
         }
         impl ValueRange for $t {
+            type RangeType = $t;
             fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
                 match value {
                     QueryValuePlan::Single(SimpleQueryValue::$v(v)) => self.partial_cmp(&v),
@@ -272,32 +333,17 @@ macro_rules! impl_value_compare {
                     }
                 }
             }
-            fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-                let rv = match value {
-                    Bound::Included(QueryValuePlan::Single(SimpleQueryValue::$v(v))) => Bound::Included(v),
-                    Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::$v(v))) => Bound::Excluded(v),
-                    Bound::Unbounded => Bound::Unbounded,
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        return false;
-                    }
-                };
-                let lv = match value1 {
-                    Bound::Included(QueryValuePlan::Single(SimpleQueryValue::$v(v))) => Bound::Included(v),
-                    Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::$v(v))) => Bound::Excluded(v),
-                    Bound::Unbounded => Bound::Unbounded,
-                    _ => {
-                        debug_assert!(false, "should never match a wrong type");
-                        return false;
-                    }
-                };
-                (rv, lv).contains(self)
+            fn range(&self, value: RangeQueryValue) -> bool {
+                match value {
+                    RangeQueryValue::$v(r) => r.contains(self),
+                    _ => false,
+                }
             }
-            fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+            fn range_contains(&self, _value: RangeQueryValue) -> bool {
                 debug_assert!(false, "should never call wrong action");
                 false
             }
-            fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+            fn range_is(&self, _value: RangeQueryValue) -> bool {
                 debug_assert!(false, "should never call wrong action");
                 false
             }
@@ -305,6 +351,44 @@ macro_rules! impl_value_compare {
             fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
                 use std::cmp::PartialOrd;
                 self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
+            }
+
+            fn extract_range_vec(
+                value: VecRangeQueryValue,
+            ) -> (Bound<Vec<Self::RangeType>>, Bound<Vec<Self::RangeType>>)
+            where
+                Self: Sized,
+            {
+                match value {
+                    VecRangeQueryValue::$v(r) => r,
+                    _ => unreachable!(),
+                }
+            }
+            fn extract_range_option(
+                value: OptionRangeQueryValue,
+            ) -> (Bound<Option<Self::RangeType>>, Bound<Option<Self::RangeType>>)
+            where
+                Self: Sized,
+            {
+                match value {
+                    OptionRangeQueryValue::$v(r) => r,
+                    _ => unreachable!(),
+                }
+            }
+            fn extract_range_option_vec(value: OptionVecRangeQueryValue) -> (VecRangeQueryValue, bool)
+            where
+                Self: Sized,
+            {
+                match value {
+                    OptionVecRangeQueryValue::$v(r) => {
+                        let (nb, is_none) = map_option_vec(r);
+                        (VecRangeQueryValue::$v(nb), is_none)
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            fn map_type(&self) -> Self::RangeType {
+                self.clone()
             }
         }
     };
@@ -345,6 +429,7 @@ impl<T> ValueCompare for Ref<T> {
     }
 }
 impl<T> ValueRange for Ref<T> {
+    type RangeType = RawRef;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match value {
             QueryValuePlan::Single(SimpleQueryValue::Ref(v)) => RawRef::from(self).partial_cmp(&v),
@@ -354,32 +439,17 @@ impl<T> ValueRange for Ref<T> {
             }
         }
     }
-    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        let rv = match value {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Ref(v))) => Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Ref(v))) => Bound::Excluded(v),
-            Bound::Unbounded => Bound::Unbounded,
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                return false;
-            }
-        };
-        let lv = match value1 {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Ref(v))) => Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Ref(v))) => Bound::Excluded(v),
-            Bound::Unbounded => Bound::Unbounded,
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                return false;
-            }
-        };
-        (rv, lv).contains(&RawRef::from(self))
+    fn range(&self, value: RangeQueryValue) -> bool {
+        match value {
+            RangeQueryValue::Ref(r) => r.contains(&RawRef::from(self)),
+            _ => false,
+        }
     }
-    fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
-    fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
@@ -387,7 +457,43 @@ impl<T> ValueRange for Ref<T> {
     fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
     }
+    fn extract_range_vec(value: VecRangeQueryValue) -> (Bound<Vec<Self::RangeType>>, Bound<Vec<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        match value {
+            VecRangeQueryValue::Ref(v) => v,
+            _ => unreachable!(),
+        }
+    }
+    fn extract_range_option(
+        value: OptionRangeQueryValue,
+    ) -> (Bound<Option<Self::RangeType>>, Bound<Option<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        match value {
+            OptionRangeQueryValue::Ref(v) => v,
+            _ => unreachable!(),
+        }
+    }
+    fn extract_range_option_vec(value: OptionVecRangeQueryValue) -> (VecRangeQueryValue, bool)
+    where
+        Self: Sized,
+    {
+        match value {
+            OptionVecRangeQueryValue::Ref(r) => {
+                let (b, is_none) = map_option_vec(r);
+                (VecRangeQueryValue::Ref(b), is_none)
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn map_type(&self) -> Self::RangeType {
+        RawRef::from(self)
+    }
 }
+
 impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
     fn equals(&self, value: QueryValuePlan) -> bool {
         match value {
@@ -407,7 +513,8 @@ impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
         false
     }
 }
-impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
+impl<T: EmbeddedDescription + PartialOrd + Clone + 'static> ValueRange for T {
+    type RangeType = EmbValue<'static>;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match value {
             QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => (self as &dyn MyOrd).partial_cmp(&v),
@@ -417,36 +524,57 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> ValueRange for T {
             }
         }
     }
-    fn range(&self, (value, value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
-        let rv = match value {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
-            Bound::Unbounded => Bound::Unbounded,
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                return false;
-            }
-        };
-        let lv = match value1 {
-            Bound::Included(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Included(v),
-            Bound::Excluded(QueryValuePlan::Single(SimpleQueryValue::Embedded(v))) => Bound::Excluded(v),
-            Bound::Unbounded => Bound::Unbounded,
-            _ => {
-                debug_assert!(false, "should never match a wrong type");
-                return false;
-            }
-        };
-        (rv, lv).contains(self as &dyn MyOrd)
+    fn range(&self, value: RangeQueryValue) -> bool {
+        match value {
+            RangeQueryValue::Embedded(r) => r.contains(self as &dyn MyOrd),
+            _ => false,
+        }
     }
-    fn range_contains(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
-    fn range_is(&self, (_value, _value1): (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, _value: RangeQueryValue) -> bool {
         debug_assert!(false, "should never call wrong action");
         false
     }
     fn sort_compare(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Less)
+    }
+
+    fn extract_range_vec(value: VecRangeQueryValue) -> (Bound<Vec<Self::RangeType>>, Bound<Vec<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        match value {
+            VecRangeQueryValue::Embedded(v) => v,
+            _ => unreachable!(),
+        }
+    }
+    fn extract_range_option(
+        value: OptionRangeQueryValue,
+    ) -> (Bound<Option<Self::RangeType>>, Bound<Option<Self::RangeType>>)
+    where
+        Self: Sized,
+    {
+        match value {
+            OptionRangeQueryValue::Embedded(v) => v,
+            _ => unreachable!(),
+        }
+    }
+    fn extract_range_option_vec(value: OptionVecRangeQueryValue) -> (VecRangeQueryValue, bool)
+    where
+        Self: Sized,
+    {
+        match value {
+            OptionVecRangeQueryValue::Embedded(r) => {
+                let (b, is_none) = map_option_vec(r);
+                (VecRangeQueryValue::Embedded(b), is_none)
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn map_type(&self) -> Self::RangeType {
+        EmbValue::new_ord(self.clone())
     }
 }

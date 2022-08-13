@@ -1,6 +1,6 @@
 use crate::{
     filter::Filter,
-    filter_builder::{FilterBuilder, SolveQueryValue, ValueCompare, ValueRange},
+    filter_builder::{FilterBuilder, SolveQueryRange, SolveQueryValue, ValueCompare, ValueRange},
     internal::{EmbeddedDescription, Field},
     queries::{SnapshotQuery, StructsyQuery},
     Order, Persistent, PersistentEmbedded, Ref,
@@ -77,7 +77,7 @@ pub trait RangeAction<X> {
     fn range(self, value: impl RangeBounds<X>);
 }
 
-impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
+impl<T, V: PersistentEmbedded + SolveQueryRange + ValueRange> RangeAction<V> for (Field<T, V>, &mut FilterBuilder<T>)
 where
     T: 'static,
     V: PartialOrd + Clone + 'static,
@@ -87,11 +87,12 @@ where
         self.1.cond_range(self.0, value);
     }
 }
-impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
+impl<T, V: PersistentEmbedded + SolveQueryRange + ValueRange> RangeAction<V>
     for (Field<T, Vec<V>>, &mut FilterBuilder<T>)
 where
     T: 'static,
     V: PartialOrd + Clone + 'static,
+    Vec<V>: ValueRange,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {
@@ -99,11 +100,12 @@ where
     }
 }
 
-impl<T, V: PersistentEmbedded + SolveQueryValue + ValueRange> RangeAction<V>
+impl<T, V: PersistentEmbedded + SolveQueryRange + ValueRange> RangeAction<V>
     for (Field<T, Option<V>>, &mut FilterBuilder<T>)
 where
     T: 'static,
     V: PartialOrd + Clone + 'static,
+    Option<V>: ValueRange,
 {
     #[inline]
     fn range(self, value: impl RangeBounds<V>) {

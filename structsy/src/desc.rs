@@ -1,4 +1,7 @@
 use crate::{
+    filter_builder::query_model::{
+        OptionRangeQueryValue, OptionVecRangeQueryValue, RangeQueryValue, VecRangeQueryValue,
+    },
     filter_builder::Reader,
     format::PersistentEmbedded,
     internal::{EmbeddedDescription, Persistent},
@@ -9,6 +12,7 @@ use crate::{
 use data_encoding::BASE32_DNSSEC;
 use persy::{IndexType, PersyId, Transaction, ValueMode};
 use std::io::{Cursor, Read, Write};
+use std::ops::Bound;
 use std::sync::Arc;
 
 pub struct StructDescriptionBuilder {
@@ -184,6 +188,15 @@ impl ValueType {
             ValueType::OptionArray(v) => v.index_score(reader, index_name),
         }
     }
+
+    pub(crate) fn default_range(&self) -> RangeQueryValue {
+        match self {
+            ValueType::Value(v) => v.default_range(),
+            ValueType::Array(v) => RangeQueryValue::Vec(v.default_range_vec()),
+            ValueType::Option(v) => RangeQueryValue::Option(v.default_range_option()),
+            ValueType::OptionArray(v) => RangeQueryValue::OptionVec(v.default_range_option_vec()),
+        }
+    }
 }
 
 impl SimpleValueType {
@@ -291,6 +304,90 @@ impl SimpleValueType {
             SimpleValueType::String => String::finder().score(reader, index_name, None),
             SimpleValueType::Ref(_) => Ok(usize::MAX),
             SimpleValueType::Embedded(_v) => Ok(usize::MAX),
+        }
+    }
+
+    pub(crate) fn default_range(&self) -> RangeQueryValue {
+        match self {
+            SimpleValueType::U8 => RangeQueryValue::U8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U16 => RangeQueryValue::U16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U32 => RangeQueryValue::U32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U64 => RangeQueryValue::U64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U128 => RangeQueryValue::U128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I8 => RangeQueryValue::I8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I16 => RangeQueryValue::I16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I32 => RangeQueryValue::I32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I64 => RangeQueryValue::I64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I128 => RangeQueryValue::I128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F32 => RangeQueryValue::F32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F64 => RangeQueryValue::F64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Bool => RangeQueryValue::Bool((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::String => RangeQueryValue::String((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Ref(_) => RangeQueryValue::Ref((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Embedded(_v) => RangeQueryValue::Embedded((Bound::Unbounded, Bound::Unbounded)),
+        }
+    }
+
+    pub(crate) fn default_range_option_vec(&self) -> OptionVecRangeQueryValue {
+        match self {
+            SimpleValueType::U8 => OptionVecRangeQueryValue::U8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U16 => OptionVecRangeQueryValue::U16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U32 => OptionVecRangeQueryValue::U32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U64 => OptionVecRangeQueryValue::U64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U128 => OptionVecRangeQueryValue::U128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I8 => OptionVecRangeQueryValue::I8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I16 => OptionVecRangeQueryValue::I16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I32 => OptionVecRangeQueryValue::I32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I64 => OptionVecRangeQueryValue::I64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I128 => OptionVecRangeQueryValue::I128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F32 => OptionVecRangeQueryValue::F32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F64 => OptionVecRangeQueryValue::F64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Bool => OptionVecRangeQueryValue::Bool((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::String => OptionVecRangeQueryValue::String((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Ref(_) => OptionVecRangeQueryValue::Ref((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Embedded(_v) => OptionVecRangeQueryValue::Embedded((Bound::Unbounded, Bound::Unbounded)),
+        }
+    }
+
+    pub(crate) fn default_range_option(&self) -> OptionRangeQueryValue {
+        match self {
+            SimpleValueType::U8 => OptionRangeQueryValue::U8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U16 => OptionRangeQueryValue::U16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U32 => OptionRangeQueryValue::U32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U64 => OptionRangeQueryValue::U64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U128 => OptionRangeQueryValue::U128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I8 => OptionRangeQueryValue::I8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I16 => OptionRangeQueryValue::I16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I32 => OptionRangeQueryValue::I32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I64 => OptionRangeQueryValue::I64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I128 => OptionRangeQueryValue::I128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F32 => OptionRangeQueryValue::F32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F64 => OptionRangeQueryValue::F64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Bool => OptionRangeQueryValue::Bool((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::String => OptionRangeQueryValue::String((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Ref(_) => OptionRangeQueryValue::Ref((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Embedded(_v) => OptionRangeQueryValue::Embedded((Bound::Unbounded, Bound::Unbounded)),
+        }
+    }
+
+    pub(crate) fn default_range_vec(&self) -> VecRangeQueryValue {
+        match self {
+            SimpleValueType::U8 => VecRangeQueryValue::U8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U16 => VecRangeQueryValue::U16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U32 => VecRangeQueryValue::U32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U64 => VecRangeQueryValue::U64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::U128 => VecRangeQueryValue::U128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I8 => VecRangeQueryValue::I8((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I16 => VecRangeQueryValue::I16((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I32 => VecRangeQueryValue::I32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I64 => VecRangeQueryValue::I64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::I128 => VecRangeQueryValue::I128((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F32 => VecRangeQueryValue::F32((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::F64 => VecRangeQueryValue::F64((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Bool => VecRangeQueryValue::Bool((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::String => VecRangeQueryValue::String((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Ref(_) => VecRangeQueryValue::Ref((Bound::Unbounded, Bound::Unbounded)),
+            SimpleValueType::Embedded(_v) => VecRangeQueryValue::Embedded((Bound::Unbounded, Bound::Unbounded)),
         }
     }
 

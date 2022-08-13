@@ -5,11 +5,12 @@ use crate::{
             FieldPathPlan, FilterByPlan, FilterFieldPlanItem, FilterPlan, FilterPlanItem, FilterPlanMode,
             OrderPlanItem, OrdersPlan, QueryPlan, QueryValuePlan, Source,
         },
+        query_model::RangeQueryValue,
         reader::{Reader, ReaderIterator},
     },
     Order, Persistent, Ref, SRes,
 };
-use std::{cmp::Ordering, ops::Bound, rc::Rc};
+use std::{cmp::Ordering, rc::Rc};
 
 fn start<'a, T: Persistent + 'static>(
     source: Source,
@@ -225,9 +226,9 @@ enum FilterExecutionByPlan {
     Equal(QueryValuePlan),
     Contains(QueryValuePlan),
     Is(QueryValuePlan),
-    Range((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
-    RangeContains((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
-    RangeIs((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
+    Range(RangeQueryValue),
+    RangeContains(RangeQueryValue),
+    RangeIs(RangeQueryValue),
     LoadAndEqual(LoadExecution),
     LoadAndContains(LoadExecution),
     LoadAndIs(LoadExecution),

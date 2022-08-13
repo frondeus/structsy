@@ -3,12 +3,12 @@ use crate::{
     error::SRes,
     filter_builder::query_model::{
         FieldOrder, FilterFieldItem, FilterItem, FilterMode, FilterType, Orders, OrdersFilters, Projection, Query,
-        QueryValue, SimpleQueryValue,
+        QueryValue, RangeQueryValue, SimpleQueryValue,
     },
     internal::FieldInfo,
     Order,
 };
-use std::{ops::Bound, rc::Rc};
+use std::rc::Rc;
 
 use super::query_model::{FieldNestedOrders, FilterHolder};
 
@@ -124,44 +124,13 @@ impl QueryValuePlan {
             QueryValue::OptionVec(s) => QueryValuePlan::OptionArray(s),
         }
     }
-    fn translate_bounds((first, second): (Bound<QueryValue>, Bound<QueryValue>)) -> (Bound<Self>, Bound<Self>) {
-        (
-            match first {
-                Bound::Included(v) => Bound::Included(Self::translate(v)),
-                Bound::Excluded(v) => Bound::Excluded(Self::translate(v)),
-                Bound::Unbounded => Bound::Unbounded,
-            },
-            match second {
-                Bound::Included(v) => Bound::Included(Self::translate(v)),
-                Bound::Excluded(v) => Bound::Excluded(Self::translate(v)),
-                Bound::Unbounded => Bound::Unbounded,
-            },
-        )
-    }
-    fn extract_bound(bound: Bound<Self>) -> Option<Bound<SimpleQueryValue>> {
-        match bound {
-            Bound::Included(Self::Single(v)) => Some(Bound::Included(v)),
-            Bound::Included(Self::Option(Some(v))) => Some(Bound::Included(v)),
-            Bound::Included(Self::Option(None)) => Some(Bound::Unbounded),
-            Bound::Included(Self::Array(_v)) => None,
-            Bound::Included(Self::OptionArray(_v)) => None,
-            Bound::Excluded(Self::Single(v)) => Some(Bound::Excluded(v)),
-            Bound::Excluded(Self::Option(Some(v))) => Some(Bound::Excluded(v)),
-            Bound::Excluded(Self::Option(None)) => Some(Bound::Unbounded),
-            Bound::Excluded(Self::Array(_v)) => None,
-            Bound::Excluded(Self::OptionArray(_v)) => None,
-            Bound::Unbounded => Some(Bound::Unbounded),
-        }
-    }
-    pub(crate) fn extract_bounds(
-        (first, second): (Bound<Self>, Bound<Self>),
-    ) -> Option<(Bound<SimpleQueryValue>, Bound<SimpleQueryValue>)> {
-        let f = Self::extract_bound(first);
-        let v = Self::extract_bound(second);
-        if let (Some(ff), Some(ss)) = (f, v) {
-            Some((ff, ss))
-        } else {
-            None
+    fn to_range(&self) -> Option<RangeQueryValue> {
+        //TODO: cover the other Range Case, maybe,
+        match self {
+            QueryValuePlan::Single(v) => Some(v.to_range()),
+            QueryValuePlan::Option(_) => None,
+            QueryValuePlan::Array(_) => None,
+            QueryValuePlan::OptionArray(_) => None,
         }
     }
 }
@@ -170,19 +139,19 @@ pub(crate) enum FilterByPlan {
     Equal(QueryValuePlan),
     Contains(QueryValuePlan),
     Is(QueryValuePlan),
-    Range((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
-    RangeContains((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
-    RangeIs((Bound<QueryValuePlan>, Bound<QueryValuePlan>)),
+    Range(RangeQueryValue),
+    RangeContains(RangeQueryValue),
+    RangeIs(RangeQueryValue),
     LoadAndEqual(FilterPlan),
     LoadAndContains(FilterPlan),
     LoadAndIs(FilterPlan),
 }
 impl FilterByPlan {
-    fn solve_range(&self) -> Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)> {
+    fn solve_range(&self) -> Option<RangeQueryValue> {
         match self {
-            Self::Equal(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
-            Self::Contains(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
-            Self::Is(e) => Some((Bound::Included(e.clone()), Bound::Included(e.clone()))),
+            Self::Equal(e) => e.to_range(),
+            Self::Contains(e) => e.to_range(),
+            Self::Is(e) => e.to_range(),
             Self::Range(e) => Some(e.clone()),
             Self::RangeContains(e) => Some(e.clone()),
             Self::RangeIs(e) => Some(e.clone()),
@@ -344,11 +313,9 @@ fn rationalize_filters_deep(
                     FilterType::Equal(val) => Some(FilterByPlan::Equal(QueryValuePlan::translate(val))),
                     FilterType::Contains(val) => Some(FilterByPlan::Contains(QueryValuePlan::translate(val))),
                     FilterType::Is(val) => Some(FilterByPlan::Is(QueryValuePlan::translate(val))),
-                    FilterType::Range(bound) => Some(FilterByPlan::Range(QueryValuePlan::translate_bounds(bound))),
-                    FilterType::RangeContains(bound) => {
-                        Some(FilterByPlan::RangeContains(QueryValuePlan::translate_bounds(bound)))
-                    }
-                    FilterType::RangeIs(bound) => Some(FilterByPlan::RangeIs(QueryValuePlan::translate_bounds(bound))),
+                    FilterType::Range(bound) => Some(FilterByPlan::Range(bound)),
+                    FilterType::RangeContains(bound) => Some(FilterByPlan::RangeContains(bound)),
+                    FilterType::RangeIs(bound) => Some(FilterByPlan::RangeIs(bound)),
                     FilterType::Embedded(x) => {
                         flat_or_deep_filter(x, parent_mode, f_path.clone(), elements);
                         None
@@ -431,7 +398,7 @@ fn rationalize_orders(orders: Vec<Orders>) -> Option<OrdersPlan> {
 pub(crate) struct IndexInfo {
     pub(crate) field_path: FieldPathPlan,
     pub(crate) index_name: String,
-    pub(crate) index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+    pub(crate) index_range: Option<RangeQueryValue>,
     pub(crate) ordering_mode: Order,
     pub(crate) value_type: ValueType,
 }
@@ -439,7 +406,7 @@ impl IndexInfo {
     pub(crate) fn new(
         field_path: FieldPathPlan,
         index_name: String,
-        index_range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+        index_range: Option<RangeQueryValue>,
         ordering_mode: Order,
         value_type: ValueType,
     ) -> IndexInfo {
@@ -461,7 +428,7 @@ pub(crate) trait InfoFinder {
         &self,
         type_name: &str,
         field_path: &FieldPathPlan,
-        range: Option<(Bound<QueryValuePlan>, Bound<QueryValuePlan>)>,
+        range: Option<RangeQueryValue>,
         mode: Order,
     ) -> Option<IndexInfo>;
     fn score_index(&self, index: &IndexInfo) -> SRes<usize>;

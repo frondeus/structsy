@@ -5,7 +5,6 @@ use crate::{
     transaction::{raw_tx_scan, TxRecordIter},
     Persistent, Ref, RefSytx, SRes, Snapshot, Structsy, StructsyTx,
 };
-use std::ops::Bound;
 
 pub trait ReaderIterator: Iterator {
     fn reader<'a>(&'a mut self) -> Reader<'a>;
@@ -65,7 +64,7 @@ impl<'a> Reader<'a> {
         index_find_range(
             self,
             &info.index_name,
-            info.index_range.unwrap_or((Bound::Unbounded, Bound::Unbounded)),
+            info.index_range.unwrap_or(info.value_type.default_range()),
             info.ordering_mode,
         )
     }

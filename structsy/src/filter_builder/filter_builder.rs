@@ -3,7 +3,7 @@ use crate::{
         execution_model::execute,
         fields_holder::FieldsHolder,
         plan_model::plan_from_query,
-        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryValue},
+        query_model::{FilterHolder, FilterMode, Orders as OrdersModel, Query, SolveQueryRange, SolveQueryValue},
         reader::{Reader, ReaderIterator},
         ValueCompare, ValueRange,
     },
@@ -99,7 +99,7 @@ impl<T: 'static> FilterBuilder<T> {
 
     pub fn cond_range<V, R: RangeBounds<V>>(&mut self, field: Field<T, V>, range: R)
     where
-        V: ValueRange + SolveQueryValue + Clone + 'static,
+        V: ValueRange + SolveQueryRange + Clone + 'static,
     {
         self.filters
             .add_field_range(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
@@ -108,7 +108,8 @@ impl<T: 'static> FilterBuilder<T> {
 
     pub fn cond_range_contains<V, R: RangeBounds<V>>(&mut self, field: Field<T, Vec<V>>, range: R)
     where
-        V: ValueRange + SolveQueryValue + Clone + 'static,
+        V: ValueRange + SolveQueryRange + Clone + PartialOrd + 'static,
+        Vec<V>: ValueRange,
     {
         self.filters
             .add_field_range_contains(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));
@@ -117,7 +118,8 @@ impl<T: 'static> FilterBuilder<T> {
 
     pub fn cond_range_is<V, R: RangeBounds<V>>(&mut self, field: Field<T, Option<V>>, range: R)
     where
-        V: ValueRange + SolveQueryValue + Clone + 'static,
+        V: ValueRange + SolveQueryRange + Clone + PartialOrd + 'static,
+        Option<V>: ValueRange,
     {
         self.filters
             .add_field_range_is(Rc::new(field.clone()), (&range.start_bound(), &range.end_bound()));

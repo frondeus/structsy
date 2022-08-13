@@ -2,14 +2,14 @@ use crate::{
     filter_builder::{
         execution_model::{filter_plan_to_execution, FilterCheck, FilterExecutionGroup},
         plan_model::{FilterPlan, QueryValuePlan},
-        query_model::RawRef,
+        query_model::{RangeQueryValue, RawRef},
         reader::Reader,
         value_compare::{ValueCompare, ValueRange},
     },
     internal::{Field, FieldInfo},
     Persistent, Ref,
 };
-use std::{cmp::Ordering, collections::HashMap, ops::Bound, rc::Rc};
+use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
 struct FieldValueRef<T, X>(Field<T, Ref<X>>, FieldsHolder<X>);
 struct FieldValueVecRef<T, X>(Field<T, Vec<Ref<X>>>, FieldsHolder<X>);
@@ -253,9 +253,9 @@ pub(crate) trait CompareOperations<T> {
     fn equals(&self, t: &T, value: QueryValuePlan) -> bool;
     fn contains(&self, t: &T, value: QueryValuePlan) -> bool;
     fn is(&self, t: &T, value: QueryValuePlan) -> bool;
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool;
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool;
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool;
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool;
     fn query_equals(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
     fn query_contains(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
     fn query_is(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool;
@@ -281,15 +281,15 @@ impl<T, V: ValueCompare> CompareOperations<T> for FieldValueCompare<T, V> {
         (self.0.access)(t).is(value)
     }
 
-    fn range(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, _t: &T, _value: RangeQueryValue) -> bool {
         false
     }
 
-    fn range_contains(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, _t: &T, _value: RangeQueryValue) -> bool {
         false
     }
 
-    fn range_is(&self, _t: &T, _value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, _t: &T, _value: RangeQueryValue) -> bool {
         false
     }
 
@@ -319,15 +319,15 @@ impl<T, V: ValueRange> CompareOperations<T> for FieldValueRange<T, V> {
         (self.0.access)(t).is(value)
     }
 
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range(value)
     }
 
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_contains(value)
     }
 
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_is(value)
     }
 
@@ -358,15 +358,15 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueRef<T, X> {
         (self.0.access)(t).is(value)
     }
 
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range(value)
     }
 
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_contains(value)
     }
 
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_is(value)
     }
 
@@ -396,15 +396,15 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueVecRef<T, X> {
         (self.0.access)(t).is(value)
     }
 
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range(value)
     }
 
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_contains(value)
     }
 
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_is(value)
     }
 
@@ -439,15 +439,15 @@ impl<T, X: Persistent> CompareOperations<T> for FieldValueOptionRef<T, X> {
         (self.0.access)(t).is(value)
     }
 
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range(value)
     }
 
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_contains(value)
     }
 
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool {
         (self.0.access)(t).range_is(value)
     }
 
@@ -608,13 +608,13 @@ impl<T, V> CompareOperations<T> for PathStep<T, V> {
     fn is(&self, t: &T, value: QueryValuePlan) -> bool {
         self.next.is((self.field.access)(t), value)
     }
-    fn range(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range(&self, t: &T, value: RangeQueryValue) -> bool {
         self.next.range((self.field.access)(t), value)
     }
-    fn range_contains(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_contains(&self, t: &T, value: RangeQueryValue) -> bool {
         self.next.range_contains((self.field.access)(t), value)
     }
-    fn range_is(&self, t: &T, value: (Bound<QueryValuePlan>, Bound<QueryValuePlan>)) -> bool {
+    fn range_is(&self, t: &T, value: RangeQueryValue) -> bool {
         self.next.range_is((self.field.access)(t), value)
     }
     fn query_equals(&self, t: &T, value: &dyn RefOperations, reader: &mut Reader) -> bool {
