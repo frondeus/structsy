@@ -534,7 +534,7 @@ struct WithEmbedded {
     embedded: Embedded,
 }
 
-#[derive(PersistentEmbedded)]
+#[derive(PersistentEmbedded, PartialEq, PartialOrd, Clone)]
 struct Embedded {
     name: String,
 }
@@ -549,6 +549,7 @@ impl WithEmbedded {
 #[queries(WithEmbedded)]
 trait WithEmbeddedQuery {
     fn embedded(self, embedded: Filter<Embedded>) -> Self;
+    fn between<R: RangeBounds<Embedded>>(self, embedded: R) -> Self;
 }
 
 #[embedded_queries(Embedded)]
@@ -557,8 +558,27 @@ trait EmbeddedQuery {
 }
 
 #[test]
+pub fn test_embeeded_range() {
+    structsy_inst("embedded_range", |db| {
+        db.define::<WithEmbedded>()?;
+        let mut tx = db.begin()?;
+        tx.insert(&WithEmbedded::new("aaa"))?;
+        tx.insert(&WithEmbedded::new("anto"))?;
+        tx.insert(&WithEmbedded::new("zzz"))?;
+        tx.commit()?;
+        let from = Embedded { name: "aaa".to_owned() };
+        let to = Embedded {
+            name: "anto".to_owned(),
+        };
+        let count = db.query::<WithEmbedded>().between(from..to).into_iter().count();
+        assert_eq!(count, 1);
+        Ok(())
+    });
+}
+
+#[test]
 pub fn test_embeeded_query() {
-    structsy_inst("basic_query", |db| {
+    structsy_inst("basic_embedded_query", |db| {
         db.define::<WithEmbedded>()?;
         let mut tx = db.begin()?;
         tx.insert(&WithEmbedded::new("aaa"))?;
