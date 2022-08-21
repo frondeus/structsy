@@ -47,9 +47,9 @@ impl<'a, T> Iterator for ToIter<'a, T> {
 }
 
 impl<T: Persistent + 'static> FilterBuilder<T> {
-    pub fn finish<'a>(self, reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
+    pub fn finish<'a>(self, mut reader_inst: Reader<'a>) -> Box<dyn Iterator<Item = (Ref<T>, T)> + 'a> {
         let query = Query::new(T::get_name(), self.filters, self.orders, Vec::new());
-        let plan = plan_from_query(query, &reader_inst.structsy()).unwrap();
+        let plan = plan_from_query(query, &mut reader_inst).unwrap();
         let iter = execute(plan, Rc::new(self.fields), reader_inst);
         Box::new(ToIter {
             read_iterator: iter.unwrap(),

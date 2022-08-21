@@ -7,7 +7,7 @@ use crate::{
     desc::{index_name, Description},
     format::PersistentEmbedded,
     index::{RangeInstanceIter, RangeIter},
-    Order, Persistent, Ref, SRes, Structsy,
+    Order, Persistent, Ref, SRes,
 };
 
 fn index_score(reader: &mut Reader, index_name: &str, bound: RangeQueryValue) -> SRes<usize> {
@@ -83,7 +83,7 @@ fn support_index(val: &Option<RangeQueryValue>) -> bool {
     }
 }
 
-impl InfoFinder for Structsy {
+impl<'a> InfoFinder for Reader<'a> {
     fn find_index(
         &self,
         type_name: &str,
@@ -94,7 +94,7 @@ impl InfoFinder for Structsy {
         if !support_index(&range) {
             return None;
         }
-        if let Ok(definition) = self.structsy_impl.full_definition_by_name(type_name) {
+        if let Ok(definition) = self.structsy().structsy_impl.full_definition_by_name(type_name) {
             let mut desc = Some(&definition.desc);
             let mut last_field = None;
             for field in &field_path.path {
@@ -131,13 +131,11 @@ impl InfoFinder for Structsy {
             None
         }
     }
-    fn score_index(&self, index: &IndexInfo) -> SRes<usize> {
-        //TODO: score also in other context like with transaction
-        let mut reader = Reader::Structsy(self.clone());
+    fn score_index(&mut self, index: &IndexInfo) -> SRes<usize> {
         if let Some(bounds) = index.index_range.clone() {
-            index_score(&mut reader, &index.index_name, bounds)
+            index_score(self, &index.index_name, bounds)
         } else {
-            index.value_type.index_score(&mut reader, &index.index_name)
+            index.value_type.index_score(self, &index.index_name)
         }
     }
 }

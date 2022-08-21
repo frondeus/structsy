@@ -431,13 +431,13 @@ pub(crate) trait InfoFinder {
         range: Option<RangeQueryValue>,
         mode: Order,
     ) -> Option<IndexInfo>;
-    fn score_index(&self, index: &IndexInfo) -> SRes<usize>;
+    fn score_index(&mut self, index: &IndexInfo) -> SRes<usize>;
 }
 
 fn choose_index(
     mut filter_indexes: Option<Vec<IndexInfo>>,
     mut orders_indexes: Option<Vec<IndexInfo>>,
-    finder: &dyn InfoFinder,
+    finder: &mut dyn InfoFinder,
 ) -> Option<IndexInfo> {
     if let Some(index_info) = orders_indexes.as_mut().map(|v| v.pop()).flatten() {
         if let Some(fi) = filter_indexes {
@@ -469,7 +469,7 @@ fn rationalize_projections(projections: Vec<Projection>) -> Option<ProjectionsPl
     }
 }
 
-pub(crate) fn plan_from_query(query: Query, info_finder: &dyn InfoFinder) -> SRes<QueryPlan> {
+pub(crate) fn plan_from_query(query: Query, info_finder: &mut dyn InfoFinder) -> SRes<QueryPlan> {
     let Query {
         type_name,
         projections,
