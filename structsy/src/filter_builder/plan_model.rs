@@ -128,7 +128,13 @@ impl QueryValuePlan {
         //TODO: cover the other Range Case, maybe,
         match self {
             QueryValuePlan::Single(v) => Some(v.to_range()),
-            QueryValuePlan::Option(_) => None,
+            QueryValuePlan::Option(v) => {
+                if let Some(val) = v {
+                    Some(RangeQueryValue::Option(val.to_range_option()))
+                } else {
+                    None
+                }
+            }
             QueryValuePlan::Array(_) => None,
             QueryValuePlan::OptionArray(_) => None,
         }

@@ -265,6 +265,59 @@ impl SimpleQueryValue {
             }
         }
     }
+
+    pub(crate) fn to_range_option(&self) -> OptionRangeQueryValue {
+        match self {
+            SimpleQueryValue::U8(v) => {
+                OptionRangeQueryValue::U8((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::U16(v) => {
+                OptionRangeQueryValue::U16((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::U32(v) => {
+                OptionRangeQueryValue::U32((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::U64(v) => {
+                OptionRangeQueryValue::U64((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::U128(v) => {
+                OptionRangeQueryValue::U128((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::I8(v) => {
+                OptionRangeQueryValue::I8((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::I16(v) => {
+                OptionRangeQueryValue::I16((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::I32(v) => {
+                OptionRangeQueryValue::I32((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::I64(v) => {
+                OptionRangeQueryValue::I64((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::I128(v) => {
+                OptionRangeQueryValue::I128((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::F32(v) => {
+                OptionRangeQueryValue::F32((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::F64(v) => {
+                OptionRangeQueryValue::F64((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::Bool(v) => {
+                OptionRangeQueryValue::Bool((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::String(v) => {
+                OptionRangeQueryValue::String((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::Ref(v) => {
+                OptionRangeQueryValue::Ref((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+            SimpleQueryValue::Embedded(v) => {
+                OptionRangeQueryValue::Embedded((Bound::Included(Some(v.clone())), Bound::Included(Some(v.clone()))))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
