@@ -1,19 +1,19 @@
-stages:
-  - generate_test_data
-  - coverage_report
-  - upload_report
-
-# Use cargo to generete test data the project
-generate_test_data:
+build:
   image: "rust:latest"
-  stage: generate_test_data
+  variables:
+    CARGO_HOME: "cargohome"
+  cache:
+    paths:
+      - target
+      - cargohome
+    key: build_cache
+  before_script:
+    - mkdir -p $CARGO_HOME && echo "using $CARGO_HOME to cache cargo deps"
+    - cargo install cargo-tarpaulin  
   script:
     - rustc --version && cargo --version      # Print version info for debugging
-    - cargo test --no-run
-  artifacts:
-    paths:
-      - target/debug/deps/*-*
-    expire_in: 30 minutes
+    - cargo tarpaulin --all-features --out Lcov
+    - bash <(curl -s https://codecov.io/bash) -Z
   only:
     changes:
       - Cargo.toml
@@ -23,42 +23,3 @@ generate_test_data:
       - benches/**/*
       - examples/**/*
 
-# Run tests and generate coverage report
-coverage_report:
-  image:
-    name: "kcov/kcov"
-    #entrypoint: ["/bin/sh", "-c"]
-    entrypoint: [""]
-  stage: "coverage_report"
-  script:
-    - ls target/debug/deps/ || echo "notfound"
-    - for file in $(ls -1 target/debug/deps/ | grep "-" | grep -v "\." | grep -v "derive");
-        do
-          mkdir -p "target/cov/$(basename $file)";
-          kcov --exclude-pattern=/.cargo,/usr/lib
-            --verify "target/cov/$(basename $file)"
-            "target/debug/deps/$file";
-        done
-  artifacts:
-    paths:
-      - target/cov/*
-    expire_in: 30 minutes
-  only:
-    changes:
-      - Cargo.toml
-      - ./*/Cargo.toml
-      - structsy/**/*
-      - structsy-derive/**/*
-
-upload_report:
-  image: "centos:latest"
-  stage: "upload_report"
-  script:
-    - bash <(curl -s https://codecov.io/bash) -Z
-  allow_failure: true
-  only:
-    changes:
-      - Cargo.toml
-      - ./*/Cargo.toml
-      - structsy/**/*
-      - structsy-derive/**/*
