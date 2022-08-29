@@ -31,12 +31,12 @@ pub trait MyOrd {
     fn gen_ref(&self) -> &dyn Any;
 }
 
-impl<'a> PartialEq<EmbValue<'a>> for dyn MyOrd {
+impl PartialEq<EmbValue> for dyn MyOrd {
     fn eq(&self, other: &EmbValue) -> bool {
         other.eq(self)
     }
 }
-impl<'a> PartialOrd<EmbValue<'a>> for dyn MyOrd {
+impl PartialOrd<EmbValue> for dyn MyOrd {
     fn partial_cmp(&self, other: &EmbValue) -> Option<Ordering> {
         other.partial_cmp(self).map(|r| match r {
             Ordering::Equal => Ordering::Equal,
@@ -87,38 +87,25 @@ impl<T: EmbeddedDescription + PartialOrd + 'static> MyOrd for T {
     }
 }
 
-impl<'a> PartialEq for EmbValue<'a> {
+impl PartialEq for EmbValue {
     fn eq(&self, other: &Self) -> bool {
         match self {
             Self::OrdType(r) => match other {
                 Self::OrdType(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
-                Self::OrdRef(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
-                Self::EqType(_) => false,
-            },
-            Self::OrdRef(r) => match other {
-                Self::OrdType(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
-                Self::OrdRef(or) => r.my_cmp(&**or) == Some(Ordering::Equal),
                 Self::EqType(_) => false,
             },
             Self::EqType(e) => match other {
                 Self::OrdType(_) => false,
-                Self::OrdRef(_) => false,
                 Self::EqType(eq) => e.my_eq(&**eq),
             },
         }
     }
 }
-impl<'a> PartialOrd for EmbValue<'a> {
+impl PartialOrd for EmbValue {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self {
             Self::OrdType(r) => match other {
                 Self::OrdType(or) => r.my_cmp(&**or),
-                Self::OrdRef(or) => r.my_cmp(&**or),
-                Self::EqType(_) => None,
-            },
-            Self::OrdRef(r) => match other {
-                Self::OrdType(or) => r.my_cmp(&**or),
-                Self::OrdRef(or) => r.my_cmp(&**or),
                 Self::EqType(_) => None,
             },
             Self::EqType(_) => None,
@@ -126,62 +113,51 @@ impl<'a> PartialOrd for EmbValue<'a> {
     }
 }
 
-impl<'a> PartialEq<dyn MyEq> for EmbValue<'a> {
+impl PartialEq<dyn MyEq> for EmbValue {
     fn eq(&self, other: &dyn MyEq) -> bool {
         match self {
             Self::OrdType(_r) => false, //r.my_eq(other),
-            Self::OrdRef(_r) => false,  // r.my_eq(other),
             Self::EqType(e) => e.my_eq(other),
         }
     }
 }
 
-impl<'a> PartialEq<dyn MyOrd> for EmbValue<'a> {
+impl PartialEq<dyn MyOrd> for EmbValue {
     fn eq(&self, other: &dyn MyOrd) -> bool {
         match self {
             Self::OrdType(r) => r.my_cmp(other) == Some(Ordering::Equal),
-            Self::OrdRef(r) => r.my_cmp(other) == Some(Ordering::Equal),
             Self::EqType(_) => false,
         }
     }
 }
 
-impl<'a> PartialOrd<dyn MyOrd> for EmbValue<'a> {
+impl PartialOrd<dyn MyOrd> for EmbValue {
     fn partial_cmp(&self, other: &dyn MyOrd) -> Option<Ordering> {
         match self {
             Self::OrdType(r) => r.my_cmp(other),
-            Self::OrdRef(r) => r.my_cmp(other),
             Self::EqType(_) => None,
         }
     }
 }
 #[derive(Clone)]
-pub enum EmbValue<'a> {
-    //TODO: handle also the case of only eq and both eq and ord maybe with an enum
+pub enum EmbValue {
     OrdType(Rc<dyn MyOrd>),
-    OrdRef(&'a dyn MyOrd),
     EqType(Rc<dyn MyEq>),
 }
 
-impl<'a> EmbValue<'a> {
+impl EmbValue {
     pub(crate) fn new_eq<T: EmbeddedDescription + PartialEq + 'static>(t: T) -> Self {
         Self::EqType(Rc::new(t))
     }
     pub(crate) fn new_ord<T: EmbeddedDescription + PartialOrd + 'static>(t: T) -> Self {
         Self::OrdType(Rc::new(t))
     }
-    pub(crate) fn new_ord_ref<T: EmbeddedDescription + PartialOrd + 'static>(t: &'a T) -> Self {
-        Self::OrdRef(t)
-    }
 }
 
-impl<'a> Debug for EmbValue<'a> {
+impl Debug for EmbValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::OrdType(r) => {
-                write!(f, "{:?}", r.gen_ref().type_id())
-            }
-            Self::OrdRef(r) => {
                 write!(f, "{:?}", r.gen_ref().type_id())
             }
             Self::EqType(e) => {
@@ -231,7 +207,7 @@ pub enum SimpleQueryValue {
     Bool(bool),
     String(String),
     Ref(RawRef),
-    Embedded(EmbValue<'static>),
+    Embedded(EmbValue),
 }
 
 impl SimpleQueryValue {
@@ -337,7 +313,7 @@ pub enum RangeQueryValue {
     Bool((Bound<bool>, Bound<bool>)),
     String((Bound<String>, Bound<String>)),
     Ref((Bound<RawRef>, Bound<RawRef>)),
-    Embedded((Bound<EmbValue<'static>>, Bound<EmbValue<'static>>)),
+    Embedded((Bound<EmbValue>, Bound<EmbValue>)),
     Option(OptionRangeQueryValue),
     OptionVec(OptionVecRangeQueryValue),
     Vec(VecRangeQueryValue),
@@ -360,7 +336,7 @@ pub enum VecRangeQueryValue {
     Bool((Bound<Vec<bool>>, Bound<Vec<bool>>)),
     String((Bound<Vec<String>>, Bound<Vec<String>>)),
     Ref((Bound<Vec<RawRef>>, Bound<Vec<RawRef>>)),
-    Embedded((Bound<Vec<EmbValue<'static>>>, Bound<Vec<EmbValue<'static>>>)),
+    Embedded((Bound<Vec<EmbValue>>, Bound<Vec<EmbValue>>)),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -380,7 +356,7 @@ pub enum OptionRangeQueryValue {
     Bool((Bound<Option<bool>>, Bound<Option<bool>>)),
     String((Bound<Option<String>>, Bound<Option<String>>)),
     Ref((Bound<Option<RawRef>>, Bound<Option<RawRef>>)),
-    Embedded((Bound<Option<EmbValue<'static>>>, Bound<Option<EmbValue<'static>>>)),
+    Embedded((Bound<Option<EmbValue>>, Bound<Option<EmbValue>>)),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum OptionVecRangeQueryValue {
@@ -399,12 +375,7 @@ pub enum OptionVecRangeQueryValue {
     Bool((Bound<Option<Vec<bool>>>, Bound<Option<Vec<bool>>>)),
     String((Bound<Option<Vec<String>>>, Bound<Option<Vec<String>>>)),
     Ref((Bound<Option<Vec<RawRef>>>, Bound<Option<Vec<RawRef>>>)),
-    Embedded(
-        (
-            Bound<Option<Vec<EmbValue<'static>>>>,
-            Bound<Option<Vec<EmbValue<'static>>>>,
-        ),
-    ),
+    Embedded((Bound<Option<Vec<EmbValue>>>, Bound<Option<Vec<EmbValue>>>)),
 }
 
 pub trait SolveSimpleQueryValue {

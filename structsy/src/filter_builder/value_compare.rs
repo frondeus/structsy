@@ -514,7 +514,7 @@ impl<T: EmbeddedDescription + PartialEq + 'static> ValueCompare for T {
     }
 }
 impl<T: EmbeddedDescription + PartialOrd + Clone + 'static> ValueRange for T {
-    type RangeType = EmbValue<'static>;
+    type RangeType = EmbValue;
     fn compare(&self, value: QueryValuePlan) -> Option<Ordering> {
         match value {
             QueryValuePlan::Single(SimpleQueryValue::Embedded(v)) => (self as &dyn MyOrd).partial_cmp(&v),
