@@ -2,12 +2,25 @@ use crate::{Persistent, SRes, StructsyError};
 use persy::PersyId;
 use std::{hash::Hash, marker::PhantomData};
 /// Reference to a record, can be used to load a record or to refer a record from another one.
-#[derive(Eq, Ord)]
 pub struct Ref<T> {
     pub(crate) type_name: String,
     pub(crate) raw_id: PersyId,
     pub(crate) ph: PhantomData<T>,
 }
+
+impl<T> Ord for Ref<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match ::core::cmp::Ord::cmp(&self.type_name, &other.type_name) {
+            ::core::cmp::Ordering::Equal => match ::core::cmp::Ord::cmp(&self.raw_id, &other.raw_id) {
+                ::core::cmp::Ordering::Equal => ::core::cmp::Ord::cmp(&self.ph, &other.ph),
+                cmp => cmp,
+            },
+            cmp => cmp,
+        }
+    }
+}
+
+impl<T> Eq for Ref<T> {}
 
 impl<T> Hash for Ref<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
