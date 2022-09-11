@@ -488,7 +488,7 @@ impl_field_type!(String, String);
 
 impl<T: Persistent> SimpleType for Ref<T> {
     fn resolve() -> SimpleValueType {
-        SimpleValueType::Ref(T::get_description().get_name())
+        SimpleValueType::Ref(T::get_name().to_owned())
     }
     fn new(self) -> SRes<SimpleValue> {
         Ok(SimpleValue::Ref(format!("{}", self.raw_id)))
