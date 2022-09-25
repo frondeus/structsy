@@ -1,6 +1,7 @@
 use crate::index::{Finder, IndexFinder, NoneFinder};
 use crate::{Persistent, Ref, SRes};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::collections::HashSet;
 use std::io::{Read, Write};
 
 /// Base trait implemented by all types that can be persisted inside a struct.
@@ -118,6 +119,29 @@ impl<T: PersistentEmbedded> PersistentEmbedded for Vec<T> {
         Ok(v)
     }
 }
+
+impl<T: PersistentEmbedded> PersistentEmbedded for HashSet<T> {
+    fn write(&self, write: &mut dyn Write) -> SRes<()> {
+        WriteBytesExt::write_u32::<BigEndian>(write, self.len() as u32)?;
+        for v in self {
+            T::write(v, write)?;
+        }
+        Ok(())
+    }
+
+    fn read(read: &mut dyn Read) -> SRes<Self>
+    where
+        Self: Sized,
+    {
+        let len = ReadBytesExt::read_u32::<BigEndian>(read)?;
+        let mut v = HashSet::new();
+        for _ in 0..len {
+            v.insert(T::read(read)?);
+        }
+        Ok(v)
+    }
+}
+
 impl<T: Persistent> PersistentEmbedded for Ref<T> {
     fn write(&self, write: &mut dyn Write) -> SRes<()> {
         format!("{}", self.raw_id).write(write)?;
